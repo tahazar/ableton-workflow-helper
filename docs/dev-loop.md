@@ -71,6 +71,39 @@ against a best-effort type shim. On the FIRST successful `pnpm setup:sdk`:
 
 When all boxes tick, M0 is done and M1 (real gateway operations) starts.
 
+## Running the M0 checklist with Claude on the Mac
+
+The checklist above is designed to be executed by a **local Claude Code
+session** (desktop app or `claude` in the terminal) opened in this repo on the
+dev machine — the remote/cloud sessions that built this scaffold cannot see
+`vendor/ableton-sdk/` or the running Live beta.
+
+Human-only steps (GUI, ~5 minutes):
+- Enable Developer Mode in the Live **beta**: Settings → Extensions.
+- Keep the beta open with a throwaway set during verification.
+- The right-click "AWH: Hello" check, and installing the packaged `.ablx`
+  (drag into Settings → Extensions, restart Live).
+
+Everything else is Claude-executable. Kickoff prompt for the local session:
+
+> Check out branch `claude/ableton-integration-brainstorm-p4xjxl` and read
+> `docs/dev-loop.md`. Execute the "First-build verification checklist": run
+> `pnpm install` and `pnpm setup:sdk`; install the SDK dev CLI it prints;
+> fetch the MIT-licensed `aker-dev/ableton-extension-skill` into
+> `.claude/skills/` (project-scoped) and use its verified API reference — the
+> Extensions SDK is absent from your training data, so do NOT write SDK calls
+> from memory. Diff `packages/extension/types/ableton-sdk-shim.d.ts` against
+> the real SDK types in `vendor/ableton-sdk/sdk/package/`, fix the shim and
+> every `VERIFY-ON-MACHINE` marker in `packages/extension/src/`, then
+> `pnpm build && pnpm test && pnpm build:extension` and start dev mode with
+> `extensions-cli run`. Tell me when you need me to click something in Live.
+> Verify with `awh ping` and `awh status` against my open set, check
+> ExtensionHost.txt for errors, then commit the fixes to the same branch and
+> push. Never commit anything under vendor/ (non-redistributable SDK).
+
+After the local session pushes its fixes, remote sessions pull the corrected
+shim and can continue M1 development against it.
+
 ## Design guardrails (from ADR-001/002)
 
 - Only `packages/extension` may import `@ableton-extensions/sdk`.
