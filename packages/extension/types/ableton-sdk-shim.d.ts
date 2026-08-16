@@ -84,10 +84,12 @@ declare module "@ableton-extensions/sdk" {
     duplicateDevice(device: Device): Promise<Device>;
   }
 
+  // No `name` accessor — verified against the real SDK, which exposes only
+  // receivingNote on DrumChain. sdkLiveBridge.ts derives a display name from
+  // the chain's first device instead.
   export class DrumChain extends Chain {
     get receivingNote(): number;
     set receivingNote(note: number);
-    get name(): string;
   }
 
   export class RackDevice extends Device {
