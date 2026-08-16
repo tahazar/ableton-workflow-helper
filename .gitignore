@@ -17,6 +17,9 @@ build/
 # --- Built extension artifacts (rebuilt from source) ---
 *.ablx
 
+# --- extensions-cli dev-mode scratch (storage/temp dirs Live normally provides) ---
+.dev/
+
 # --- Python (analysis engine) ---
 .venv/
 __pycache__/

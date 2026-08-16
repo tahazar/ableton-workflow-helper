@@ -7,9 +7,9 @@ const LIVE_API_VERSION = "1.0.0";
  * LiveBridge adapter over the Ableton Extensions SDK. This file and main.ts
  * are the ONLY places the SDK may be touched (ADR-001).
  *
- * VERIFY-ON-MACHINE: accessor names (getTempo/getTracks/getScenes vs
- * properties) are reconstructed from the API reference; confirm against the
- * real SDK types on first build and update the shim to match.
+ * Song is reached via `ctx.application.song` (not `ctx.song`); tempo/tracks/
+ * scenes are getters, not methods — confirmed against
+ * vendor/ableton-sdk/sdk/package/dist/index.d.mts on first build.
  */
 export class SdkLiveBridge implements LiveBridge {
   constructor(private readonly ctx: ExtensionContext) {}
@@ -23,11 +23,11 @@ export class SdkLiveBridge implements LiveBridge {
   }
 
   async getSetSummary(): Promise<SetSummary> {
-    const song = this.ctx.song;
+    const song = this.ctx.application.song;
     return {
-      tempo: song.getTempo(),
-      trackCount: song.getTracks().length,
-      sceneCount: song.getScenes().length,
+      tempo: song.tempo,
+      trackCount: song.tracks.length,
+      sceneCount: song.scenes.length,
     };
   }
 }

@@ -7,7 +7,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 
 // The real SDK, extracted by `pnpm setup:sdk` (never committed — see ADR-001/002).
+// package.json only declares "exports" (no "main"), which Node/esbuild only
+// resolve for bare-specifier imports of a real package — not for a plain
+// directory path substituted via esbuild's `alias`. Point straight at the
+// CJS entry file (matches this build's `format: "cjs"`) to sidestep that.
 const sdkDir = path.join(repoRoot, "vendor/ableton-sdk/sdk/package");
+const sdkEntry = path.join(sdkDir, "dist/index.cjs");
 
 if (!existsSync(sdkDir)) {
   console.error(
@@ -36,7 +41,7 @@ await build({
   sourcemap: "inline",
   logLevel: "info",
   alias: {
-    "@ableton-extensions/sdk": sdkDir,
+    "@ableton-extensions/sdk": sdkEntry,
   },
 });
 
