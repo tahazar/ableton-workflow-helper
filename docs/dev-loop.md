@@ -117,17 +117,29 @@ timing, param value scales). Run this once in the Live beta after pulling M1
 
 Short — M2 is mostly SDK-free (notation + CLI + skill), all unit-tested:
 
-- [ ] `awh clip create track:<midi>/slot:<empty> <<'EOF' ... EOF` with bar|beat
+- [x] `awh clip create track:<midi>/slot:<empty> <<'EOF' ... EOF` with bar|beat
       notation → clip appears with correct pitches/positions in Live's editor
-      (spot-check middle C: notation C3 must land on Live's C3)
-- [ ] `awh clip read` on a clip you wrote BY HAND in Live → notation matches
-      what you see in the piano roll
-- [ ] read → edit notation → `awh clip write` → piano roll updates
-- [ ] `awh render track:<audio> --from 0 --to 8` → WAV exists, correct length
-- [ ] Skill: open a local Claude Code session in the repo, ask it to "read the
+      (spot-check middle C: notation C3 must land on Live's C3). Confirmed
+      visually — note track:0 (Splice Bridge) isn't a valid target for a real
+      musical check even though clip.create-midi succeeds against it; used
+      track:3 instead.
+- [x] `awh clip read` on a clip you wrote BY HAND in Live → notation matches
+      what you see in the piano roll. Confirmed down to per-note velocity: a
+      hand-drawn 16th-note run had one note visibly quieter in the velocity
+      lane, and the notation read it back as `v1` vs `v100` on the rest.
+- [x] read → edit notation → `awh clip write` → piano roll updates. Confirmed
+      visually (octave transpose + velocity fix on the same clip).
+- [x] `awh render track:<audio> --from 0 --to 8` → WAV exists, correct length.
+      Rendered track:6 112-120 beats → .aif (Live's configured format, not
+      literally .wav), 3.4286s duration = exactly 8 beats @ 140 BPM.
+- [x] Skill: open a local Claude Code session in the repo, ask it to "read the
       clip at track:0/slot:0 and transpose it up a fifth" — it should use the
       awh skill, round-trip cleanly, and verify its own write (M2 exit
-      criterion)
+      criterion). **Passed.** A fresh agent, given only that sentence and no
+      other context, found `.claude/skills/awh/SKILL.md` on its own, read the
+      seeded C3/E3/G3/C4 clip, wrote back G3/B3/D4/G4 (+7 semitones), and
+      verified its own write — independently re-confirmed against the live
+      Set afterward.
 
 ## Running the M0 checklist with Claude on the Mac
 
