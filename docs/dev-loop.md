@@ -189,15 +189,37 @@ shim and can continue M1 development against it.
 M3 is entirely SDK-free (transforms run in the CLI; writes go through the
 already-validated clip ops), so this is a musical sanity pass, not an API one:
 
-- [ ] `awh vary <a real 4/8-bar loop> -n 8 --seed 1 --ops "transpose-scale:degrees=2 humanize"`
+- [x] `awh vary <a real 4/8-bar loop> -n 8 --seed 1 --ops "transpose-scale:degrees=2 humanize"`
       with the Set scale active → 8 named clips in empty slots, in key,
-      audibly related to the source
-- [ ] Same command, same seed, after `awh sweep` → IDENTICAL variations
-      (determinism end-to-end)
-- [ ] A rhythm pipeline (`syncopate:probability=0.5 swing:amount=0.7`) on a
+      audibly related to the source. Confirmed: a seeded 4-bar E-minor loop's
+      pitches all shifted by exactly +2 scale degrees (E→G, G→B, B→D, A→C),
+      humanize jitter on timing/velocity as expected.
+- [x] Same command, same seed, after `awh sweep` → IDENTICAL variations
+      (determinism end-to-end). Confirmed byte-for-byte identical across two
+      full round-trips through the real Extension Host.
+- [x] A rhythm pipeline (`syncopate:probability=0.5 swing:amount=0.7`) on a
       straight drum-rack loop → grooves, and drum pitches (pad notes) survive
-      untouched
-- [ ] `awh sweep` with the prefix → only the audition clips vanish
-- [ ] Skill flow: ask a local Claude session "make me 6 variations of the bass
+      untouched. Confirmed: pitches stayed exactly `{0,1}` (kick/snare) in
+      every variation while onsets shifted off the strict quarter-note grid.
+- [x] `awh sweep` with the prefix → only the audition clips vanish. Also
+      confirmed for the newer arrangement mode (`vary --arrange` + `sweep`
+      covering arrangement clips) — see below.
+- [x] Skill flow: ask a local Claude session "make me 6 variations of the bass
       loop, more syncopated, keep it in key" → it picks a sensible pipeline,
-      runs vary, and tells you which slots to audition (M3 exit criterion)
+      runs vary, and tells you which slots to audition (M3 exit criterion).
+      **First attempt failed the intent** (not the mechanism): a fresh agent
+      hand-composed 6 new basslines via `clip create` instead of running
+      `awh vary` — traced to `SKILL.md`'s own "Vary an existing loop" example,
+      which never mentioned `awh vary` and told the agent to hand-produce
+      variations, contradicting the dedicated `awh vary` section elsewhere in
+      the same file. Fixed the example; re-ran with a second fresh agent,
+      which then correctly ran `awh vary ... --ops "syncopate:... humanize"` —
+      independently verified: 6 clips, all 16 notes (matching the source,
+      unlike the first attempt's 16-40 varying note counts from hand-composed
+      material), same pitch set as the source, timing shifted off-grid.
+- [x] Arrangement-mode `vary --arrange`/`--at-bar` and `sweep` covering the
+      arrangement (added post-M3, spec R1's arrangement-first workflow):
+      confirmed default placement lands sequentially right after the track's
+      last arrangement clip with no overlap (verified both via the API and
+      visually in Live's Arrangement view), and `sweep` removes exactly the
+      swept clips from the arrangement without touching real content.

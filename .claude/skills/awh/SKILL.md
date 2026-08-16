@@ -136,12 +136,20 @@ sig 4/4              # optional header (default 4/4)
    arrangement.
 3. Re-read to verify; hand back to the user to audition.
 
-**Vary an existing loop** (transform):
-1. `awh clip read track:0/slot:1` → the source notation.
-2. Produce N distinct variations of THOSE notes (shift densities, octaves,
-   syncopation — keep the user's pitches unless told otherwise).
-3. Write each into an empty neighbouring slot (`clip create track:0/slot:2`
-   …) with names like `bass-v1`, so the user can audition and keep favourites.
+**Vary an existing loop** (transform — "make me N variations", "more
+syncopated", "denser", etc. on material that already exists in the Set):
+1. `awh status --json` (or `awh clip read`) → confirm the source clip and the
+   Set's active scale.
+2. Pick a transform pipeline from `awh transforms` that matches the request
+   (e.g. "more syncopated" → `syncopate:probability=...` [+ `humanize`]).
+   Don't hand-compose new notation for this — `awh vary` deterministically
+   reworks the source's own notes, which is both faster and exactly what
+   "variations of X" means.
+3. `awh vary <sourcePath> -n N --ops "<pipeline>"` → writes N seeded, named
+   variations (`--arrange` instead of session slots for arrangement-centric
+   users). Re-read one or two to sanity-check before handing back.
+4. Tell the user which slots/positions to audition; `awh sweep` the rest once
+   they've picked favourites.
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not
