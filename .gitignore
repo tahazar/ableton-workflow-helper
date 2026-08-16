@@ -1,0 +1,35 @@
+# --- Ableton Extensions SDK (non-redistributable — NEVER commit) ---
+# Convention: keep the extracted SDK in vendor/ableton-sdk/ (ignored wholesale).
+# Patterns below also catch the SDK wherever it was extracted in the repo.
+vendor/ableton-sdk/
+ableton-extensions-sdk*/
+ableton-extensions-sdk*.zip
+ableton-extensions-*.tgz
+@ableton-extensions/
+*.tgz
+
+# --- Node / TypeScript ---
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# --- Built extension artifacts (rebuilt from source) ---
+*.ablx
+
+# --- Python (analysis engine) ---
+.venv/
+__pycache__/
+*.pyc
+
+# --- Local environment / secrets ---
+.env
+.env.*
+bridge.json
+
+# --- OS / editor noise ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
