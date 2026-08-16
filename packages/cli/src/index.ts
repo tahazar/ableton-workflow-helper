@@ -11,11 +11,19 @@ import { Command } from "commander";
 import {
   DEFAULT_GATEWAY_PORT,
   FakeLiveBridge,
+  applyPipeline,
   createGatewayServer,
+  listTransforms,
+  makeRng,
   parseNotation,
+  parsePipeline,
+  parseScale,
   serializeNotation,
+  variantSeed,
   type ClipDetail,
   type NoteSpec,
+  type SetSummary,
+  type TransformContext,
 } from "@awh/core";
 
 const program = new Command();
@@ -275,6 +283,143 @@ clip
   );
 
 program
+  .command("transforms")
+  .description("List the deterministic variation transforms")
+  .action(() => {
+    const opts = program.opts<GlobalOpts>();
+    const all = listTransforms();
+    output(opts, all, () =>
+      all.map((t) => `${t.name.padEnd(18)} ${t.description}`).join("\n"),
+    );
+  });
+
+program
+  .command("vary <clipPath>")
+  .description(
+    "Generate N variations of a MIDI clip into empty session slots on the same " +
+      "(or --dest) track, named <prefix>-v1..N for auditioning",
+  )
+  .requiredOption("--ops <pipeline>", 'transform pipeline, e.g. "transpose-scale:degrees=2 humanize"')
+  .option("-n, --count <n>", "number of variations", "4")
+  .option("--seed <seed>", "base random seed (same seed = same variations)", "1")
+  .option("--dest <trackPath>", "destination track (default: the source clip's track)")
+  .option("--prefix <prefix>", "variation name prefix (default: source clip name or 'var')")
+  .option("--scale <scale>", 'scale for scale-aware transforms, e.g. "C minor" (default: the Set scale if active)')
+  .action(
+    async (
+      clipPath: string,
+      cmdOpts: { ops: string; count: string; seed: string; dest?: string; prefix?: string; scale?: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const count = Number(cmdOpts.count);
+      const baseSeed = Number(cmdOpts.seed);
+      const steps = parsePipeline(cmdOpts.ops);
+
+      const source = (
+        (await callGateway(opts, "/api/ops/clip.get", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ path: clipPath }),
+        })) as { result: ClipDetail }
+      ).result;
+      if (source.kind !== "midi" || !source.notes) {
+        throw new Error(`${clipPath} is not a MIDI clip`);
+      }
+
+      const summary = (
+        (await callGateway(opts, "/api/ops/set.summary", { method: "POST" })) as {
+          result: SetSummary;
+        }
+      ).result;
+      const scale = cmdOpts.scale
+        ? parseScale(cmdOpts.scale)
+        : summary.scale.active
+          ? { rootNote: summary.scale.rootNote, intervals: summary.scale.intervals }
+          : undefined;
+
+      const destTrackPath = cmdOpts.dest ?? clipPath.replace(/\/(slot|arr):\d+$/, "");
+      const destTrack = [...summary.tracks, ...summary.returnTracks].find(
+        (t) => t.path === destTrackPath,
+      );
+      if (!destTrack) throw new Error(`destination track not found: ${destTrackPath}`);
+      const occupied = new Set(
+        destTrack.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+      );
+      const emptySlots = Array.from({ length: destTrack.slotCount }, (_, i) => i).filter(
+        (i) => !occupied.has(i),
+      );
+      if (emptySlots.length < count) {
+        throw new Error(
+          `need ${count} empty session slots on ${destTrackPath}, found ${emptySlots.length} — ` +
+            `add scenes or use --dest / awh sweep`,
+        );
+      }
+
+      const prefix = cmdOpts.prefix ?? (source.name ? source.name : "var");
+      const created: { path: string; name: string; notes: number }[] = [];
+      for (let i = 0; i < count; i++) {
+        const ctx: TransformContext = {
+          lengthBeats: source.duration,
+          beatsPerBar: 4,
+          rng: makeRng(variantSeed(baseSeed, i + 1)),
+          ...(scale ? { scale } : {}),
+        };
+        const notes = applyPipeline(steps, source.notes, ctx);
+        const name = `${prefix}-v${i + 1}`;
+        const slotPath = `${destTrackPath}/slot:${emptySlots[i]}`;
+        await callGateway(opts, "/api/ops/clip.create-midi", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            target: { type: "session", slotPath },
+            lengthBeats: source.duration,
+            notes,
+            name,
+          }),
+        });
+        created.push({ path: slotPath, name, notes: notes.length });
+      }
+      output(opts, created, () =>
+        [
+          `${count} variations of ${clipPath} (seed ${baseSeed}):`,
+          ...created.map((c) => `  ${c.path.padEnd(16)} ${c.name} (${c.notes} notes)`),
+          `audition them, then keep favourites and run: awh sweep ${destTrackPath} --prefix ${prefix}-v`,
+        ].join("\n"),
+      );
+    },
+  );
+
+program
+  .command("sweep <trackPath>")
+  .description("Delete session clips on a track whose name starts with --prefix")
+  .requiredOption("--prefix <prefix>", "name prefix to match (e.g. bass-v)")
+  .action(async (trackPath: string, cmdOpts: { prefix: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const summary = (
+      (await callGateway(opts, "/api/ops/set.summary", { method: "POST" })) as {
+        result: SetSummary;
+      }
+    ).result;
+    const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
+    if (!track) throw new Error(`track not found: ${trackPath}`);
+    const doomed = track.sessionClips.filter((c) => c.name.startsWith(cmdOpts.prefix));
+    // Delete in DESCENDING slot order so earlier deletions can't shift paths.
+    doomed.sort((a, b) => b.path.localeCompare(a.path));
+    for (const clipToDelete of doomed) {
+      await callGateway(opts, "/api/ops/clip.delete", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ path: clipToDelete.path }),
+      });
+    }
+    output(opts, { deleted: doomed.map((c) => c.path) }, () =>
+      doomed.length === 0
+        ? `no clips matching "${cmdOpts.prefix}*" on ${trackPath}`
+        : `deleted ${doomed.length} clips: ${doomed.map((c) => c.name).join(", ")}`,
+    );
+  });
+
+program
   .command("render <trackPath>")
   .description("Render an AUDIO track's pre-FX signal to a WAV (beats range)")
   .requiredOption("--from <beat>", "start beat")
@@ -289,8 +434,8 @@ program
         startBeat: Number(cmdOpts.from),
         endBeat: Number(cmdOpts.to),
       }),
-    })) as { result: { wavPath: string } };
-    output(opts, body.result, () => body.result.wavPath);
+    })) as { result: { audioPath: string } };
+    output(opts, body.result, () => body.result.audioPath);
   });
 
 program

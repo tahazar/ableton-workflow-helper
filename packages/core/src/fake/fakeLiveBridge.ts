@@ -241,7 +241,7 @@ export class FakeLiveBridge implements LiveBridge {
 
     return Promise.resolve({
       tempo: this.tempo,
-      scale: { rootNote: 0, name: "Major", active: false },
+      scale: { rootNote: 0, name: "Major", active: false, intervals: [0, 2, 4, 5, 7, 9, 11] },
       trackCount: this.tracks.length,
       sceneCount: this.scenes.length,
       tracks: this.tracks.map((t, i) => trackSummary(t, `track:${i}`)),
@@ -389,7 +389,7 @@ export class FakeLiveBridge implements LiveBridge {
     trackPath: string,
     startBeat: number,
     endBeat: number,
-  ): Promise<{ wavPath: string }> {
+  ): Promise<{ audioPath: string }> {
     const track = this.trackAt(parsePath(trackPath), trackPath);
     if (track.kind !== "audio") {
       throw new BridgeError("bad_request", `renderPreFxAudio: not an audio track: ${trackPath}`);
@@ -417,12 +417,12 @@ export class FakeLiveBridge implements LiveBridge {
     buffer.writeUInt16LE(16, 34); // bits per sample
     buffer.write("data", 36);
     buffer.writeUInt32LE(dataSize, 40);
-    const wavPath = path.join(
+    const audioPath = path.join(
       await fs.mkdtemp(path.join(os.tmpdir(), "awh-fake-render-")),
       "prefx.wav",
     );
-    await fs.writeFile(wavPath, buffer);
-    return { wavPath };
+    await fs.writeFile(audioPath, buffer);
+    return { audioPath };
   }
 
   // -- scenes ---------------------------------------------------------------

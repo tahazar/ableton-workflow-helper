@@ -47,3 +47,23 @@ export {
   type NotationOptions,
   type ParsedNotation,
 } from "./notation/barbeat.js";
+export {
+  clampPitch,
+  numParam,
+  sortNotes,
+  strParam,
+  type Params,
+  type ScaleContext,
+  type Transform,
+  type TransformContext,
+  type TransformDef,
+} from "./transforms/types.js";
+export { makeRng, variantSeed } from "./transforms/rng.js";
+export { SCALES, parseScale, shiftDegrees, snapToScale } from "./transforms/scales.js";
+export {
+  applyPipeline,
+  listTransforms,
+  parsePipeline,
+  registerTransform,
+  type PipelineStep,
+} from "./transforms/registry.js";

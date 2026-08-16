@@ -232,6 +232,7 @@ declare module "@ableton-extensions/sdk" {
     set tempo(tempo: number);
     get rootNote(): number;
     get scaleMode(): boolean;
+    get scaleIntervals(): number[];
     get scaleName(): string;
     createMidiTrack(): Promise<MidiTrack>;
     createAudioTrack(): Promise<AudioTrack>;
