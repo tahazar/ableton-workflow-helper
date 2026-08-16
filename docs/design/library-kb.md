@@ -129,6 +129,32 @@ storage/temp dirs — pre-announced OS sandbox). Design: an **outbox**.
   `awh chain apply` (recipe) — both resolved by search over the owner's own
   captured material.
 
+## B3d — Live User Library sync (.alc mirror) [research in progress]
+
+Owner requirement (2026-08-17): saved clips should ALSO appear in Live's own
+browser as `.alc` Live Clips — with Live 12's tag system where feasible
+(Clips: Drum/Music Clip, Key, Creator: User) — so the library is usable from
+inside Live without touching a terminal.
+
+Direction (agreed; format details pending research):
+- **The git library stays the source of truth.** The User Library copy is a
+  generated MIRROR: `awh lib export-alc` renders every (or tagged-subset)
+  library clip to `<User Library>/Clips/AWH/<category>/<slug>.alc`,
+  regenerating on change. Generation-only — we never edit existing user files
+  (that safety line is what un-parks the gzipped-XML approach: a bad
+  generated file fails to load and harms nothing).
+- **Reverse flow**: clips the owner drags into the browser by hand can be
+  imported (`awh lib import-alc <file>`) by parsing the same XML — capture
+  path for material that never went through awh.
+- **Tags**: pending research on where Live 12 stores browser tags and whether
+  third-party writes are safe. Fallback that always works: encode category/
+  tags in folder structure + filenames (both browser-searchable); rely on
+  Live's auto-derived tags (Key, Creator: User) where they prove automatic.
+- Research task: .alc internal structure + minimal valid file, existing
+  MIT-compatible Ableton-XML parsers/writers, Live 12 tag storage mechanism,
+  auto-tagging behavior. Findings will land in
+  `docs/research/alc-live-library.md` and firm this section up.
+
 ## Out of scope (recorded so they don't creep in silently)
 
 - No embedding/vector search until grep + tags demonstrably fail at scale.
