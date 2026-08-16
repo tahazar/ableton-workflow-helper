@@ -1,6 +1,7 @@
 import http from "node:http";
 import { URL } from "node:url";
 import { BridgeError, type LiveBridge } from "./types.js";
+import { buildOpRegistry } from "./ops.js";
 
 export const DEFAULT_GATEWAY_PORT = 8720;
 
@@ -8,45 +9,6 @@ export interface GatewayOptions {
   port?: number;
   /** Loopback only — never expose the gateway beyond the local machine. */
   host?: "127.0.0.1";
-}
-
-export interface OpContext {
-  bridge: LiveBridge;
-}
-
-export type OpHandler = (args: unknown, ctx: OpContext) => Promise<unknown>;
-
-export interface OpDefinition {
-  name: string;
-  description: string;
-  handler: OpHandler;
-}
-
-/**
- * Deterministic operation registry. One op = one logical, undoable action
- * (M1 maps each mutating op to a single SDK transaction). Ops are the unit
- * both the CLI and any LLM invoke — same surface, no special AI path.
- */
-export function buildOpRegistry(): Map<string, OpDefinition> {
-  const ops = new Map<string, OpDefinition>();
-  const add = (op: OpDefinition) => ops.set(op.name, op);
-
-  add({
-    name: "ping",
-    description: "Gateway liveness + bridge identity",
-    handler: async (_args, ctx) => ({
-      service: "awh-gateway",
-      bridge: await ctx.bridge.describe(),
-    }),
-  });
-
-  add({
-    name: "set.summary",
-    description: "Compact summary of the open Live Set",
-    handler: async (_args, ctx) => ctx.bridge.getSetSummary(),
-  });
-
-  return ops;
 }
 
 export interface GatewayServer {
