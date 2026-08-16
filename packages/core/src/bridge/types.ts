@@ -208,6 +208,14 @@ export interface LiveBridge {
     startBeat: number,
     endBeat: number,
   ): Promise<void>;
+  /** Render an AUDIO track's pre-FX signal between two beat positions to a
+   *  WAV in the extension temp dir (SDK constraint: audio tracks only,
+   *  pre-FX only — post-FX capture is the M6 M4L tap). */
+  renderPreFxAudio(
+    trackPath: string,
+    startBeat: number,
+    endBeat: number,
+  ): Promise<{ wavPath: string }>;
 
   // scenes
   createScene(index?: number): Promise<{ path: string }>;

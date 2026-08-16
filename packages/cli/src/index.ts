@@ -6,11 +6,16 @@
  * extension running inside Live, or `awh serve-fake` for offline dev).
  * The same commands are what a Claude Code skill drives — no AI-only paths.
  */
+import { readFile } from "node:fs/promises";
 import { Command } from "commander";
 import {
   DEFAULT_GATEWAY_PORT,
   FakeLiveBridge,
   createGatewayServer,
+  parseNotation,
+  serializeNotation,
+  type ClipDetail,
+  type NoteSpec,
 } from "@awh/core";
 
 const program = new Command();
@@ -156,6 +161,136 @@ program
         ),
       ].join("\n"),
     );
+  });
+
+async function readNotationInput(file: string | undefined): Promise<string> {
+  if (file !== undefined) return readFile(file, "utf8");
+  if (process.stdin.isTTY) {
+    throw new Error(
+      "No notation given: pass a file argument or pipe bar|beat text on stdin.",
+    );
+  }
+  const chunks: Buffer[] = [];
+  for await (const chunk of process.stdin) chunks.push(chunk as Buffer);
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+const clip = program
+  .command("clip")
+  .description("Read and write MIDI clips in bar|beat notation");
+
+clip
+  .command("read <path>")
+  .description("Print a MIDI clip as bar|beat notation (or --json for raw notes)")
+  .option("--sig <beatsPerBar>", "beats per bar for bar|beat math", "4")
+  .action(async (path: string, cmdOpts: { sig: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const body = (await callGateway(opts, "/api/ops/clip.get", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path }),
+    })) as { result: ClipDetail };
+    const detail = body.result;
+    if (detail.kind !== "midi" || !detail.notes) {
+      throw new Error(`${path} is not a MIDI clip`);
+    }
+    output(opts, detail, () =>
+      [
+        `# ${detail.name || "(unnamed)"} — ${detail.duration} beats, ${detail.notes!.length} notes`,
+        serializeNotation(detail.notes!, { beatsPerBar: Number(cmdOpts.sig) }),
+      ].join("\n"),
+    );
+  });
+
+clip
+  .command("write <path> [file]")
+  .description("Replace a MIDI clip's notes from bar|beat notation (file or stdin)")
+  .option("--sig <beatsPerBar>", "beats per bar for bar|beat math", "4")
+  .action(async (path: string, file: string | undefined, cmdOpts: { sig: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const text = await readNotationInput(file);
+    const { notes } = parseNotation(text, { beatsPerBar: Number(cmdOpts.sig) });
+    await callGateway(opts, "/api/ops/clip.notes", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, notes }),
+    });
+    output(opts, { path, noteCount: notes.length }, () =>
+      `wrote ${notes.length} notes to ${path}`,
+    );
+  });
+
+clip
+  .command("create <target> [file]")
+  .description(
+    "Create a MIDI clip from bar|beat notation. Target: a slot path (track:0/slot:2) " +
+      "or a track path with --at-bar for the arrangement",
+  )
+  .option("--at-bar <bar>", "arrangement position (1-based bar) — required for track targets")
+  .option("--length <beats>", "clip length in beats (default: notation span, whole bars)")
+  .option("--name <name>", "clip name")
+  .option("--sig <beatsPerBar>", "beats per bar for bar|beat math", "4")
+  .action(
+    async (
+      target: string,
+      file: string | undefined,
+      cmdOpts: { atBar?: string; length?: string; name?: string; sig: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const beatsPerBar = Number(cmdOpts.sig);
+      const text = await readNotationInput(file);
+      const parsed = parseNotation(text, { beatsPerBar });
+      const lengthBeats = cmdOpts.length
+        ? Number(cmdOpts.length)
+        : parsed.suggestedLengthBeats;
+
+      const isSlot = /\/slot:\d+$/.test(target);
+      if (!isSlot && cmdOpts.atBar === undefined) {
+        throw new Error(
+          "Track targets need --at-bar <bar> (or pass a slot path like track:0/slot:2).",
+        );
+      }
+      const targetSpec = isSlot
+        ? { type: "session", slotPath: target }
+        : {
+            type: "arrangement",
+            trackPath: target,
+            startBeat: (Number(cmdOpts.atBar) - 1) * beatsPerBar,
+          };
+
+      const body = (await callGateway(opts, "/api/ops/clip.create-midi", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          target: targetSpec,
+          lengthBeats,
+          notes: parsed.notes,
+          ...(cmdOpts.name ? { name: cmdOpts.name } : {}),
+        }),
+      })) as { result: { path: string } };
+      output(opts, body.result, () =>
+        `created ${body.result.path} (${lengthBeats} beats, ${parsed.notes.length} notes)`,
+      );
+    },
+  );
+
+program
+  .command("render <trackPath>")
+  .description("Render an AUDIO track's pre-FX signal to a WAV (beats range)")
+  .requiredOption("--from <beat>", "start beat")
+  .requiredOption("--to <beat>", "end beat")
+  .action(async (trackPath: string, cmdOpts: { from: string; to: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const body = (await callGateway(opts, "/api/ops/track.render-prefx", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        path: trackPath,
+        startBeat: Number(cmdOpts.from),
+        endBeat: Number(cmdOpts.to),
+      }),
+    })) as { result: { wavPath: string } };
+    output(opts, body.result, () => body.result.wavPath);
   });
 
 program
