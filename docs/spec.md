@@ -28,6 +28,8 @@ management, real-time performance control, automation editing (v1), Windows (v1)
 | R6 | Owner-maintainable | SDK-free core, thin extension shell, contract tests, pinned versions |
 | R7 | Both authorship modes, explicit per request | "transform my notes only" vs "co-write new material" — never silently blended |
 | R8 | Project scaffolding from templates | .als starter template first; structure-spec and reference-form scaffolding later |
+| R9 | Reference-track deconstruction | deterministic-first (bar grid, energy arc, rule-based energy events, full-mix profile); ML section labels only as drafts with easy correction — owner explicitly prefers manual over hallucinated. See `docs/research/reference-track-analysis.md` |
+| R10 | Post-FX capture without manual export | via M4L capture-tap sidecar (SDK has no post-FX or export API); enables fast A/B measurement loops |
 
 Environment: Live 12 Suite beta (12.4.5+) on macOS, side-by-side with stable Live
 for real sessions. Genres: house/techno/electronic + hip-hop/trap.
@@ -78,6 +80,10 @@ for real sessions. Genres: house/techno/electronic + hip-hop/trap.
 | Airwindows PhaseNudge | MIT | reference all-pass phase-rotation implementation |
 | pyloudnorm | MIT | BS.1770 LUFS (validated) |
 | librosa | ISC | STFT/spectral/rhythm features |
+| Beat This! (CPJKU) | MIT (code AND weights) | beat/downbeat/tempo for reference analysis — NOT madmom (CC BY-NC models) or allin1-as-shipped (depends on madmom models) |
+| EDMFormer / Raveform | CC-BY-4.0 / MIT | optional draft section labeling with EDM vocabulary; Raveform = fine-tune dataset |
+| libkeyfinder | GPL-3 | key detection as isolated subprocess only (~90% on dance music) |
+| bschoepke Agent Audio Tap | pattern | M4L capture-tap sidecar design (post-FX capture + transport) |
 | Matchering | GPL-3.0 | optional subprocess only (no linking): reference-master comparison |
 | Composer's Assistant 2 | (paper) | variation control vocabulary model (density, rhythmic conditioning, pitch interest) |
 
@@ -147,7 +153,16 @@ requirement it serves, question inherited designs, record deltas in `docs/decisi
   groove/humanize against the melodic content's rhythm.
 - `awh drums gen|vary|fill|humanize`.
 
-### M6 — Analysis engine v1 (R5)
+### M6 — Analysis engine v1 (R5, R10)
+- **M4L capture-tap sidecar** (we have Suite; ~small purpose-built device, not a
+  second bridge): sits on master or any chain end, records post-FX audio to WAV
+  on trigger, and — because M4L has full LOM transport access — can start/stop
+  playback over a chosen loop. Triggered by the CLI (localhost socket).
+  Removes the manual-export step from the measure→adjust→verify loop and
+  partially restores programmatic audition (accepted-lost in ADR-001).
+- `awh mix ab`: capture A → apply change (e.g. EQ Eight move) → capture B →
+  loudness-matched measurement diff (level-matched comparison counters the
+  louder-sounds-better bias).
 - `awh mix report <wav...>`: LUFS-I/S, dBTP, PSR (flag < 8 in loudest sections),
   third-octave long-term spectrum vs genre target bands (we measure our own
   reference sets; NOT literal pink noise — masters tilt ≈ -5 dB/oct),
@@ -162,10 +177,28 @@ requirement it serves, question inherited designs, record deltas in `docs/decisi
 - `awh new` from owner's .als template (template dir copy + gateway populate).
 - Chord/harmony tools (progressions in-scale, voicing spread) via co-write mode.
 
+### M8 — Reference-track deconstruction (R9)
+- `awh ref analyze <audio>`: tempo + bar grid (Beat This!), bar-synced energy arc
+  (short-term LUFS + sub-band <100 Hz), rule-based drop/build/breakdown events
+  (deterministic on 4/4; trap gets adapted heuristics + lower confidence),
+  full-mix measurement profile (spectrum/loudness/DR/stereo) for M6 comparisons.
+- `awh ref sections`: writes the draft section map into the Live set as named/
+  colored empty clips on a dedicated "Sections" marker track (cue-point times are
+  read-only in the SDK, so marker clips replace locators). Owner corrects by
+  moving/renaming clips; we read corrections back. Draft-with-correction is the
+  proven product pattern here (rekordbox Phrase Analysis).
+- Optional, clearly-confidence-tagged extras: EDM-vocabulary ML section labels
+  (EDMFormer class), key detection (libkeyfinder subprocess, Camelot neighbors
+  shown), stem presence lanes (verified-license separation model only).
+- Explicit non-features (hallucination risk, per research): generic pop section
+  labels on electronic music, fine per-stem spectral comparisons, "other"-stem
+  measurements, chord-level analysis of sparse electronic tracks.
+
 ### Parked (explicitly out of v1)
 Automation (offline .als injection experiment, backup-gated) · warp-marker write ·
-in-chain post-FX capture (M4L tap vs future SDK) · structure-from-reference-track
-scaffolding · Windows · webview UIs · community release/distribution.
+structure-spec + reference-form project scaffolding (builds on M8) · Windows ·
+webview UIs · community release/distribution (would require resolving stem-model
+weight provenance and CC-BY attribution).
 
 ## 5. Risks
 
