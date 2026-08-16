@@ -101,6 +101,22 @@ timing, param value scales). Run this once in the Live beta after pulling M1
       the logged message
 - [ ] Fix whatever drifts (shim + adapter), commit to the branch, push
 
+## M2 in-Live verification checklist
+
+Short — M2 is mostly SDK-free (notation + CLI + skill), all unit-tested:
+
+- [ ] `awh clip create track:<midi>/slot:<empty> <<'EOF' ... EOF` with bar|beat
+      notation → clip appears with correct pitches/positions in Live's editor
+      (spot-check middle C: notation C3 must land on Live's C3)
+- [ ] `awh clip read` on a clip you wrote BY HAND in Live → notation matches
+      what you see in the piano roll
+- [ ] read → edit notation → `awh clip write` → piano roll updates
+- [ ] `awh render track:<audio> --from 0 --to 8` → WAV exists, correct length
+- [ ] Skill: open a local Claude Code session in the repo, ask it to "read the
+      clip at track:0/slot:0 and transpose it up a fifth" — it should use the
+      awh skill, round-trip cleanly, and verify its own write (M2 exit
+      criterion)
+
 ## Running the M0 checklist with Claude on the Mac
 
 The checklist above is designed to be executed by a **local Claude Code

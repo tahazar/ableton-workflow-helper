@@ -1,0 +1,110 @@
+---
+name: awh
+description: >
+  Drive the user's Ableton Live Set through the awh CLI (Ableton Workflow
+  Helper). Use whenever the user asks to read or change anything in their
+  open Live Set — tracks, MIDI clips, notes, devices, scenes, tempo, mixer —
+  or to generate/vary musical material into Live. Trigger on "my set",
+  "this clip", "add a bassline", "make variations", track/device names, or
+  any Ableton production request. Requires the AWH gateway extension running
+  inside Live (or `awh serve-fake` for offline work).
+---
+
+# awh — driving Ableton Live from the CLI
+
+AWH exposes the user's open Live Set through a localhost gateway. The `awh`
+CLI is the ONLY way you touch Live — every command is deterministic and maps
+to one logical, undoable action. There is no AI-special path: anything you
+can do, the user can script.
+
+## Ground rules
+
+1. **Read before you write.** Start almost every task with
+   `awh status --json` (compact Set summary: tracks, clips, devices, paths).
+   Never guess a path or a track's contents.
+2. **Paths are addresses, not identities** — `track:0/slot:2`, `track:1/arr:0`,
+   `track:0/dev:0/chain:3/dev:1`. Indices shift when the user moves/deletes
+   things. Re-read the summary after any structural change (create/delete/
+   duplicate of tracks, scenes, clips) before issuing more writes.
+3. **Note writes REPLACE the whole clip.** `awh clip write` and `clip.notes`
+   overwrite every note. To edit a few notes: `awh clip read` → modify the
+   notation → `awh clip write` the full result back.
+4. **Verify after writing.** Re-read the clip (or summary) after a write and
+   confirm the result matches intent before telling the user it's done.
+5. **Authorship mode is explicit.** When varying the user's material, respect
+   the mode they asked for: TRANSFORM (rework only their existing notes —
+   rhythm, density, octaves, articulation) vs CO-WRITE (invent new melodic
+   material). If unstated and it matters, ask.
+6. **Undo:** each op is one undo step in Live; clip-create-with-notes is two
+   (create, then notes — platform constraint). Tell the user if they'll need
+   more than a couple of undos to revert something.
+7. **The user is the audition loop.** You cannot hear the Set and cannot press
+   play. After writing material, stop and let the user listen and react.
+8. If the gateway is unreachable, tell the user to check that Live is running
+   with the AWH extension loaded — do not retry endlessly.
+
+## Commands
+
+```sh
+awh status [--json]            # Set summary: tempo/scale/tracks/clips/devices
+awh ops                        # list every raw gateway op
+awh call <op> --args '<json>'  # invoke any raw op (see `awh ops`)
+
+awh clip read  <clipPath>            # MIDI clip -> bar|beat notation
+awh clip write <clipPath> [file]     # notation (file or stdin) -> REPLACE notes
+awh clip create <target> [file]      # new clip from notation
+    # target = slot path (track:0/slot:2), or track path + --at-bar <bar>
+    # options: --length <beats> --name <name> --sig <beatsPerBar>
+
+awh render <trackPath> --from <beat> --to <beat>   # audio track pre-FX -> WAV
+awh serve-fake                 # offline gateway with a fake Set (for testing)
+```
+
+Raw ops cover everything else (see `awh ops` for the full list + args):
+tracks (`track.create/update/delete/duplicate/clear-range/mixer`), scenes,
+devices (`device.insert/get/param/delete` — stock Live devices only),
+drum racks (`drum.pad-note`), Simpler (`simpler.sample`), `set.tempo`,
+audio clips (`clip.create-audio`).
+
+## bar|beat notation
+
+One note (or chord) per line: `bar|beat pitch(es) duration [vN] [pN] [m]`
+
+```
+sig 4/4              # optional header (default 4/4)
+1|1   C3        1    v100   # bar 1 beat 1, middle C, 1 beat, velocity 100
+1|2.5 Eb3       1/2         # fractional beats; velocity defaults to 100
+2|1   C3+Eb3+G3 2    v90    # chord ("+" joins pitches)
+2|4   D3        1/4  p60 m  # p = probability %, m = muted
+```
+
+- **Positions and durations are in BEATS** (quarter notes in 4/4), 1-based:
+  `1|1` is the clip start; an eighth note is `1/2` or `0.5`.
+- **Pitch names use Ableton's convention: middle C (MIDI 60) = C3.**
+  Range C-2..G8. `#` and `b` accidentals.
+- `#` starts a comment; blank lines are fine.
+- Groove tips: velocity variation (`v90`/`v70` on off-beats) and `p` values
+  make parts breathe; keep drum hits short (1/4 beat) on drum-rack tracks
+  (pads listed with their MIDI notes under the track's drumPads).
+
+## Typical flows
+
+**Add a bassline to a track** (co-write):
+1. `awh status --json` → find the MIDI track, tempo, scale.
+2. Compose notation in the Set's key; write with
+   `awh clip create track:2/slot:0 <<'EOF' ... EOF` or `--at-bar` for the
+   arrangement.
+3. Re-read to verify; hand back to the user to audition.
+
+**Vary an existing loop** (transform):
+1. `awh clip read track:0/slot:1` → the source notation.
+2. Produce N distinct variations of THOSE notes (shift densities, octaves,
+   syncopation — keep the user's pitches unless told otherwise).
+3. Write each into an empty neighbouring slot (`clip create track:0/slot:2`
+   …) with names like `bass-v1`, so the user can audition and keep favourites.
+
+**Tweak a device:** `awh call device.get` first (params carry name/min/max/
+current value; values are RAW Live-internal numbers — check min/max, not
+assumed units), then `device.param`. For mixer moves use `track.mixer`
+(volume 0.85 raw = 0 dB unity, 1.0 = +6 dB; see docs/research/
+mixer-calibration.md).

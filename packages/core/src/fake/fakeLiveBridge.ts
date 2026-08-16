@@ -385,6 +385,46 @@ export class FakeLiveBridge implements LiveBridge {
     return Promise.resolve();
   }
 
+  async renderPreFxAudio(
+    trackPath: string,
+    startBeat: number,
+    endBeat: number,
+  ): Promise<{ wavPath: string }> {
+    const track = this.trackAt(parsePath(trackPath), trackPath);
+    if (track.kind !== "audio") {
+      throw new BridgeError("bad_request", `renderPreFxAudio: not an audio track: ${trackPath}`);
+    }
+    // Emit a REAL (silent) 16-bit mono 44.1kHz WAV sized to the beat range at
+    // the current tempo, so downstream analysis code is testable offline.
+    const os = await import("node:os");
+    const fs = await import("node:fs/promises");
+    const path = await import("node:path");
+    const seconds = ((endBeat - startBeat) * 60) / this.tempo;
+    const sampleRate = 44100;
+    const samples = Math.max(1, Math.round(seconds * sampleRate));
+    const dataSize = samples * 2;
+    const buffer = Buffer.alloc(44 + dataSize);
+    buffer.write("RIFF", 0);
+    buffer.writeUInt32LE(36 + dataSize, 4);
+    buffer.write("WAVE", 8);
+    buffer.write("fmt ", 12);
+    buffer.writeUInt32LE(16, 16); // PCM chunk size
+    buffer.writeUInt16LE(1, 20); // PCM
+    buffer.writeUInt16LE(1, 22); // mono
+    buffer.writeUInt32LE(sampleRate, 24);
+    buffer.writeUInt32LE(sampleRate * 2, 28); // byte rate
+    buffer.writeUInt16LE(2, 32); // block align
+    buffer.writeUInt16LE(16, 34); // bits per sample
+    buffer.write("data", 36);
+    buffer.writeUInt32LE(dataSize, 40);
+    const wavPath = path.join(
+      await fs.mkdtemp(path.join(os.tmpdir(), "awh-fake-render-")),
+      "prefx.wav",
+    );
+    await fs.writeFile(wavPath, buffer);
+    return { wavPath };
+  }
+
   // -- scenes ---------------------------------------------------------------
 
   createScene(index?: number): Promise<{ path: string }> {
