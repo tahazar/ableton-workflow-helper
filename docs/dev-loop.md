@@ -71,6 +71,36 @@ against a best-effort type shim. On the FIRST successful `pnpm setup:sdk`:
 
 When all boxes tick, M0 is done and M1 (real gateway operations) starts.
 
+## M1 in-Live verification checklist
+
+The M1 op surface is fully covered by unit tests against `FakeLiveBridge`, and
+the SDK adapter typechecks against the (machine-verified) shim — but the fake
+cannot catch Extension Host runtime quirks (missing globals, transaction
+timing, param value scales). Run this once in the Live beta after pulling M1
+(a local Claude Code session can drive it; same handoff pattern as M0):
+
+- [ ] `pnpm build:extension` + `extensions-cli run` with a throwaway Set open
+- [ ] `awh status` shows the real Set (tracks/clips/devices with names)
+- [ ] `awh call clip.create-midi --args '{"target":{"type":"arrangement","trackPath":"track:0","startBeat":128},"lengthBeats":4,"notes":[{"pitch":60,"start":0,"duration":1}]}'`
+      → clip appears at bar 33 on the first (MIDI) track; ONE undo step for the
+      create, a second for the notes (documented create-then-configure split)
+- [ ] `awh call clip.get --args '{"path":"track:0/arr:0"}'` returns the notes
+- [ ] `awh call track.clear-range` on a range overlapping a clip → truncation
+      matches Live's behavior (boundary clips truncated, not deleted)
+- [ ] `awh call device.insert --args '{"ownerPath":"track:0","name":"EQ Eight"}'`
+      then `device.get` → params list with real min/max; `device.param` moves
+      a band frequency audibly/visibly
+- [ ] `awh call track.mixer --args '{"path":"track:0","volume":0.85}'` → note
+      the dB the volume slider shows; RECORD raw-value↔dB pairs at 0.0, 0.4,
+      0.7, 0.85, 1.0 into `docs/research/mixer-calibration.md` (seed data for
+      the dB mapping — M1 follow-up)
+- [ ] Drum Rack: insert, add a pad chain manually in Live, `drum.pad-note` +
+      `simpler.sample` against it
+- [ ] Errors: `awh call clip.get --args '{"path":"track:99/slot:0"}'` → clean
+      404-style error, no extension crash, nothing in ExtensionHost.txt beyond
+      the logged message
+- [ ] Fix whatever drifts (shim + adapter), commit to the branch, push
+
 ## Running the M0 checklist with Claude on the Mac
 
 The checklist above is designed to be executed by a **local Claude Code

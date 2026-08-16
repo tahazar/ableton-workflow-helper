@@ -129,13 +129,32 @@ program
     const opts = program.opts<GlobalOpts>();
     const body = (await callGateway(opts, "/api/ops/set.summary", {
       method: "POST",
-    })) as { result: { tempo: number; trackCount: number; sceneCount: number } };
+    })) as {
+      result: {
+        tempo: number;
+        trackCount: number;
+        sceneCount: number;
+        tracks: {
+          path: string;
+          kind: string;
+          name: string;
+          sessionClips: unknown[];
+          arrangementClips: unknown[];
+          devices: { name: string }[];
+        }[];
+      };
+    };
     const s = body.result;
-    output(
-      opts,
-      s,
-      () =>
+    output(opts, s, () =>
+      [
         `tempo ${s.tempo} BPM · ${s.trackCount} tracks · ${s.sceneCount} scenes`,
+        ...s.tracks.map(
+          (t) =>
+            `  ${t.path.padEnd(10)} [${t.kind}] ${t.name}` +
+            ` — ${t.sessionClips.length} session, ${t.arrangementClips.length} arr clips` +
+            (t.devices.length ? ` · ${t.devices.map((d) => d.name).join(", ")}` : ""),
+        ),
+      ].join("\n"),
     );
   });
 

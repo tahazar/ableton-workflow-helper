@@ -12,7 +12,10 @@ real work outside.
 
 ## Status
 
-Spec phase complete; **M0 (foundations/hello-world)** in progress.
+**M0 done · M1 done (validated in Live)** — the gateway serves 22 operations
+against a real Set. Next: M2 (bar|beat notation, CLI vocabulary, Claude skill).
+Backlog candidates B1 (audio-to-MIDI) and B2 (Operator sound design) are
+researched and queued — see `docs/spec.md`.
 See [`docs/spec.md`](docs/spec.md) for requirements + milestones,
 [`docs/decisions/`](docs/decisions/) for ADRs, and
 [`docs/research/`](docs/research/) for the landscape/mixing/reference research.
