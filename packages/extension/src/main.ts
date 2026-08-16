@@ -25,12 +25,14 @@ export async function activate(
   }
 
   // Hello-world context-menu action: proves UI registration + command wiring.
-  // VERIFY-ON-MACHINE: scope string and Commands registration API.
+  // Confirmed against vendor/ableton-sdk/sdk/package/dist/index.d.mts:
+  // Commands.registerCommand (not .register), and registerContextMenuAction
+  // returns a Promise<() => Promise<void>> (unregister function).
   try {
-    ctx.commands.register("awh.hello", () => {
+    ctx.commands.registerCommand("awh.hello", () => {
       console.log("[awh] hello from the context menu");
     });
-    ctx.ui.registerContextMenuAction("MidiTrack", "AWH: Hello", "awh.hello");
+    await ctx.ui.registerContextMenuAction("MidiTrack", "AWH: Hello", "awh.hello");
   } catch (err) {
     console.error(`[awh] context-menu registration failed:`, err);
   }

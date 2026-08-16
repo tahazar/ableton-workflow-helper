@@ -1,4 +1,5 @@
 import http from "node:http";
+import { URL } from "node:url";
 import { BridgeError, type LiveBridge } from "./types.js";
 
 export const DEFAULT_GATEWAY_PORT = 8720;
