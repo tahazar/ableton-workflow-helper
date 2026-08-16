@@ -1,0 +1,19 @@
+{
+  "name": "@awh/extension",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@awh/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  }
+}

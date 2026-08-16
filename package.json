@@ -1,0 +1,17 @@
+{
+  "name": "ableton-workflow-helper",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CLI-first Ableton Live workflow accelerator: deterministic tools + optional LLM orchestration",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "pnpm --filter @awh/core --filter @awh/cli build",
+    "build:extension": "pnpm --filter @awh/extension build",
+    "test": "pnpm --filter @awh/core test",
+    "typecheck": "pnpm -r typecheck",
+    "setup:sdk": "node scripts/setup-sdk.mjs"
+  }
+}
