@@ -130,12 +130,19 @@ export class SdkLiveBridge implements LiveBridge {
 
   private clipSummary(clip: Clip, path: string, arrangement: boolean): ClipSummary {
     const isMidi = clip instanceof MidiClip;
+    // clip.duration is unreliable for session-slot clips (observed negative
+    // and unstable across calls on a clip that was never placed in the
+    // arrangement — likely arrangement-relative under the hood). Session
+    // clips use endMarker - startMarker instead, matching the documented
+    // "Session clips: loop length" contract; arrangement clips keep
+    // clip.duration (verified stable/correct against real placements).
+    const duration = arrangement ? clip.duration : clip.endMarker - clip.startMarker;
     return {
       path,
       kind: isMidi ? "midi" : "audio",
       name: clip.name,
       ...(arrangement ? { startTime: clip.startTime, endTime: clip.endTime } : {}),
-      duration: clip.duration,
+      duration,
       looping: clip.looping,
       muted: clip.muted,
       ...(isMidi ? { noteCount: (clip as MidiClip).notes.length } : {}),
@@ -205,7 +212,12 @@ export class SdkLiveBridge implements LiveBridge {
     const song = this.song;
     return Promise.resolve({
       tempo: song.tempo,
-      scale: { rootNote: song.rootNote, name: song.scaleName, active: song.scaleMode },
+      scale: {
+        rootNote: song.rootNote,
+        name: song.scaleName,
+        active: song.scaleMode,
+        intervals: song.scaleIntervals,
+      },
       trackCount: song.tracks.length,
       sceneCount: song.scenes.length,
       tracks: song.tracks.map((t, i) => this.trackSummary(t, `track:${i}`)),
@@ -317,7 +329,7 @@ export class SdkLiveBridge implements LiveBridge {
     trackPath: string,
     startBeat: number,
     endBeat: number,
-  ): Promise<{ wavPath: string }> {
+  ): Promise<{ audioPath: string }> {
     const track = this.trackAt(parsePath(trackPath), trackPath);
     if (!(track instanceof AudioTrack)) {
       throw new BridgeError(
@@ -325,8 +337,8 @@ export class SdkLiveBridge implements LiveBridge {
         `renderPreFxAudio: not an audio track: ${trackPath} (SDK renders audio tracks only)`,
       );
     }
-    const wavPath = await this.ctx.resources.renderPreFxAudio(track, startBeat, endBeat);
-    return { wavPath };
+    const audioPath = await this.ctx.resources.renderPreFxAudio(track, startBeat, endBeat);
+    return { audioPath };
   }
 
   // -- scenes ---------------------------------------------------------------

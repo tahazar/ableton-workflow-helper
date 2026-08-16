@@ -97,7 +97,7 @@ export interface SceneSummary {
 
 export interface SetSummary {
   tempo: number;
-  scale: { rootNote: number; name: string; active: boolean };
+  scale: { rootNote: number; name: string; active: boolean; intervals: number[] };
   trackCount: number;
   sceneCount: number;
   tracks: TrackSummary[];
@@ -215,7 +215,7 @@ export interface LiveBridge {
     trackPath: string,
     startBeat: number,
     endBeat: number,
-  ): Promise<{ wavPath: string }>;
+  ): Promise<{ audioPath: string }>;
 
   // scenes
   createScene(index?: number): Promise<{ path: string }>;

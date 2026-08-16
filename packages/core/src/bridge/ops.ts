@@ -269,7 +269,7 @@ export function buildOpRegistry(): Map<string, OpDefinition> {
   add({
     name: "track.render-prefx",
     description:
-      "Render an AUDIO track's pre-FX signal to a WAV file (beats range). Args: {path, startBeat, endBeat}. Returns {wavPath}",
+      "Render an AUDIO track pre-FX to an audio file in Live's configured render format (beats range). Args: {path, startBeat, endBeat}. Returns {audioPath}",
     handler: async (args, ctx) => {
       const a = obj(args, "track.render-prefx");
       const startBeat = num(a, "startBeat", "track.render-prefx");
