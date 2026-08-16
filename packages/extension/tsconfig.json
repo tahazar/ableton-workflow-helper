@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "noEmit": true,
+    "paths": {
+      "@ableton-extensions/sdk": ["./types/ableton-sdk-shim.d.ts"]
+    }
+  },
+  "include": ["src", "types"]
+}

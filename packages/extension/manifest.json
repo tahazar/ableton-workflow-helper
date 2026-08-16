@@ -1,0 +1,7 @@
+{
+  "name": "Ableton Workflow Helper",
+  "author": "tahazar",
+  "entry": "main.js",
+  "version": "0.1.0",
+  "minimumApiVersion": "1.0.0"
+}
