@@ -12,10 +12,11 @@ real work outside.
 
 ## Status
 
-**M0 done · M1 done (validated in Live) · M2 built (awaiting in-Live pass)** —
-the gateway serves 23 operations; the `awh` CLI speaks bar|beat notation
-(`clip read/write/create`, `render`), and the `awh` Claude Code skill lets a
-local session drive the Set conversationally. Next: M3 (variation engine).
+**M0–M2 done (validated in Live) · M3 built (awaiting in-Live pass)** —
+the gateway serves 23 ops; the `awh` CLI speaks bar|beat notation; the `awh`
+Claude skill drives the Set conversationally; and `awh vary` generates seeded,
+reproducible variations through a 17-transform pipeline vocabulary (8
+variations of an 8-bar motif in ~0.2 s). Next: M4 (section builder).
 Backlog candidates B1 (audio-to-MIDI) and B2 (Operator sound design) are
 researched and queued — see `docs/spec.md`.
 See [`docs/spec.md`](docs/spec.md) for requirements + milestones,

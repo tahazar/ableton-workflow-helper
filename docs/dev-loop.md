@@ -183,3 +183,21 @@ shim and can continue M1 development against it.
 - One logical operation = one `withinTransaction` (create-then-configure is
   unavoidably two undo steps — document per op).
 - No GPL/AGPL code in the tree; GPL tools as subprocesses only.
+
+## M3 in-Live verification checklist
+
+M3 is entirely SDK-free (transforms run in the CLI; writes go through the
+already-validated clip ops), so this is a musical sanity pass, not an API one:
+
+- [ ] `awh vary <a real 4/8-bar loop> -n 8 --seed 1 --ops "transpose-scale:degrees=2 humanize"`
+      with the Set scale active → 8 named clips in empty slots, in key,
+      audibly related to the source
+- [ ] Same command, same seed, after `awh sweep` → IDENTICAL variations
+      (determinism end-to-end)
+- [ ] A rhythm pipeline (`syncopate:probability=0.5 swing:amount=0.7`) on a
+      straight drum-rack loop → grooves, and drum pitches (pad notes) survive
+      untouched
+- [ ] `awh sweep` with the prefix → only the audition clips vanish
+- [ ] Skill flow: ask a local Claude session "make me 6 variations of the bass
+      loop, more syncopated, keep it in key" → it picks a sensible pipeline,
+      runs vary, and tells you which slots to audition (M3 exit criterion)

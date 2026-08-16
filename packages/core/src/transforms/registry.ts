@@ -1,5 +1,7 @@
 import { BridgeError, type NoteSpec } from "../bridge/types.js";
 import { basicTransforms } from "./basic.js";
+import { rhythmTransforms } from "./rhythm.js";
+import { shapeTransforms } from "./shape.js";
 import type { Params, Transform, TransformContext, TransformDef } from "./types.js";
 
 /**
@@ -72,3 +74,5 @@ export function applyPipeline(
 // -- built-in registrations -------------------------------------------------
 
 for (const def of basicTransforms) registerTransform(def);
+for (const def of rhythmTransforms) registerTransform(def);
+for (const def of shapeTransforms) registerTransform(def);
