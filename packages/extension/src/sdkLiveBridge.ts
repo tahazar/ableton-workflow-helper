@@ -130,12 +130,19 @@ export class SdkLiveBridge implements LiveBridge {
 
   private clipSummary(clip: Clip, path: string, arrangement: boolean): ClipSummary {
     const isMidi = clip instanceof MidiClip;
+    // clip.duration is unreliable for session-slot clips (observed negative
+    // and unstable across calls on a clip that was never placed in the
+    // arrangement — likely arrangement-relative under the hood). Session
+    // clips use endMarker - startMarker instead, matching the documented
+    // "Session clips: loop length" contract; arrangement clips keep
+    // clip.duration (verified stable/correct against real placements).
+    const duration = arrangement ? clip.duration : clip.endMarker - clip.startMarker;
     return {
       path,
       kind: isMidi ? "midi" : "audio",
       name: clip.name,
       ...(arrangement ? { startTime: clip.startTime, endTime: clip.endTime } : {}),
-      duration: clip.duration,
+      duration,
       looping: clip.looping,
       muted: clip.muted,
       ...(isMidi ? { noteCount: (clip as MidiClip).notes.length } : {}),
