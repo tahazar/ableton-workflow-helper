@@ -56,9 +56,39 @@ awh clip create <target> [file]      # new clip from notation
     # target = slot path (track:0/slot:2), or track path + --at-bar <bar>
     # options: --length <beats> --name <name> --sig <beatsPerBar>
 
-awh render <trackPath> --from <beat> --to <beat>   # audio track pre-FX -> WAV
+awh render <trackPath> --from <beat> --to <beat>   # audio track pre-FX -> file
 awh serve-fake                 # offline gateway with a fake Set (for testing)
+
+awh transforms                 # list the deterministic variation transforms
+awh vary <clipPath> --ops "<pipeline>" [-n 8] [--seed N] [--dest track:X]
+                               # N seeded variations into empty session slots,
+                               # named <prefix>-v1..N for auditioning
+awh sweep <trackPath> --prefix <p>   # delete audition clips by name prefix
 ```
+
+## Variations (`awh vary`) — the anti-"tweak forever" loop
+
+`vary` applies a TRANSFORM pipeline N times with different seeds — it reworks
+the user's existing notes deterministically (same seed = same result). Use it
+for the transform authorship mode; for co-writing, compose notation yourself.
+
+Pipeline spec: space-separated steps, `name:key=value,key=value`:
+
+```
+awh vary track:0/slot:1 -n 8 --seed 42 \
+  --ops "transpose-scale:degrees=2 syncopate:probability=0.5 humanize"
+```
+
+Transform vocabulary (see `awh transforms` for params): pitch —
+`transpose`, `transpose-scale` (needs the Set scale or `--scale "C minor"`),
+`octave`, `invert`; time — `quantize`, `swing`, `syncopate`, `rotate`,
+`stretch`, `retrograde`; texture — `thin`, `densify`, `legato`, `staccato`,
+`fill`, `velocity-shape`, `humanize`.
+
+Flow: vary → tell the user which slots to audition → they pick favourites →
+`awh sweep` the rest (sweep deletes by name prefix — confirm the prefix with
+the user before sweeping anything they might have renamed). Vary needs enough
+empty slots; create scenes via `awh call scene.create` if it says there aren't.
 
 Raw ops cover everything else (see `awh ops` for the full list + args):
 tracks (`track.create/update/delete/duplicate/clear-range/mixer`), scenes,
