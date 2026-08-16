@@ -39,3 +39,11 @@ export {
   type GatewayServer,
 } from "./bridge/server.js";
 export { FakeLiveBridge } from "./fake/fakeLiveBridge.js";
+export {
+  midiToPitch,
+  parseNotation,
+  pitchToMidi,
+  serializeNotation,
+  type NotationOptions,
+  type ParsedNotation,
+} from "./notation/barbeat.js";

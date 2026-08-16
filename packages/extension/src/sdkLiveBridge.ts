@@ -313,6 +313,22 @@ export class SdkLiveBridge implements LiveBridge {
     await this.ctx.withinTransaction(() => track.clearClipsInRange(startBeat, endBeat));
   }
 
+  async renderPreFxAudio(
+    trackPath: string,
+    startBeat: number,
+    endBeat: number,
+  ): Promise<{ wavPath: string }> {
+    const track = this.trackAt(parsePath(trackPath), trackPath);
+    if (!(track instanceof AudioTrack)) {
+      throw new BridgeError(
+        "bad_request",
+        `renderPreFxAudio: not an audio track: ${trackPath} (SDK renders audio tracks only)`,
+      );
+    }
+    const wavPath = await this.ctx.resources.renderPreFxAudio(track, startBeat, endBeat);
+    return { wavPath };
+  }
+
   // -- scenes ---------------------------------------------------------------
 
   async createScene(index?: number): Promise<{ path: string }> {

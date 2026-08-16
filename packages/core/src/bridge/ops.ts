@@ -267,6 +267,21 @@ export function buildOpRegistry(): Map<string, OpDefinition> {
   });
 
   add({
+    name: "track.render-prefx",
+    description:
+      "Render an AUDIO track's pre-FX signal to a WAV file (beats range). Args: {path, startBeat, endBeat}. Returns {wavPath}",
+    handler: async (args, ctx) => {
+      const a = obj(args, "track.render-prefx");
+      const startBeat = num(a, "startBeat", "track.render-prefx");
+      const endBeat = num(a, "endBeat", "track.render-prefx");
+      if (endBeat <= startBeat) {
+        throw new BridgeError("bad_request", "track.render-prefx: endBeat must be > startBeat");
+      }
+      return ctx.bridge.renderPreFxAudio(str(a, "path", "track.render-prefx"), startBeat, endBeat);
+    },
+  });
+
+  add({
     name: "track.mixer",
     description:
       "Set mixer params (RAW Live-internal values for now — dB calibration is a documented follow-up). Args: {path, volume?, pan?, sends?}",
