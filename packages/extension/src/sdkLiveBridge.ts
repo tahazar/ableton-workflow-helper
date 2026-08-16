@@ -151,10 +151,13 @@ export class SdkLiveBridge implements LiveBridge {
       paramCount: device.parameters.length,
     };
     if (device instanceof DrumRack) {
+      // DrumChain has no name accessor in the real SDK — only receivingNote.
+      // Best-effort name from the pad's first device (Live typically names
+      // the chain after its sampler/instrument).
       summary.drumPads = device.chains.map((chain, i) => ({
         chainPath: `${path}/chain:${i}`,
         note: chain.receivingNote,
-        name: chain.name,
+        name: chain.devices[0]?.name,
       }));
     }
     return summary;

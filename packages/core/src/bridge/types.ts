@@ -58,7 +58,11 @@ export interface DrumPadSummary {
   chainPath: string;
   /** MIDI note the pad responds to. */
   note: number;
-  name: string;
+  /**
+   * Best-effort only: the real SDK's DrumChain has no name accessor, so the
+   * SDK adapter derives this from the chain's first device (if any).
+   */
+  name?: string;
 }
 
 export interface DeviceSummary {
