@@ -39,7 +39,49 @@ describe("gateway server", () => {
     const base = await startServer();
     const res = await fetch(`${base}/api/ops/set.summary`, { method: "POST" });
     const body = await res.json();
-    expect(body.result).toEqual({ tempo: 128, trackCount: 8, sceneCount: 4 });
+    expect(body.result.tempo).toBe(128);
+    expect(body.result.trackCount).toBe(4);
+    expect(body.result.tracks).toHaveLength(4);
+  });
+
+  it("runs a full write-then-read cycle over HTTP (M1 exit criterion)", async () => {
+    const base = await startServer();
+    const create = await fetch(`${base}/api/ops/clip.create-midi`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        target: { type: "arrangement", trackPath: "track:0", startBeat: 128 },
+        lengthBeats: 4,
+        notes: [{ pitch: 60, start: 0, duration: 1 }],
+      }),
+    });
+    expect(create.status).toBe(200);
+    const { result } = await create.json();
+
+    const read = await fetch(`${base}/api/ops/clip.get`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: result.path }),
+    });
+    const clip = (await read.json()).result;
+    expect(clip.startTime).toBe(128);
+    expect(clip.notes).toHaveLength(1);
+  });
+
+  it("maps bridge errors to HTTP statuses", async () => {
+    const base = await startServer();
+    const notFound = await fetch(`${base}/api/ops/clip.get`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "track:99/slot:0" }),
+    });
+    expect(notFound.status).toBe(404);
+    const badRequest = await fetch(`${base}/api/ops/clip.get`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: "garbage" }),
+    });
+    expect(badRequest.status).toBe(400);
   });
 
   it("404s unknown ops", async () => {

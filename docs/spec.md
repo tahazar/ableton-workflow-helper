@@ -194,6 +194,34 @@ requirement it serves, question inherited designs, record deltas in `docs/decisi
   labels on electronic music, fine per-stem spectral comparisons, "other"-stem
   measurements, chord-level analysis of sparse electronic tracks.
 
+### Backlog candidates (researched, owner-approved, awaiting scheduling)
+
+**B1 — Audio-to-MIDI ("convert to melody", better than Ableton's).**
+Research: `docs/research/audio-to-midi.md`. Two modes: polyphonic via Spotify
+Basic Pitch (Apache-2.0 code AND weights, Node-capable; ONNX + onnxruntime-node
+preferred, per NeuralNote's production validation) and monophonic via CREPE
+Notes/SwiftF0-style segmentation (MIT, beats Basic Pitch +7–10% F on mono
+material). Post-processing is where quality is won: note-split sensitivity,
+time quantization, scale snapping (Set scale from `set.summary`). Zero new
+gateway ops needed: `clip.get` (file path) → transcribe → `clip.create-midi`.
+Add a right-click "AWH: Convert to MIDI" context-menu action on AudioClip.
+Later: chain with Live 12.3 stem separation; spectrogram review UI (the one
+good NoteGrabber 2 idea). Natural fit after M3; well-bounded — good Sonnet
+delegation candidate.
+
+**B2 — Operator sound-design assistant.**
+Rides the generic M1 device surface (`device.insert`/`get`/`param`). FM
+synthesis is parametric and theory-heavy — good LLM fit. Two loops: blind
+(Claude sets a patch from FM theory, human audition) now; ears loop (capture
+tap → spectrum/envelope measurement vs described/reference timbre) after M6.
+Deliverable includes **JSON parameter-snapshot presets** (design → snapshot →
+versionable, re-applicable patch library) — works for any stock device, not
+just Operator. Prerequisite probe (2 commands on the dev machine, do during
+any Live session): insert an Operator, `device.get`, record which of its
+parameters the SDK actually exposes (drawn-partials editing expected missing;
+that bounds the feature). Constraint: starts from default preset — no preset
+loading in the SDK.
+
 ### Parked (explicitly out of v1)
 Automation (offline .als injection experiment, backup-gated) · warp-marker write ·
 structure-spec + reference-form project scaffolding (builds on M8) · Windows ·
