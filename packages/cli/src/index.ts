@@ -303,12 +303,29 @@ program
   .option("-n, --count <n>", "number of variations", "4")
   .option("--seed <seed>", "base random seed (same seed = same variations)", "1")
   .option("--dest <trackPath>", "destination track (default: the source clip's track)")
+  .option(
+    "--arrange",
+    "lay variations out SEQUENTIALLY on the arrangement timeline instead of session slots",
+  )
+  .option(
+    "--at-bar <bar>",
+    "with --arrange: 1-based bar to start at (default: right after the track's last arrangement clip)",
+  )
   .option("--prefix <prefix>", "variation name prefix (default: source clip name or 'var')")
   .option("--scale <scale>", 'scale for scale-aware transforms, e.g. "C minor" (default: the Set scale if active)')
   .action(
     async (
       clipPath: string,
-      cmdOpts: { ops: string; count: string; seed: string; dest?: string; prefix?: string; scale?: string },
+      cmdOpts: {
+        ops: string;
+        count: string;
+        seed: string;
+        dest?: string;
+        arrange?: boolean;
+        atBar?: string;
+        prefix?: string;
+        scale?: string;
+      },
     ) => {
       const opts = program.opts<GlobalOpts>();
       const count = Number(cmdOpts.count);
@@ -342,17 +359,42 @@ program
         (t) => t.path === destTrackPath,
       );
       if (!destTrack) throw new Error(`destination track not found: ${destTrackPath}`);
-      const occupied = new Set(
-        destTrack.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
-      );
-      const emptySlots = Array.from({ length: destTrack.slotCount }, (_, i) => i).filter(
-        (i) => !occupied.has(i),
-      );
-      if (emptySlots.length < count) {
-        throw new Error(
-          `need ${count} empty session slots on ${destTrackPath}, found ${emptySlots.length} — ` +
-            `add scenes or use --dest / awh sweep`,
+
+      const beatsPerBar = 4;
+      // Destination plan: session slots (default) or sequential arrangement lay-out.
+      let targets: { target: unknown; path: string }[];
+      if (cmdOpts.arrange) {
+        const lastEnd = destTrack.arrangementClips.reduce(
+          (max, c) => Math.max(max, c.endTime ?? 0),
+          0,
         );
+        const startBeat = cmdOpts.atBar
+          ? (Number(cmdOpts.atBar) - 1) * beatsPerBar
+          : Math.ceil(lastEnd / beatsPerBar) * beatsPerBar;
+        targets = Array.from({ length: count }, (_, i) => {
+          const at = startBeat + i * source.duration;
+          return {
+            target: { type: "arrangement", trackPath: destTrackPath, startBeat: at },
+            path: `${destTrackPath} @ bar ${at / beatsPerBar + 1}`,
+          };
+        });
+      } else {
+        const occupied = new Set(
+          destTrack.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+        );
+        const emptySlots = Array.from({ length: destTrack.slotCount }, (_, i) => i).filter(
+          (i) => !occupied.has(i),
+        );
+        if (emptySlots.length < count) {
+          throw new Error(
+            `need ${count} empty session slots on ${destTrackPath}, found ${emptySlots.length} — ` +
+              `add scenes, use --dest, --arrange, or awh sweep`,
+          );
+        }
+        targets = emptySlots.slice(0, count).map((slot) => {
+          const slotPath = `${destTrackPath}/slot:${slot}`;
+          return { target: { type: "session", slotPath }, path: slotPath };
+        });
       }
 
       const prefix = cmdOpts.prefix ?? (source.name ? source.name : "var");
@@ -360,29 +402,29 @@ program
       for (let i = 0; i < count; i++) {
         const ctx: TransformContext = {
           lengthBeats: source.duration,
-          beatsPerBar: 4,
+          beatsPerBar,
           rng: makeRng(variantSeed(baseSeed, i + 1)),
           ...(scale ? { scale } : {}),
         };
         const notes = applyPipeline(steps, source.notes, ctx);
         const name = `${prefix}-v${i + 1}`;
-        const slotPath = `${destTrackPath}/slot:${emptySlots[i]}`;
+        const t = targets[i]!;
         await callGateway(opts, "/api/ops/clip.create-midi", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
-            target: { type: "session", slotPath },
+            target: t.target,
             lengthBeats: source.duration,
             notes,
             name,
           }),
         });
-        created.push({ path: slotPath, name, notes: notes.length });
+        created.push({ path: t.path, name, notes: notes.length });
       }
       output(opts, created, () =>
         [
-          `${count} variations of ${clipPath} (seed ${baseSeed}):`,
-          ...created.map((c) => `  ${c.path.padEnd(16)} ${c.name} (${c.notes} notes)`),
+          `${count} variations of ${clipPath} (seed ${baseSeed})${cmdOpts.arrange ? " on the arrangement" : ""}:`,
+          ...created.map((c) => `  ${c.path.padEnd(22)} ${c.name} (${c.notes} notes)`),
           `audition them, then keep favourites and run: awh sweep ${destTrackPath} --prefix ${prefix}-v`,
         ].join("\n"),
       );
@@ -402,9 +444,15 @@ program
     ).result;
     const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
     if (!track) throw new Error(`track not found: ${trackPath}`);
-    const doomed = track.sessionClips.filter((c) => c.name.startsWith(cmdOpts.prefix));
-    // Delete in DESCENDING slot order so earlier deletions can't shift paths.
-    doomed.sort((a, b) => b.path.localeCompare(a.path));
+    // Session AND arrangement clips; delete in DESCENDING index order so
+    // earlier deletions can't shift the paths of later ones.
+    const doomed = [...track.sessionClips, ...track.arrangementClips].filter((c) =>
+      c.name.startsWith(cmdOpts.prefix),
+    );
+    doomed.sort((a, b) => {
+      const index = (p: string) => Number(p.match(/(\d+)$/)?.[1] ?? 0);
+      return index(b.path) - index(a.path);
+    });
     for (const clipToDelete of doomed) {
       await callGateway(opts, "/api/ops/clip.delete", {
         method: "POST",
