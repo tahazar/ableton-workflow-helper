@@ -1,8 +1,44 @@
 # ADR-001: Which bridge connects the tool to Ableton Live?
 
-- Status: **PROPOSED — awaiting decision**
-- Date: 2026-08-15
+- Status: **ACCEPTED** (owner decision, 2026-08-16) — see "Decision" below
+- Date: 2026-08-15 (proposed) / 2026-08-16 (accepted)
 - Inputs: `docs/research/bridge-landscape.md`, `docs/research/data-driven-mixing.md`
+
+## Decision
+
+**Build on the Ableton Extensions SDK** (Option A), overriding the original
+Producer-Pal-first recommendation, with these owner-accepted trade-offs and
+amendments from review:
+
+1. **Accepted losses:** no programmatic transport/audition (owner will play/move
+   clips manually) and no clip move/split (section building uses create-at-position
+   + `clearClipsInRange`). These were the recommendation's main objections; with
+   them explicitly accepted, ownership + official API + TypeScript DX win.
+2. **Architecture amendment:** NOT a suite of server extensions — **one thin
+   gateway extension** (HTTP server, token handshake, typed operation registry,
+   dev-gated eval escape hatch) + a **CLI tool suite** (`awh`) where all
+   pure-computation tools live (variation, countermelody, section planning,
+   analysis). Extensions have no IPC/eventing; chaining happens in the CLI/LLM
+   layer. Small right-click convenience extensions may come later, calling the
+   same gateway.
+3. **Leverage-first:** reuse existing projects wherever licenses allow —
+   loophole (**MIT — code reuse OK**, and its SDK-free-core/SDK-coupled-shell
+   layering is adopted), aker-dev ableton-extension-skill (**MIT**) for
+   SDK-grounded Claude development, jasper-zheng eval pattern (**license
+   unverified — pattern-reuse only until checked**), Producer Pal (**GPL-3.0 —
+   design-port only, no code**: bar|beat notation design, transform DSL
+   semantics, compact context format). Re-evaluate design at every step rather
+   than adopting wholesale.
+4. **Platform:** macOS primary; Live 12 Suite beta (12.4.5+) side-by-side with
+   stable for real sessions. Windows later, if ever.
+5. **Producer Pal remains an optional stopgap** the owner may run alongside for
+   transport/clip-moving during sessions; nothing in our stack depends on it.
+6. **Constraints designed-in from day one:** repo stays SDK-free (SDK is
+   non-redistributable — the .ablx build imports it locally only); file access
+   confined to `storageDirectory`/`tempDirectory` + `importIntoProject`
+   (stricter OS sandbox is pre-announced); tool granularity respects the
+   create-then-configure two-undo-step quirk; analysis engine stays
+   bridge-independent (operates on WAVs).
 
 ## Decision frame
 
@@ -110,7 +146,7 @@ every change (kills iteration speed — fails R2 completely); corruption risk on
 user's actual projects. Rejected as primary; **retained as a targeted complement**
 (e.g., template scaffolding, automation injection) with mandatory backup copies.
 
-## Recommendation
+## Original recommendation (superseded by the Decision above; kept for the record)
 
 **Hybrid, Producer-Pal-first (Option B + E-as-complement, C-as-sidecar-if-needed, A-later):**
 
@@ -129,11 +165,18 @@ The recommendation optimizes for: fastest path to the features that motivated th
 project, minimum non-differentiated engineering, and a clean migration path that
 doesn't marry us to any single bridge.
 
-## Consequences (if accepted)
+## Consequences (of the accepted decision)
 
-- Add "bridge adapter" as an explicit interface in the architecture so Producer Pal
-  is swappable (REST client behind our own tool-facade).
-- v1 mixing features constrained to manual-export analysis; in-chain capture is a
-  later milestone with its own decision (M4L tap vs SDK render vs macOS companion).
-- Automation editing is out of scope for v1 (no bridge supports it); revisit via
+- The bridge sits behind a `LiveBridge`-style interface in the SDK-free core
+  (loophole's pattern), so the SDK-coupled shell stays swappable and the core
+  stays testable without Live.
+- Owner must join Ableton's beta program (Centercode) to obtain Live 12.4.5+
+  beta and the SDK zip; the SDK cannot be committed to this repo.
+- v1 mixing features constrained to exported/`renderPreFxAudio` WAV analysis;
+  in-chain post-FX capture is a later milestone with its own decision.
+- Automation editing is out of scope for v1 (the SDK has none); revisit via
   offline `.als` injection experiment behind a backup-first safety gate.
+- Variation auditioning is manual (no transport API); mitigate with predictable
+  clip placement/naming conventions so candidates are easy to find and play.
+- SDK churn risk is carried knowingly: pin `minimumApiVersion`, keep the
+  extension shell thin, expect the announced sandbox tightening.
