@@ -63,8 +63,18 @@ awh transforms                 # list the deterministic variation transforms
 awh vary <clipPath> --ops "<pipeline>" [-n 8] [--seed N] [--dest track:X]
                                # N seeded variations into empty session slots,
                                # named <prefix>-v1..N for auditioning
+awh vary <clipPath> --arrange [--at-bar N] ...
+                               # ARRANGEMENT mode: variations laid out
+                               # sequentially on the timeline (default: right
+                               # after the track's last arrangement clip)
 awh sweep <trackPath> --prefix <p>   # delete audition clips by name prefix
+                                     # (session AND arrangement)
 ```
+
+Source clips can come from either view (`track:0/slot:2` or `track:0/arr:1`).
+For arrangement-centric users, prefer `--arrange`: they play through the
+timeline and hear each variation in sequence — put them at `--at-bar` past the
+song's end (or on a spare `--dest` track) to avoid overwriting real material.
 
 ## Variations (`awh vary`) — the anti-"tweak forever" loop
 
