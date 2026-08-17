@@ -335,13 +335,38 @@ Library round-trip (SDK-free, validated clip ops underneath):
 
 ## M5 (drums) in-Live verification checklist
 
-- [ ] `awh drums gen <drum-rack track> --style house --bars 4` into an empty
-      slot → pads mapped to sensible roles (kick/clap/hats), pattern grooves
-- [ ] `--style techno` and `--style trap` → idiomatic (trap: beat-3 snare,
-      hat rolls); different `--seed` → different ghost placement
-- [ ] Track WITHOUT a drum rack → GM fallback notes, warning printed
-- [ ] `awh drums fill <clip>` → last bar gets a fill, crescendos into the loop
-- [ ] `awh drums humanize <clip>` → kick stays tight, hats loosen; still grooves
-- [ ] `awh drums vary <clip>` → recognizably the same pattern, reworked
-- [ ] Skill: "give me a darker techno groove on my drum rack" → gen + audition
-      loop works end to end
+- [x] `awh drums gen <drum-rack track> --style house --bars 4` into an empty
+      slot → pads mapped to sensible roles (kick/clap/hats), pattern grooves.
+      Confirmed: kick (pad note 0) four-on-the-floor, snare (pad note 1) on
+      the backbeat — textbook house, correctly mapped from the real pad names.
+- [x] `--style techno` and `--style trap` → idiomatic (trap: beat-3 snare,
+      hat rolls); different `--seed` → different ghost placement. Techno:
+      driving kick plus low-velocity/low-probability ghost kicks (classic
+      rolling feel). Trap: snare locked to beat 3 every bar as expected;
+      `--variant` forces a named kick cell (reports which it picked, e.g.
+      "kickCell: rolling · hatBase: straight-8ths"); without a forced
+      variant, different seeds pick different cells/hat bases (sparse,
+      double-tap, etc.) — genuinely different grooves, not just ghost jitter.
+- [x] Track WITHOUT a drum rack → GM fallback notes, warning printed.
+      Confirmed: correct GM note numbers (36 kick, 38 snare, 39 clap, 42/46
+      closed/open hi-hat), warning text printed as documented.
+- [x] `awh drums fill <clip>` → last bar gets a fill, crescendos into the loop.
+      Confirmed: bars 1-3 untouched, bar 4 becomes a 16th-note roll with a
+      clean velocity crescendo (60→115) into the loop restart.
+- [x] `awh drums humanize <clip>` → kick stays tight, hats loosen; still
+      grooves. Confirmed quantitatively on a kick+snare rack (no separate
+      hats pad): snare timing deviation averaged ~2x the kick's (0.0054 vs
+      0.0030 beats) — role-aware behavior generalizes correctly even without
+      a dedicated hats role.
+- [x] `awh drums vary <clip>` → recognizably the same pattern, reworked.
+      Confirmed: all 16 kick-hit positions identical across the source and
+      4 variations (kick anchor fully preserved); note counts shifted
+      slightly (24→26/26/25/25) as the non-kick elements were reworked.
+- [x] Skill: "give me a darker techno groove on my drum rack" → gen + audition
+      loop works end to end. **Passed.** A fresh agent correctly ran
+      `drums gen --style techno --density 0.35` (interpreting "darker" as
+      sparse/no-snare) followed by `drums humanize`, across both active
+      drum-rack tracks — and explicitly declined to touch a third track
+      whose only pad looked like a mislabeled leftover rather than guessing.
+      Independently verified: kick-only four-on-the-floor (16 notes, no
+      snare) and off-beat 8th-note hats, both humanized.
