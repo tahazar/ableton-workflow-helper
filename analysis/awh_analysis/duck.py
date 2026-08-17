@@ -31,6 +31,8 @@ MIN_DEPTH_DB = 3.0
 MAX_DEPTH_DB = 24.0
 KICK_OVER_BASS_MARGIN_DB = 6.0  # ducked bass sits >= this below the kick peak
 RELEASE_HEADROOM = 0.85  # release fully done by this fraction of the gap
+PEAK_ALIGN_MAX_FRACTION = 0.25  # low-band peak later than this into the window -> misaligned triggers
+FLOOR_SILENCE_SUSPECT_DB = 90.0  # peak-over-floor beyond this -> floor is digital silence (live pathology read 174 dB)
 
 
 def _low_band(x: np.ndarray, sr: int) -> np.ndarray:
@@ -149,6 +151,28 @@ def fit_duck_envelope(
                 "go deeper for a stylized pump)"
             )
 
+    # --- sanity checks: does the trigger list plausibly match real hits? --
+    # Live finding: wrong/guessed trigger times still produce a plausible-
+    # LOOKING envelope (peak mid-window, absurd peak-over-floor) with nothing
+    # flagging it. A trigger-locked duck's low-band peak must sit near the
+    # window start; a floor 60+ dB down means the "floor" is digital silence.
+    warnings: list[str] = []
+    peak_time_s = float(times[peak_idx])
+    if peak_time_s > PEAK_ALIGN_MAX_FRACTION * window_s:
+        warnings.append(
+            f"low-band peak lands {peak_time_s * 1000:.0f} ms into the "
+            f"{window_s * 1000:.0f} ms trigger window (expected near 0 ms for "
+            "trigger-locked hits) — the trigger times probably do NOT match the "
+            "real drum hits. Check the Trigger clip against the capture, or "
+            "derive triggers with `awh drums detect-onsets`."
+        )
+    if peak_db - floor_db > FLOOR_SILENCE_SUSPECT_DB:
+        warnings.append(
+            f"peak-over-floor is {peak_db - floor_db:.0f} dB — the between-hit "
+            "floor is near digital silence, which usually means misaligned "
+            "triggers or a capture that doesn't contain the drums."
+        )
+
     release_end_s = float(min(max(decay_done_s * 1.1, hold_end_s + 0.02), window_s * RELEASE_HEADROOM))
 
     # breakpoints: instant dip, hold, exponential release sampled for drawing
@@ -178,6 +202,7 @@ def fit_duck_envelope(
         "window_s": window_s,
         "window_ms": window_s * 1000.0,
         "used_triggers": aligned["used_triggers"],
+        "warnings": warnings,
         "kick": {
             "low_band_hz": LOW_BAND_HZ,
             "peak_time_ms": float(times[peak_idx]) * 1000.0,
@@ -222,3 +247,41 @@ def measure_duck_depth(
         "window_ms": aligned["window_s"] * 1000.0,
         "used_triggers": aligned["used_triggers"],
     }
+
+
+def detect_onsets(
+    x: np.ndarray, sr: int, min_gap_s: float = 0.08, threshold_mads: float = 3.0
+) -> list[float]:
+    """Broadband onset times (seconds) from a drums capture — for deriving
+    REAL trigger positions when Kick/Snare are audio one-shots and no MIDI
+    Trigger clip exists (live finding: guessing trigger times silently
+    produces nonsense duck fits).
+
+    Spectral-flux envelope (shared with ref.py), thresholded at
+    median + `threshold_mads`·MAD, local-maximum picked with a `min_gap_s`
+    refractory gap. Deterministic.
+    """
+    from .ref import onset_and_subband
+
+    onset_env, _sub, hop_s = onset_and_subband(to_mono(np.asarray(x, dtype=np.float64)), sr)
+    if onset_env.size < 3:
+        raise ValueError("audio too short for onset detection")
+    median = float(np.median(onset_env))
+    mad = float(np.median(np.abs(onset_env - median))) or 1e-12
+    # MAD threshold catches statistical outliers; the relative floor keeps
+    # noise wiggles out — duck triggers are the LOUD hits by definition.
+    threshold = max(median + threshold_mads * mad, 0.1 * float(np.max(onset_env)))
+
+    min_gap_frames = max(1, int(round(min_gap_s / hop_s)))
+    onsets: list[float] = []
+    last = -min_gap_frames
+    for i in range(1, len(onset_env) - 1):
+        if (
+            onset_env[i] >= threshold
+            and onset_env[i] >= onset_env[i - 1]
+            and onset_env[i] >= onset_env[i + 1]
+            and i - last >= min_gap_frames
+        ):
+            onsets.append(float(i * hop_s))
+            last = i
+    return onsets
