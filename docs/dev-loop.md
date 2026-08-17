@@ -269,34 +269,69 @@ SDK-free (renders through validated clip ops); this is a musical + safety pass:
 
 Library round-trip (SDK-free, validated clip ops underneath):
 
-- [ ] `awh save <a real clip> --category hats --tags <...>` → markdown entry
+- [x] `awh save <a real clip> --category hats --tags <...>` → markdown entry
       appears under `library/clips/hats/`, INDEX.md regenerated, bpm/scale
-      context captured from the Set
-- [ ] `awh lib list` / `awh lib show <slug>` → entry reads sensibly
-- [ ] `awh lib place <slug> <empty slot or --at-bar>` → clip lands in Live and
-      sounds identical to the saved source
-- [ ] Skill: "save that hat loop for later" then, in a NEW Set, "place my
-      garage hats" → Claude captures/places via the library, citing slug+tier
+      context captured from the Set. Confirmed (including catching a false
+      alarm: the captured scale looked wrong against stale memory of an
+      earlier session — it was correct, the Set's active scale had genuinely
+      changed since then).
+- [x] `awh lib list` / `awh lib show <slug>` → entry reads sensibly. Confirmed.
+- [x] `awh lib place <slug> <empty slot or --at-bar>` → clip lands in Live and
+      sounds identical to the saved source. Confirmed byte-identical.
+- [x] Skill: "save that hat loop for later" then, in a NEW Set, "place my
+      garage hats" → Claude captures/places via the library, citing slug+tier.
+      Save half passed cleanly first try. Place half found a real gap: two
+      independent fresh agents, asked to place into a Set full of pre-blocked
+      empty placeholder clips, both hand-tiled the entry into an existing
+      placeholder via `clip write` instead of `lib place` — because `lib
+      place` genuinely couldn't do that (traced in code: it only ever called
+      `clip.create-midi`, so targeting an occupied slot/position would have
+      errored or duplicated). Extended `lib place` to fill an existing clip
+      at the target (tile/truncate to its length) when one is there, reusing
+      the already-tested `tileNotes` from the M4 sections renderer. A third
+      fresh agent then correctly used `lib place` directly — independently
+      verified against the live Set.
 
 .alc mirror (THE Live-facing new ground — take it slowly):
 
-- [ ] Golden template: in Live 12, put one MIDI clip (a few notes) on a
+- [x] Golden template: in Live 12, put one MIDI clip (a few notes) on a
       device-free track, drag it into the User Library, then
       `awh lib capture-template "<User Library>/Clips/<name>.alc"` →
-      reports Live's real Creator string + note schema
-- [ ] `awh lib export-alc` → `live-mirror/AWH Library/` appears with
-      `<category>/<slug>.alc` files + `Ableton Folder Info/`
-- [ ] Drag the `AWH Library` folder into Live's Places → clips browse, PREVIEW
-      (double-click), and drag into a track; notes/length/name all correct
-- [ ] Tags: browser Filter view shows an `AWH` group with your categories
-      (+ `AWH Tags`) after Live indexes the pack
-- [ ] Re-export after editing an entry (`--overwrite` save or hand-edit) →
+      reports Live's real Creator string + note schema. Confirmed: "Ableton
+      Live 12.4.5b11", schema Time/Duration/Velocity/OffVelocity/NoteId.
+- [x] `awh lib export-alc` → `live-mirror/AWH Library/` appears with
+      `<category>/<slug>.alc` files + `Ableton Folder Info/`. Confirmed.
+- [x] Drag the `AWH Library` folder into Live's Places → clips browse, PREVIEW
+      (double-click), and drag into a track; notes/length/name all correct.
+      Confirmed — note the browser PREVIEW plays Live's generic default
+      sound, not the owner's instrument (by design: the golden template is
+      captured device-free specifically so no instrument rides along in
+      every export); dragged onto the real Drum Rack track it sounds correct.
+- [x] Tags: browser Filter view shows an `AWH` group with your categories
+      (+ `AWH Tags`) after Live indexes the pack. Confirmed.
+- [x] Re-export after editing an entry (`--overwrite` save or hand-edit) →
       WITHOUT re-dragging, Live picks up the change (PackRevision bump; may
-      need a moment or a browser rescan — note which)
-- [ ] Reverse: drag a NEW clip from a Set into the User Library by hand, then
-      `awh lib import-alc <that file> --category <c>` → entry matches the clip
-- [ ] Safety spot-check: `live-mirror/` is gitignored; nothing outside it was
-      touched; `library/mirror.json` revision incremented
+      need a moment or a browser rescan — note which). **Content edits: auto-
+      updates with no rescan needed** (confirmed — added a bar to a saved
+      clip, re-exported, Live showed the new version immediately). **Full
+      removal is different**: found and fixed a real bug where `export-alc`
+      threw "No MIDI library clips to export" and returned before calling
+      `writePack` when the library (or a `--category` slice of it) went back
+      to empty — silently leaving stale `.alc` files in Live's browser
+      instead of syncing. Fixed: it now proceeds with 0 items, and
+      `writePack`'s existing wipe-stale-content logic correctly clears the
+      pack (verified on disk). **Live's browser still showed the stale clip
+      after the fix, even after a manual rescan** — this is a genuine Live-
+      side caching limitation (the exported files are correctly gone on
+      disk), not a bug in our code; deletions apparently need something
+      stronger than a folder rescan to clear from Live's browser cache
+      (possibly a full library rebuild — not chased further this pass).
+- [x] Reverse: drag a NEW clip from a Set into the User Library by hand, then
+      `awh lib import-alc <that file> --category <c>` → entry matches the
+      clip. Confirmed (3 notes, matching the golden-template capture step's
+      own note count for the same file).
+- [x] Safety spot-check: `live-mirror/` is gitignored; nothing outside it was
+      touched; `library/mirror.json` revision incremented. Confirmed.
 
 ## M5 (drums) in-Live verification checklist
 

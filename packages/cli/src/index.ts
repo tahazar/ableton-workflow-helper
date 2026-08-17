@@ -1234,7 +1234,10 @@ lib
     const entries = (await store.listClips(
       cmdOpts.category ? { category: cmdOpts.category } : {},
     )).filter((e) => e.kind === "midi" && e.notation);
-    if (entries.length === 0) throw new Error("No MIDI library clips to export");
+    // Proceed even with 0 entries: writePack wipes stale content from a
+    // pack it owns, so this is what keeps the mirror in sync if the
+    // library (or the --category slice of it) goes back to empty —
+    // erroring out here would silently leave old clips in Live's browser.
 
     const config = await loadMirrorConfig(store);
     config.revision += 1;
