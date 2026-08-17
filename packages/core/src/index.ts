@@ -115,6 +115,7 @@ export { type DrumContext, type DrumKit, type DrumRole } from "./drums/types.js"
 export { GM_DRUM_KIT, mapPadRoles, roleOfNote } from "./drums/roles.js";
 export {
   TRAP_KICK_CELLS,
+  TRAP_STYLE_SPEC,
   generateDrumPattern,
   generateDrumPatternDetailed,
   listDrumStyles,
@@ -131,3 +132,22 @@ export {
   type HumanizeDrumsOptions,
   type VaryDrumsOptions,
 } from "./drums/fills.js";
+export {
+  parseDrumStyleSpec,
+  type TrapFamilyKickCell,
+  type TrapFamilyStyleSpec,
+  type TrapHatBaseName,
+} from "./drums/styleSpec.js";
+export {
+  extractFencedBlock,
+  parseKnowledgeEntry,
+  serializeKnowledgeEntry,
+  validateKnowledgeEntry,
+  type KnowledgeEntry,
+} from "./knowledge/entry.js";
+export {
+  KnowledgeStore,
+  type KnowledgeFilter,
+  type MeasurementRecordSummary,
+  type StoredKnowledgeEntry,
+} from "./knowledge/store.js";
