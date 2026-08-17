@@ -16,8 +16,10 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   listForms,
   planFromForm,
+  planFromReferenceSections,
   renderSections,
   validateSectionsPlan,
+  type SectionsPlan,
   type SourceClip,
   DEFAULT_GATEWAY_PORT,
   FakeLiveBridge,
@@ -509,8 +511,17 @@ const sections = program
 
 sections
   .command("plan")
-  .description("Emit an editable YAML sections plan from a genre form preset")
-  .requiredOption("--form <form>", `genre form: ${listForms().join(" | ")}`)
+  .description(
+    "Emit an editable YAML sections plan from a genre form preset, or " +
+      "--from-ref a corrected reference map (bars sourced from the reference " +
+      "instead of a preset — every layer verbatim, no genre ops guessed)",
+  )
+  .option("--form <form>", `genre form: ${listForms().join(" | ")}`)
+  .option(
+    "--from-ref <file>",
+    "a `ref sections read -o <file>` JSON (or a saved library/references/*.json) " +
+      "— mutually exclusive with --form",
+  )
   .requiredOption(
     "--role <role=clipPath...>",
     "role bindings, repeatable: --role drums=track:1/slot:0 --role bass=track:2/slot:0",
@@ -518,7 +529,10 @@ sections
     [] as string[],
   )
   .option("-o, --out <file>", "write the plan to a file (default: stdout)")
-  .action(async (cmdOpts: { form: string; role: string[]; out?: string }) => {
+  .action(async (cmdOpts: { form?: string; fromRef?: string; role: string[]; out?: string }) => {
+    if (!cmdOpts.form === !cmdOpts.fromRef) {
+      throw new Error("pass exactly one of --form <house|trap> or --from-ref <file>");
+    }
     const roles: Record<string, { trackPath: string; source: string }> = {};
     for (const binding of cmdOpts.role) {
       const [role, source] = binding.split("=", 2);
@@ -527,7 +541,18 @@ sections
       if (trackPath === source) throw new Error(`--role ${role}: "${source}" is not a clip path`);
       roles[role] = { trackPath, source };
     }
-    const plan = planFromForm(cmdOpts.form, roles);
+    let plan: SectionsPlan;
+    if (cmdOpts.form) {
+      plan = planFromForm(cmdOpts.form, roles);
+    } else {
+      const parsed = JSON.parse(await readFile(cmdOpts.fromRef!, "utf8")) as {
+        sections?: { name: string; start_bar: number; end_bar: number }[];
+        reference?: { sections: { name: string; start_bar: number; end_bar: number }[] };
+      };
+      const refSections = parsed.reference?.sections ?? parsed.sections;
+      if (!refSections) throw new Error(`${cmdOpts.fromRef} has no sections`);
+      plan = planFromReferenceSections(refSections, roles);
+    }
     const text = stringifyYaml(plan);
     if (cmdOpts.out) {
       await writeFile(cmdOpts.out, text, "utf8");

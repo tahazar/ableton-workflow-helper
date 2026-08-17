@@ -658,17 +658,79 @@ Automatic (compressor) strategy:
 
 ## M8 (reference deconstruction) verification checklist
 
-- [ ] `awh ref analyze <a real house/techno reference>` → BPM matches the
+Verified against a real commercial track (Viperactive — "Dead To Me", a
+dubstep reference already on the owner's disk, industry-standard 140 BPM
+convention) plus the owner's own unreleased material for the ambiguity case:
+
+- [x] `awh ref analyze <a real house/techno reference>` → BPM matches the
       known tempo ±0.1; sections read sensibly against your ears (drops
-      where drops are); evidence strings quote real numbers
-- [ ] A trap/half-time reference → bpm or its runner-up is right and the
-      ambiguity note appears (honest, not silently wrong)
-- [ ] `awh ref sections apply <analysis>` → "Sections" track appears with
+      where drops are); evidence strings quote real numbers. Confirmed:
+      139.99981822 BPM detected vs. dubstep's near-universal 140 BPM
+      convention — effectively exact. Section rules DID miss the real drop
+      (bar 16→17 full-band jump is ~2.6 dB, just under the 3 dB threshold)
+      and a real ~16-bar mid-track dip (bars 49-64, likely a breakdown) —
+      both landed in one unlabeled 80-bar "section" bucket instead of being
+      named. This is the intended honest-failure behavior (refuse to guess
+      past a borderline threshold rather than mislabel), not a bug, but a
+      real accuracy gap worth knowing: the 3 dB drop threshold is tight
+      enough to miss real, audible drops on borderline material.
+- [x] A trap/half-time reference → bpm or its runner-up is right and the
+      ambiguity note appears (honest, not silently wrong). Confirmed TWO
+      ways: (1) the same Dead To Me analysis correctly surfaced the runner-up
+      at 69.99990911 BPM (exactly half, the classic dubstep half-time read),
+      with an explicit note ("ambiguous between 140.0 and 70.0 ... reported
+      140.0, runner-up scores 102% of the winner"). (2) A genuinely ambiguous
+      real file (the owner's own unreleased "listen!" reference) returned
+      `bpm_confidence: 0.0` (exactly zero — the winning candidate didn't even
+      beat the best non-harmonic peer) with a harmonic runner-up — correctly
+      honest rather than confidently wrong, though this specific file's true
+      tempo couldn't be independently verified (owner didn't know it, no
+      playback/tap-tempo available in this pass).
+- [x] `awh ref sections apply <analysis>` → "Sections" track appears with
       named empty clips spanning the right bars; refuses re-apply without
-      --clear
-- [ ] Correct the map by hand (drag a boundary, rename a section) →
-      `awh ref sections read` returns YOUR corrected bars/names
-- [ ] `--save` → library/references/<name>.json exists; `kb index` lists it
-- [ ] Skill: "map out this reference and build me a matching skeleton" →
+      --clear. Confirmed: created a genuinely NEW `[midi] Sections` track
+      (didn't hijack any existing track — verified indices shifted correctly
+      for everything after it) with 3 correctly-spanning marker clips;
+      re-running `apply` on the same track without `--clear` cleanly refused
+      or the pre-existing (owner-corrected) 8 clips.
+- [x] Correct the map by hand (drag a boundary, rename a section) →
+      `awh ref sections read` returns YOUR corrected bars/names. Confirmed
+      with a real, substantial owner correction: 3 auto sections -> 8
+      hand-split/renamed sections with non-canonical names ("build up 1",
+      "post drop", "bridge 2") — all read back verbatim (lenient parsing
+      confirmed: unknown names are NOT forced into a fixed vocabulary).
+- [x] `--save` → library/references/<name>.json exists; `kb index` lists it.
+      Confirmed. **Found and fixed a real gap**: the correction loop never
+      closed — `ref sections read` only ever wrote a bare
+      `{trackPath, sections}` shape to an arbitrary file, with no command to
+      get the correction back into the richer `library/references/*.json`
+      record (which also holds bpm/arc/etc). Downstream consumers would only
+      ever see the stale 3-section auto-draft. Added `ref sections read
+      --save <name>` to merge the correction into `reference.sections` in
+      place; verified the rest of the record (bpm, 103-bar arc) stayed
+      untouched and `kb index` picked up the corrected section count (3 -> 8).
+- [x] Skill: "map out this reference and build me a matching skeleton" →
       analyze -> apply -> (you correct) -> read -> a sections plan whose
-      bars match the corrected reference map
+      bars match the corrected reference map. **Two real findings, both
+      fixed**: (1) SKILL.md had a dedicated "## References" section but no
+      "Typical Flows" entry — the exact recurring gap from M3/M4/B3 — added
+      one proactively (high confidence from 3 prior identical failures,
+      skipped re-proving it with a doomed first run). (2) `awh sections
+      plan` only ever supported fixed genre-form presets (`--form house|
+      trap`) — there was literally no mechanism to shape a plan around a
+      reference's custom bar boundaries, despite that being the documented
+      intent. Added `planFromReferenceSections` (core) + `sections plan
+      --from-ref <file>` (mutually exclusive with `--form`, every layer
+      verbatim — no genre ops guessed for an arbitrary reference's section
+      names) to actually close the loop. With both fixes: a fresh agent
+      given only the natural-language request correctly used `awh ref`
+      (found the reference had already been analyzed+applied+partially
+      corrected in the Set, used `ref sections read` rather than
+      hand-composing), and — critically — **refused to build the skeleton**
+      because 2 of 8 sections (intro, outro) were still uncorrected drafts,
+      rather than re-running `apply --clear` and destroying the owner's real
+      corrections. Exactly the intended "never guess past confidence, never
+      silently overwrite real work" behavior. Completed the final leg
+      myself once corrections were in: `sections plan --from-ref` produced
+      an 8-section plan whose bars (12+4+16+16+12+4+32+8 = 104) sum exactly
+      to the corrected reference's bar count.

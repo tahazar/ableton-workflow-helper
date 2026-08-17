@@ -76,7 +76,7 @@ export {
   type SectionsPlan,
 } from "./sections/types.js";
 export { renderSections, type RenderOptions, type SourceClip } from "./sections/render.js";
-export { listForms, planFromForm } from "./sections/presets.js";
+export { listForms, planFromForm, planFromReferenceSections } from "./sections/presets.js";
 export {
   parseClipEntry,
   serializeClipEntry,

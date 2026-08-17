@@ -5,7 +5,7 @@ import {
   type SectionsPlan,
 } from "../src/sections/types.js";
 import { renderSections, type SourceClip } from "../src/sections/render.js";
-import { listForms, planFromForm } from "../src/sections/presets.js";
+import { listForms, planFromForm, planFromReferenceSections } from "../src/sections/presets.js";
 import { BridgeError, type NoteSpec } from "../src/bridge/types.js";
 
 const motif: NoteSpec[] = [
@@ -129,5 +129,38 @@ describe("presets", () => {
   it("rejects unknown forms and empty roles", () => {
     expect(() => planFromForm("polka", { a: { trackPath: "t", source: "s" } })).toThrowError(/unknown form/);
     expect(() => planFromForm("house", {})).toThrowError(/at least one role/);
+  });
+
+  it("builds a plan from a corrected reference map with bars sourced from the reference, not a preset", () => {
+    const built = planFromReferenceSections(
+      [
+        { name: "intro", start_bar: 1, end_bar: 12 },
+        { name: "build up 1", start_bar: 13, end_bar: 16 },
+        { name: "drop 1", start_bar: 17, end_bar: 32 },
+      ],
+      { drums: { trackPath: "track:1", source: "track:1/slot:0" } },
+    );
+    expect(built.sections.map((s) => s.name)).toEqual(["intro", "build up 1", "drop 1"]);
+    expect(built.sections.map((s) => s.bars)).toEqual([12, 4, 16]);
+    // every layer verbatim — no genre ops guessed for an arbitrary reference
+    expect(built.sections.every((s) => s.tracks.drums && s.tracks.drums !== "off")).toBe(true);
+    const drop = built.sections.find((s) => s.name === "drop 1")!;
+    expect(drop.tracks.drums).toEqual({ source: "track:1/slot:0" });
+    // renders end-to-end
+    const rendered = renderSections(
+      validateSectionsPlan(built),
+      new Map([["track:1/slot:0", sources.get("track:1/slot:0")!]]),
+      { seed: 1 },
+    );
+    expect(rendered.totalBars).toBe(32);
+  });
+
+  it("rejects empty sections and empty roles for reference-derived plans", () => {
+    expect(() => planFromReferenceSections([], { a: { trackPath: "t", source: "s" } })).toThrowError(
+      /no sections/,
+    );
+    expect(() =>
+      planFromReferenceSections([{ name: "intro", start_bar: 1, end_bar: 4 }], {}),
+    ).toThrowError(/at least one role/);
   });
 });
