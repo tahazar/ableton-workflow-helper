@@ -1,6 +1,6 @@
 ---
 slug: sidechain-template
-topic: setup/routing
+topic: setup
 tier: verified
 tags: [sidechain, routing, shaperbox, volume-shaper, template, pump]
 sources: ["owner description, 2026-08-17 (M6 verification session)"]

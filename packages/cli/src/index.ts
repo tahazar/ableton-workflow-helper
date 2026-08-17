@@ -41,13 +41,17 @@ import {
   variantSeed,
   writePack,
   GM_DRUM_KIT,
+  KnowledgeStore,
   drumFill,
+  extractFencedBlock,
   generateDrumPatternDetailed,
   humanizeDrums,
   listDrumStyles,
   listDrumVariants,
   mapPadRoles,
+  parseDrumStyleSpec,
   varyDrums,
+  type TrapFamilyStyleSpec,
   type ClipDetail,
   type ClipEntry,
   type DrumContext,
@@ -728,9 +732,34 @@ drums
       const { kit, usedRack } = trackDrumKit(summary, trackPath);
       const ctx = drumContext(cmdOpts);
 
+      // built-in style, or a data-driven one from the knowledge base:
+      // a `drum-style-<name>` entry with an ```awh-style-spec``` block
+      let styleSpec: TrapFamilyStyleSpec | undefined;
+      let styleTier: string | undefined;
+      if (!listDrumStyles().includes(cmdOpts.style)) {
+        let entry;
+        try {
+          entry = await knowledgeStore().loadEntry(`drum-style-${cmdOpts.style}`);
+        } catch {
+          throw new Error(
+            `unknown drum style "${cmdOpts.style}" — built-ins: ${listDrumStyles().join(", ")}; ` +
+              `data styles need a knowledge entry with slug drum-style-${cmdOpts.style} ` +
+              "(see knowledge/README.md)",
+          );
+        }
+        const specText = extractFencedBlock(entry.body, "awh-style-spec");
+        if (!specText) {
+          throw new Error(
+            `knowledge entry ${entry.relPath} has no \`\`\`awh-style-spec block`,
+          );
+        }
+        styleSpec = parseDrumStyleSpec(specText);
+        styleTier = entry.tier;
+      }
+
       let variant: number | undefined;
       if (cmdOpts.variant !== undefined) {
-        const names = listDrumVariants(cmdOpts.style);
+        const names = listDrumVariants(cmdOpts.style, styleSpec);
         if (names.length === 0) {
           throw new Error(`style "${cmdOpts.style}" has no named variants (seed-only)`);
         }
@@ -746,7 +775,9 @@ drums
 
       const { notes, meta } = generateDrumPatternDetailed(cmdOpts.style, kit, ctx, {
         ...(variant !== undefined ? { variant } : {}),
+        ...(styleSpec ? { styleSpec } : {}),
       });
+      if (styleTier) meta.knowledgeStyle = `drum-style-${cmdOpts.style} [${styleTier}]`;
       const lengthBeats = ctx.bars * ctx.beatsPerBar;
 
       let target: unknown;
@@ -1337,6 +1368,158 @@ lib
       );
     },
   );
+
+// ---------------------------------------------------------------------------
+// Knowledge base (B4): tiered, executable-first entries; open-ended topics;
+// measurement records surfaced alongside. See knowledge/README.md.
+// ---------------------------------------------------------------------------
+
+function knowledgeStore(): KnowledgeStore {
+  const root = repoRoot();
+  return new KnowledgeStore(join(root, "knowledge"), join(findLibraryRoot(), "measurements"));
+}
+
+const kb = program
+  .command("kb")
+  .description("Browse the knowledge base (knowledge/ + measurement records)");
+
+kb
+  .command("list")
+  .description("List knowledge entries")
+  .option("--topic <topic>", "topic prefix filter (topics are open-ended directories)")
+  .option("--tag <tag>", "tag filter")
+  .option("--tier <tier>", "verified | sourced | draft")
+  .action(async (cmdOpts: { topic?: string; tag?: string; tier?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const entries = await knowledgeStore().listEntries({
+      ...(cmdOpts.topic ? { topic: cmdOpts.topic } : {}),
+      ...(cmdOpts.tag ? { tag: cmdOpts.tag } : {}),
+      ...(cmdOpts.tier ? { tier: cmdOpts.tier } : {}),
+    });
+    output(opts, entries, () =>
+      entries.length === 0
+        ? "no matching knowledge entries"
+        : entries
+            .map(
+              (e) =>
+                `${e.slug.padEnd(30)} ${e.topic.padEnd(16)} [${e.tier}]` +
+                `${e.executable ? "" : " PROSE-ONLY"} ${e.tags.join(",")}`,
+            )
+            .join("\n"),
+    );
+  });
+
+kb
+  .command("topics")
+  .description("List knowledge topics (discovered from the tree)")
+  .action(async () => {
+    const opts = program.opts<GlobalOpts>();
+    const topics = await knowledgeStore().listTopics();
+    output(opts, topics, () => (topics.length ? topics.join("\n") : "no topics yet"));
+  });
+
+kb
+  .command("show <slug>")
+  .description("Print a knowledge entry (full markdown)")
+  .action(async (slug: string) => {
+    const opts = program.opts<GlobalOpts>();
+    const store = knowledgeStore();
+    const entry = await store.loadEntry(slug);
+    output(opts, entry, () => readFileSync(join(store.root, entry.relPath), "utf8").trimEnd());
+  });
+
+kb
+  .command("index")
+  .description("Regenerate knowledge/INDEX.md (entries by topic + measurement records)")
+  .action(async () => {
+    const opts = program.opts<GlobalOpts>();
+    const content = await knowledgeStore().buildIndex();
+    output(opts, { root: knowledgeStore().root }, () => content.trimEnd());
+  });
+
+kb
+  .command("new <topic> <slug>")
+  .description("Scaffold a well-formed knowledge entry (tier: draft) to fill in")
+  .option("--title <title>", "entry title (default: from the slug)")
+  .option("--tags <tags>", "comma-separated tags")
+  .action(async (topic: string, slug: string, cmdOpts: { title?: string; tags?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const title =
+      cmdOpts.title ?? slug.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
+    const file = await knowledgeStore().saveEntry({
+      slug,
+      topic,
+      tier: "draft",
+      tags: splitTags(cmdOpts.tags),
+      sources: [],
+      related: [],
+      title,
+      body: [
+        "## Executable",
+        "<!-- pipeline spec, awh-notation block, awh-style-spec block, or recipe.",
+        "     Prose-only is a last resort and gets flagged in the index. -->",
+        "",
+        "## The rule",
+        "<!-- the knowledge, with numbers -->",
+      ].join("\n"),
+    });
+    await knowledgeStore().buildIndex();
+    output(opts, { file }, () => `scaffolded ${file} — fill in Executable + rule, then kb index`);
+  });
+
+program
+  .command("distill")
+  .description(
+    "Dump the open project for knowledge curation: structure, devices, and " +
+      "every MIDI clip's notation — feed for creating library/knowledge entries",
+  )
+  .option("-o, --out <file>", "write to a file instead of stdout")
+  .option("--sig <beatsPerBar>", "beats per bar for notation", "4")
+  .action(async (cmdOpts: { out?: string; sig: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const summary = (await op(opts, "set.summary")) as SetSummary;
+    const beatsPerBar = Number(cmdOpts.sig);
+    const lines = [
+      `# Project distill — ${new Date().toISOString().slice(0, 10)}`,
+      "",
+      `tempo ${summary.tempo} BPM · ${summary.trackCount} tracks · ${summary.sceneCount} scenes` +
+        (summary.scale.active
+          ? ` · scale ${PITCH_CLASSES[summary.scale.rootNote % 12]} ${summary.scale.name}`
+          : ""),
+      "",
+    ];
+    for (const track of summary.tracks) {
+      lines.push(`## ${track.path} [${track.kind}] ${track.name}`);
+      if (track.devices.length) {
+        lines.push(`devices: ${track.devices.map((d) => d.name).join(" -> ")}`);
+      }
+      const clips = [...track.sessionClips, ...track.arrangementClips];
+      for (const clip of clips) {
+        if (clip.kind !== "midi") {
+          lines.push("", `### ${clip.path} ${clip.name} (audio)`);
+          continue;
+        }
+        const detail = (await op(opts, "clip.get", { path: clip.path })) as ClipDetail;
+        lines.push(
+          "",
+          `### ${clip.path} ${clip.name || "(unnamed)"} — ${detail.duration} beats`,
+          "```awh-notation",
+          detail.notes?.length
+            ? serializeNotation(detail.notes, { beatsPerBar })
+            : "# (empty clip)",
+          "```",
+        );
+      }
+      lines.push("");
+    }
+    const text = lines.join("\n");
+    if (cmdOpts.out) {
+      await writeFile(cmdOpts.out, text, "utf8");
+      output(opts, { out: cmdOpts.out }, () => `distilled -> ${cmdOpts.out}`);
+    } else {
+      process.stdout.write(`${text}\n`);
+    }
+  });
 
 // ---------------------------------------------------------------------------
 // Mix analysis (M6): measurement engine (Python) + M4L capture tap driver.

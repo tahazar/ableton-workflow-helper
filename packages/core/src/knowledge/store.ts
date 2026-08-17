@@ -1,0 +1,191 @@
+/**
+ * File-backed knowledge store: `knowledge/<topic-path>/<slug>.md`, topics
+ * discovered from the directory tree (open-ended — owner requirement).
+ * Measurement records (library/measurements/*.json) are knowledge citizens:
+ * indexed and listed alongside entries.
+ */
+import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { basename, dirname, join, sep } from "node:path";
+import {
+  parseKnowledgeEntry,
+  serializeKnowledgeEntry,
+  type KnowledgeEntry,
+} from "./entry.js";
+
+export interface StoredKnowledgeEntry extends KnowledgeEntry {
+  /** Path relative to the knowledge root. */
+  relPath: string;
+}
+
+export interface KnowledgeFilter {
+  topic?: string; // prefix match: "rhythm" matches "rhythm/garage"
+  tag?: string;
+  tier?: string;
+}
+
+export interface MeasurementRecordSummary {
+  name: string;
+  saved: string;
+  file: string;
+  lufsIntegrated: number;
+  tiltDbPerOct: number;
+  bpm?: number;
+  findingsCount: number;
+}
+
+export class KnowledgeStore {
+  /**
+   * @param root the knowledge/ directory
+   * @param measurementsDir library/measurements (records surface); optional
+   */
+  constructor(
+    readonly root: string,
+    readonly measurementsDir?: string,
+  ) {}
+
+  entryFilePath(topic: string, slug: string): string {
+    return join(this.root, ...topic.split("/"), `${slug}.md`);
+  }
+
+  async listEntries(filter: KnowledgeFilter = {}): Promise<StoredKnowledgeEntry[]> {
+    if (!existsSync(this.root)) return [];
+    const files = (await readdir(this.root, { recursive: true }))
+      .map(String)
+      .filter((f) => f.endsWith(".md") && !f.endsWith("INDEX.md") && basename(f) !== "README.md");
+    const entries: StoredKnowledgeEntry[] = [];
+    for (const rel of files.sort()) {
+      const abs = join(this.root, rel);
+      if (!(await stat(abs)).isFile()) continue;
+      try {
+        const entry = parseKnowledgeEntry(await readFile(abs, "utf8"));
+        const dirTopic = dirname(rel).split(sep).join("/");
+        if (dirTopic !== "." && entry.topic !== dirTopic) {
+          throw new Error(
+            `frontmatter topic "${entry.topic}" does not match directory "${dirTopic}"`,
+          );
+        }
+        entries.push({ ...entry, relPath: rel });
+      } catch (err) {
+        throw new Error(`Bad knowledge entry ${abs}: ${(err as Error).message}`);
+      }
+    }
+    return entries.filter(
+      (e) =>
+        (filter.topic === undefined ||
+          e.topic === filter.topic ||
+          e.topic.startsWith(`${filter.topic}/`)) &&
+        (filter.tag === undefined || e.tags.includes(filter.tag)) &&
+        (filter.tier === undefined || e.tier === filter.tier),
+    );
+  }
+
+  async loadEntry(slug: string): Promise<StoredKnowledgeEntry> {
+    const matches = (await this.listEntries()).filter((e) => e.slug === slug);
+    if (matches.length === 0) throw new Error(`No knowledge entry with slug "${slug}"`);
+    if (matches.length > 1) {
+      throw new Error(
+        `Slug "${slug}" is ambiguous: ${matches.map((m) => m.relPath).join(", ")}`,
+      );
+    }
+    return matches[0]!;
+  }
+
+  async saveEntry(entry: KnowledgeEntry, opts: { overwrite?: boolean } = {}): Promise<string> {
+    const file = this.entryFilePath(entry.topic, entry.slug);
+    if (!opts.overwrite && existsSync(file)) {
+      throw new Error(`${file} already exists — pass overwrite to replace it`);
+    }
+    const clash = (await this.listEntries()).find(
+      (e) => e.slug === entry.slug && e.topic !== entry.topic,
+    );
+    if (clash) throw new Error(`Slug "${entry.slug}" already used by ${clash.relPath}`);
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, serializeKnowledgeEntry(entry), "utf8");
+    return file;
+  }
+
+  /** Topics currently present (discovered, never hardcoded). */
+  async listTopics(): Promise<string[]> {
+    const topics = new Set((await this.listEntries()).map((e) => e.topic));
+    return [...topics].sort();
+  }
+
+  async listMeasurementRecords(): Promise<MeasurementRecordSummary[]> {
+    if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
+    const out: MeasurementRecordSummary[] = [];
+    for (const f of (await readdir(this.measurementsDir)).filter((x) => x.endsWith(".json")).sort()) {
+      try {
+        const r = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
+          saved: string;
+          file: string;
+          measurements: {
+            bpm?: number | null;
+            loudness: { lufs_integrated: number };
+            spectrum: { tilt_db_per_oct: number };
+          };
+          findings: unknown[];
+        };
+        out.push({
+          name: f.replace(/\.json$/, ""),
+          saved: r.saved,
+          file: r.file,
+          lufsIntegrated: r.measurements.loudness.lufs_integrated,
+          tiltDbPerOct: r.measurements.spectrum.tilt_db_per_oct,
+          ...(r.measurements.bpm ? { bpm: r.measurements.bpm } : {}),
+          findingsCount: r.findings.length,
+        });
+      } catch (err) {
+        throw new Error(`Bad measurement record ${f}: ${(err as Error).message}`);
+      }
+    }
+    return out;
+  }
+
+  /** Regenerate knowledge/INDEX.md: entries by topic + measurement records. */
+  async buildIndex(): Promise<string> {
+    const entries = await this.listEntries();
+    const byTopic = new Map<string, StoredKnowledgeEntry[]>();
+    for (const e of entries) {
+      const list = byTopic.get(e.topic) ?? [];
+      list.push(e);
+      byTopic.set(e.topic, list);
+    }
+    const lines = [
+      "# Knowledge index",
+      "",
+      `${entries.length} entries · generated by \`awh kb index\` — do not edit by hand.`,
+      "Cite slug + tier when applying an entry. Executable sections are the contract.",
+    ];
+    for (const topic of [...byTopic.keys()].sort()) {
+      lines.push("", `## ${topic}`, "", "| slug | tier | tags | executable | sources |", "|---|---|---|---|---|");
+      for (const e of byTopic.get(topic)!) {
+        lines.push(
+          `| [${e.slug}](${e.relPath.split(sep).join("/")}) | ${e.tier} | ${e.tags.join(", ")} | ` +
+            `${e.executable ? "yes" : "PROSE-ONLY"} | ${e.sources.length} |`,
+        );
+      }
+    }
+    const records = await this.listMeasurementRecords();
+    if (records.length > 0) {
+      lines.push(
+        "",
+        "## measurements (library/measurements/ — mix report records)",
+        "",
+        "| record | saved | LUFS-I | tilt | bpm | findings | source file |",
+        "|---|---|---|---|---|---|---|",
+      );
+      for (const r of records) {
+        lines.push(
+          `| [${r.name}](../library/measurements/${r.name}.json) | ${r.saved} | ` +
+            `${r.lufsIntegrated.toFixed(1)} | ${r.tiltDbPerOct.toFixed(1)} | ${r.bpm ?? ""} | ` +
+            `${r.findingsCount} | ${basename(r.file)} |`,
+        );
+      }
+    }
+    const content = `${lines.join("\n")}\n`;
+    await mkdir(this.root, { recursive: true });
+    await writeFile(join(this.root, "INDEX.md"), content, "utf8");
+    return content;
+  }
+}

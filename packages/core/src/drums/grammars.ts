@@ -1,6 +1,7 @@
 import type { NoteSpec } from "../bridge/types.js";
 import { sortNotes } from "../transforms/types.js";
 import type { DrumContext, DrumKit, DrumRole } from "./types.js";
+import type { TrapFamilyStyleSpec, TrapHatBaseName } from "./styleSpec.js";
 
 /**
  * Style grammars: deterministic drum-pattern generators. Each style builds a

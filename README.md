@@ -21,10 +21,14 @@ sections` builds a 4-minute seeded arrangement skeleton from source loops via
 editable YAML plans; `awh save`/`awh lib` grow a git-versioned clip library
 that mirrors into Live's own browser as a tagged Pack of .alc Live Clips; and
 `awh drums` generates/reworks pad-aware drum patterns (house/techno/trap).
-M6 (in build): `awh mix` — a Python measurement engine (LUFS/dBTP/PSR,
+`awh mix` (M6, validated) — a Python measurement engine (LUFS/dBTP/PSR,
 third-octave spectrum vs measured genre targets, stereo/phase, pump
 verification) + an M4L capture tap for post-FX renders and loudness-matched
-A/B (`docs/design/analysis-engine.md`).
+A/B (`docs/design/analysis-engine.md`); the `awh mix duck` toolkit fits
+sidechain envelopes to the owner's drums (ShaperBox drawing instructions or
+closed-loop stock-Compressor calibration). B4 (in build): `awh kb` — the
+tiered, executable-first knowledge base with open-ended domains, measurement
+records as citizens, and data-driven drum styles.
 Backlog candidates B1 (audio-to-MIDI) and B2 (Operator sound design) are
 researched and queued — see `docs/spec.md`.
 See [`docs/spec.md`](docs/spec.md) for requirements + milestones,
