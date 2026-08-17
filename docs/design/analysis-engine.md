@@ -114,7 +114,11 @@ uses ShaperBox Volume Shaper on a Sidechain bus, retriggered by a MIDI
    honest model, not statistics.
 3. Verification stays A/B: toggle ShaperBox Device On (one `device.param`
    call) → capture both → `mix ab`. The v1 single-file shape heuristic
-   (ducking-like/decay-like) remains a hint only.
+   (ducking-like/decay-like) remains a hint only — live verification
+   showed it mislabels full-MIX captures as decay-like when the trigger
+   source's own low end dominates the fold; it is only meaningful on the
+   isolated ducked bus, and `duck measure`/`duck calibrate` are the
+   reliable instruments either way.
 4. Python side gains `pump(x, sr, trigger_beats=[...])` alongside the
    beat-fold; the trigger-aligned path is preferred whenever a Trigger clip
    exists.
