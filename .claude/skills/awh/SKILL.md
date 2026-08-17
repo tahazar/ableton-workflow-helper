@@ -122,6 +122,25 @@ awh sections apply plan.yaml --seed 42 [--at-bar N] [--clear] [--dry-run]
 - Flow: plan -> user reviews/edits YAML (or asks you to adjust it) -> dry-run
   -> apply -> user auditions -> iterate on the YAML, not the clips.
 
+## Drums (`awh drums`) — pad-aware patterns
+
+```sh
+awh drums gen <trackPath> --style house|techno|trap [--bars 4] [--density 0..1]
+    [--seed N] [--slot s | --at-bar N]     # CO-WRITE: new pattern from grammar
+awh drums fill <clipPath> [--style s]      # TRANSFORM: fill into the last bar
+awh drums humanize <clipPath> [--timing 0.02] [--velocity 8]   # role-aware groove
+awh drums vary <clipPath> [-n 4] [--amount 0..1]   # role-aware variations
+```
+
+- `gen` maps the track's drum-rack pads to roles (kick/snare/clap/hats/...)
+  by pad name, GM notes as fallback — it warns when no rack was found; check
+  the track has a drum rack first via `awh status`.
+- Use `drums vary` (not plain `vary`) for drum clips: it keeps kick anchors
+  and backbeats while re-rolling hats and ghosts. `fill`/`humanize` edit IN
+  PLACE — one undo reverts; re-read to show the user what changed.
+- density/style requests map naturally: "busier" → higher --density,
+  "darker/minimal" → techno at lower density, "half-time/trap" → trap.
+
 ## Library (`awh save` / `awh lib`) — the owner's clip memory
 
 Git-versioned clips under `library/clips/<category>/<slug>.md` (markdown +

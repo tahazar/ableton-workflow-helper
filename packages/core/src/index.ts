@@ -111,3 +111,14 @@ export {
   type PackItem,
   type PackProperties,
 } from "./alc/pack.js";
+export { type DrumContext, type DrumKit, type DrumRole } from "./drums/types.js";
+export { GM_DRUM_KIT, mapPadRoles, roleOfNote } from "./drums/roles.js";
+export { generateDrumPattern, listDrumStyles } from "./drums/grammars.js";
+export {
+  drumFill,
+  humanizeDrums,
+  varyDrums,
+  type FillOptions,
+  type HumanizeDrumsOptions,
+  type VaryDrumsOptions,
+} from "./drums/fills.js";
