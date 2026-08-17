@@ -2197,11 +2197,17 @@ ref
   .command("analyze <audio>")
   .description("Analyze a reference: BPM/grid, bar energy arc, rule-based sections")
   .option("--phrase <bars>", "phrase length sections snap to (4 or 8)", "4")
+  .option(
+    "--hint-bpm <bpm>",
+    "tempo disambiguation hint (e.g. the Set's tempo) — swaps in the runner-up " +
+      "when it matches within 2%; never invents a tempo",
+  )
   .option("--save [name]", "save to library/references/<name>.json (knowledge citizen)")
   .action(
-    async (audio: string, cmdOpts: { phrase: string; save?: string | boolean }) => {
+    async (audio: string, cmdOpts: { phrase: string; hintBpm?: string; save?: string | boolean }) => {
       const opts = program.opts<GlobalOpts>();
       const args = ["ref", audio, "--phrase", cmdOpts.phrase];
+      if (cmdOpts.hintBpm) args.push("--hint-bpm", cmdOpts.hintBpm);
       if (cmdOpts.save !== undefined) {
         const name =
           typeof cmdOpts.save === "string"

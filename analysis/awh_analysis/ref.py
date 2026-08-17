@@ -111,8 +111,31 @@ BUILD_SLOPE_TIE_TOL = 0.01  # dB/bar: windows this close in slope are "tied" -> 
 INTRO_OUTRO_ENERGY_FRACTION = 0.6
 INTRO_OUTRO_DB = 10.0 * np.log10(INTRO_OUTRO_ENERGY_FRACTION)  # ~= -2.22 dB
 
+# "likely-*" relaxed second pass: real commercial tracks routinely carry a
+# genuine, audible drop/breakdown/build that falls just short of the
+# confirmed-rule thresholds above (e.g. a ~2.6 dB drop against the 3.0 dB
+# rule) and would otherwise vanish into one unlabeled `section` bucket.
+# Rather than loosen the confirmed rules (and risk false positives), a
+# SECOND pass runs ONLY over gaps the primary pass left unlabeled, with
+# every relevant threshold scaled down by RELAXED_SCALE — honest-not-timid:
+# never promoted to a confirmed name, but not silently dropped either. See
+# `detect_sections`.
+RELAXED_SCALE = 0.7
+RELAXED_DROP_JUMP_DB = DROP_JUMP_DB * RELAXED_SCALE  # 2.1
+RELAXED_BREAKDOWN_DROP_DB = BREAKDOWN_DROP_DB * RELAXED_SCALE  # 2.1
+RELAXED_BREAKDOWN_SUB_BELOW_MAX_DB = BREAKDOWN_SUB_BELOW_MAX_DB * RELAXED_SCALE  # 5.6
+RELAXED_BUILD_MIN_SLOPE_DB_PER_BAR = BUILD_MIN_SLOPE_DB_PER_BAR * RELAXED_SCALE  # 0.21
+LIKELY_CONFIDENCE_CAP = 0.5
+LIKELY_CONFIDENCE_SCALE = 0.5
+LIKELY_SECTIONS_NOTE = "likely-* sections are relaxed-threshold suggestions — confirm by ear."
+
 MIN_REFERENCE_DURATION_S = 10.0
 MEASUREMENTS_EXCERPT_S = 20.0  # representative window handed to report.analyze()
+
+# BPM hint: an owner-supplied tempo (e.g. read off a DAW/tag) that can only
+# ever pick between the candidates estimate_tempo() already surfaced
+# (winner, runner-up) — it never invents a tempo neither candidate found.
+BPM_HINT_MATCH_TOL = 0.02  # +/-2% relative
 
 
 # ---------------------------------------------------------------------------
@@ -579,12 +602,289 @@ def _confidence(margin: float, threshold: float, span: float) -> float:
     return float(np.clip(0.5 + 0.45 * (extra / span), 0.3, 0.95))
 
 
+def _detect_drop_runs(
+    full_s: np.ndarray,
+    sub_s: np.ndarray,
+    jump_db: float,
+    sub_within_db: float,
+    search_lo: int = 0,
+    search_hi: int | None = None,
+) -> tuple[list[tuple[int, int]], np.ndarray]:
+    """Bars where full jumps >=`jump_db` over the previous
+    DROP_PREV_MEAN_BARS-bar mean AND sub is within `sub_within_db` of its
+    max, collapsed into contiguous runs of >=DROP_MIN_SUSTAIN_BARS.
+    `search_lo`/`search_hi` restrict which bars may be FLAGGED (the
+    previous-mean window itself may still reach earlier than `search_lo`)
+    — this is what lets the relaxed second pass (see `_relaxed_gap_events`)
+    scope itself to a single gap without ever touching a confirmed
+    section's bars.
+    """
+    n = full_s.size
+    hi = n if search_hi is None else search_hi
+    flag = np.zeros(n, dtype=bool)
+    delta_arr = np.full(n, np.nan)
+    lo = max(search_lo, DROP_PREV_MEAN_BARS)
+    for i in range(lo, hi):
+        prev_mean = np.mean(full_s[i - DROP_PREV_MEAN_BARS : i])
+        delta = full_s[i] - prev_mean
+        if delta >= jump_db and sub_s[i] >= -sub_within_db:
+            flag[i] = True
+            delta_arr[i] = delta
+    return _runs(flag, DROP_MIN_SUSTAIN_BARS), delta_arr
+
+
+def _detect_breakdown_runs(
+    full_s: np.ndarray,
+    sub_s: np.ndarray,
+    drop_db: float,
+    sub_below_db: float,
+    after_bar: int | None,
+    search_lo: int = 0,
+    search_hi: int | None = None,
+) -> tuple[list[tuple[int, int]], np.ndarray]:
+    """Bars where full falls >=`drop_db` below the previous
+    BREAKDOWN_PREV_MEAN_BARS-bar mean OR sub falls >=`sub_below_db` below
+    its max, at/after `after_bar` (a breakdown implies something dropped
+    first), collapsed into contiguous runs of >=BREAKDOWN_MIN_SUSTAIN_BARS.
+    `search_lo`/`search_hi` scope the relaxed pass to a single gap, same as
+    `_detect_drop_runs`.
+    """
+    n = full_s.size
+    hi = n if search_hi is None else search_hi
+    flag = np.zeros(n, dtype=bool)
+    delta_arr = np.full(n, np.nan)
+    lo = max(search_lo, BREAKDOWN_PREV_MEAN_BARS)
+    for i in range(lo, hi):
+        if after_bar is None or i < after_bar:
+            continue
+        prev_mean = np.mean(full_s[i - BREAKDOWN_PREV_MEAN_BARS : i])
+        delta = full_s[i] - prev_mean
+        if delta <= -drop_db or sub_s[i] <= -sub_below_db:
+            flag[i] = True
+            delta_arr[i] = delta
+    return _runs(flag, BREAKDOWN_MIN_SUSTAIN_BARS), delta_arr
+
+
+def _detect_build_runs(
+    full_s: np.ndarray, drop_starts: list[int], min_slope: float, search_lo: int = 0
+) -> list[tuple[int, int, float]]:
+    """For each bar a drop starts at, the steepest window of
+    >=BUILD_MIN_BARS and <=BUILD_MAX_WINDOW_BARS immediately before it
+    whose fitted slope clears `min_slope` dB/bar (ties favor the longer
+    window). `search_lo` keeps the window from reaching earlier than it —
+    used to scope the relaxed pass to a single gap.
+    """
+    build_runs = []  # (start0, end0_excl, slope)
+    for d_start in drop_starts:
+        best = None
+        max_w = min(d_start - search_lo, BUILD_MAX_WINDOW_BARS)
+        for w in range(BUILD_MIN_BARS, max_w + 1):
+            start = d_start - w
+            ys = full_s[start:d_start]
+            xs = np.arange(w, dtype=np.float64)
+            slope = float(np.polyfit(xs, ys, 1)[0])
+            if slope < min_slope:
+                continue
+            # Prefer the STEEPEST qualifying window, not the longest one:
+            # a long window that also swallows a flat lead-in (e.g. the
+            # intro) still averages out to a positive slope, but dilutes
+            # it — the steepest window is the one that actually captures
+            # where the rise happens. Ties (a clean linear ramp scores
+            # near-identically at every sub-window) favor the longer span,
+            # so we still report the ramp's full extent.
+            if best is None or slope > best[2] + BUILD_SLOPE_TIE_TOL or (
+                abs(slope - best[2]) <= BUILD_SLOPE_TIE_TOL and w > best[1]
+            ):
+                best = (start, w, slope)
+        if best is not None:
+            start, w, slope = best
+            build_runs.append((start, d_start, slope))
+    return build_runs
+
+
+def _likely_confidence(margin: float, threshold: float, span: float) -> float:
+    """Confidence for a relaxed-pass (`likely-*`) event: the normal
+    `_confidence` curve measured against the RELAXED threshold that
+    actually fired, then scaled down by LIKELY_CONFIDENCE_SCALE and capped
+    at LIKELY_CONFIDENCE_CAP — a `likely-*` section can never read as more
+    than a head-start suggestion, however strong its own relaxed margin."""
+    base = _confidence(margin, threshold, span)
+    return float(min(LIKELY_CONFIDENCE_CAP, base * LIKELY_CONFIDENCE_SCALE))
+
+
+def _fill_named_sections(
+    full_s: np.ndarray,
+    sub_s: np.ndarray,
+    region_start0: int,
+    region_end0: int,
+    named: list[tuple[int, int, str, float, str]],
+) -> list[dict]:
+    """Fill `[region_start0, region_end0)` with the given non-overlapping
+    `(start0, end0, name, confidence, evidence)` events (in bar order),
+    inserting an unlabeled `section` ("no rule matched") into every
+    remaining gap. Shared by the primary pass (region = the whole track)
+    and the relaxed second pass (region = one primary-pass gap)."""
+    out: list[dict] = []
+    cursor = region_start0
+    for start0, end0, name, conf, evidence in named:
+        if start0 > cursor:
+            mean_full = float(np.mean(full_s[cursor:start0]))
+            mean_sub = float(np.mean(sub_s[cursor:start0]))
+            out.append(
+                {
+                    "name": "section",
+                    "start_bar": cursor + 1,
+                    "end_bar": start0,
+                    "confidence": 0.3,
+                    "evidence": f"full {mean_full:+.1f} dB, sub {mean_sub:+.1f} dB from max; no rule matched",
+                }
+            )
+        out.append(
+            {"name": name, "start_bar": start0 + 1, "end_bar": end0, "confidence": conf, "evidence": evidence}
+        )
+        cursor = end0
+    if region_end0 > cursor:
+        mean_full = float(np.mean(full_s[cursor:region_end0]))
+        mean_sub = float(np.mean(sub_s[cursor:region_end0]))
+        out.append(
+            {
+                "name": "section",
+                "start_bar": cursor + 1,
+                "end_bar": region_end0,
+                "confidence": 0.3,
+                "evidence": f"full {mean_full:+.1f} dB, sub {mean_sub:+.1f} dB from max; no rule matched",
+            }
+        )
+    return out
+
+
+def _relaxed_gap_events(
+    full_s: np.ndarray,
+    sub_s: np.ndarray,
+    gap_start0: int,
+    gap_end0: int,
+    phrase_bars: int,
+    confirmed_first_drop_start: int | None,
+    confirmed_drop_starts: list[int],
+) -> list[dict]:
+    """Second, relaxed-threshold pass restricted to ONE gap the primary
+    pass left unlabeled: `[gap_start0, gap_end0)` only. Because every
+    detection loop below is scoped to that range and every resulting event
+    is then hard-clipped back into it, a `likely-*` event can never overlap
+    or reshape a confirmed section — see the module-level RELAXED_*
+    constants' docstring for why this pass exists. Returns final-shape
+    section dicts (phrase-snapped, non-overlapping, in bar order) that
+    exactly cover the gap.
+    """
+    if gap_end0 <= gap_start0:
+        return []
+
+    events: list[dict] = []
+
+    drop_runs, drop_delta = _detect_drop_runs(
+        full_s, sub_s, RELAXED_DROP_JUMP_DB, DROP_SUB_WITHIN_MAX_DB, search_lo=gap_start0, search_hi=gap_end0
+    )
+    for start, end in drop_runs:
+        delta = float(np.nanmean(drop_delta[start:end]))
+        sub_val = float(np.mean(sub_s[start:end]))
+        conf = _likely_confidence(delta, RELAXED_DROP_JUMP_DB, span=6.0)
+        evidence = (
+            f"full {delta:+.1f} dB vs prev {DROP_PREV_MEAN_BARS}-bar mean — below the "
+            f"{DROP_JUMP_DB:.1f} dB confirmed-drop threshold; relaxed-pass detection "
+            f"(sub {sub_val:+.1f} dB from max)"
+        )
+        events.append({"start": start, "end": end, "name": "likely-drop", "confidence": conf, "evidence": evidence})
+
+    breakdown_runs, breakdown_delta = _detect_breakdown_runs(
+        full_s,
+        sub_s,
+        RELAXED_BREAKDOWN_DROP_DB,
+        RELAXED_BREAKDOWN_SUB_BELOW_MAX_DB,
+        confirmed_first_drop_start,
+        search_lo=gap_start0,
+        search_hi=gap_end0,
+    )
+    for start, end in breakdown_runs:
+        delta = float(np.nanmean(breakdown_delta[start:end]))
+        sub_val = float(np.mean(sub_s[start:end]))
+        conf = _likely_confidence(
+            -delta if np.isfinite(delta) else -sub_val, RELAXED_BREAKDOWN_DROP_DB, span=6.0
+        )
+        evidence = (
+            f"full {delta:+.1f} dB vs prev {BREAKDOWN_PREV_MEAN_BARS}-bar mean — below the "
+            f"{BREAKDOWN_DROP_DB:.1f} dB confirmed-breakdown threshold; relaxed-pass detection "
+            f"(sub {sub_val:+.1f} dB from max)"
+        )
+        events.append(
+            {"start": start, "end": end, "name": "likely-breakdown", "confidence": conf, "evidence": evidence}
+        )
+
+    # A likely-build must still terminate at a drop — either a likely-drop
+    # found in this SAME gap, or a confirmed drop that starts exactly where
+    # the gap ends (the lead-up sat in the gap, but the drop itself was
+    # already strong enough to confirm on its own).
+    drop_starts_for_build = [start for start, _end in drop_runs]
+    drop_starts_for_build += [s for s in confirmed_drop_starts if s == gap_end0]
+    build_runs = _detect_build_runs(
+        full_s, drop_starts_for_build, RELAXED_BUILD_MIN_SLOPE_DB_PER_BAR, search_lo=gap_start0
+    )
+    for start, end, slope in build_runs:
+        sub_val = float(np.mean(sub_s[start:end]))
+        conf = _likely_confidence(slope, RELAXED_BUILD_MIN_SLOPE_DB_PER_BAR, span=1.0)
+        evidence = (
+            f"full slope {slope:+.2f} dB/bar over {end - start} bars, ending at a drop — below the "
+            f"{BUILD_MIN_SLOPE_DB_PER_BAR:.2f} dB/bar confirmed-build threshold; relaxed-pass detection "
+            f"(sub {sub_val:+.1f} dB from max)"
+        )
+        events.append({"start": start, "end": end, "name": "likely-build", "confidence": conf, "evidence": evidence})
+
+    # Phrase-snap each event, then hard-clip to the gap — this is the
+    # actual guarantee that a likely-* event can never eat into a
+    # confirmed section, independent of anything the detection loops above
+    # found.
+    def snap_down(bar0: int) -> int:
+        return (bar0 // phrase_bars) * phrase_bars
+
+    def snap_up(bar0_end: int) -> int:
+        return int(np.ceil(bar0_end / phrase_bars)) * phrase_bars
+
+    for ev in events:
+        ev["start"] = max(gap_start0, snap_down(ev["start"]))
+        ev["end"] = min(gap_end0, snap_up(ev["end"]))
+    events = [ev for ev in events if ev["end"] > ev["start"]]
+    events.sort(key=lambda e: e["start"])
+
+    resolved: list[dict] = []
+    for ev in events:
+        s0, e0 = ev["start"], ev["end"]
+        if resolved and s0 < resolved[-1]["end"]:
+            prev = resolved[-1]
+            new_end = min(prev["end"], s0)
+            if new_end > prev["start"]:
+                prev["end"] = new_end
+            s0 = max(s0, prev["end"])
+            if s0 >= e0:
+                continue
+        if e0 > s0:
+            resolved.append({**ev, "start": s0, "end": e0})
+
+    return _fill_named_sections(
+        full_s,
+        sub_s,
+        gap_start0,
+        gap_end0,
+        [(e["start"], e["end"], e["name"], e["confidence"], e["evidence"]) for e in resolved],
+    )
+
+
 def detect_sections(arc: list[dict], phrase_bars: int = 4) -> list[dict]:
     """Rule-based drop/build/breakdown/intro/outro detection on the
     (3-bar median smoothed) energy arc. Boundaries snap to `phrase_bars`
-    edges. Gaps between named events are unlabeled `section` spans — no
-    invented pop labels (research constraint). Each section's evidence
-    quotes the numbers that fired (or failed to fire) its rule.
+    edges. Gaps between named events get a SECOND, relaxed-threshold pass
+    (see `_relaxed_gap_events`) that may surface `likely-*` suggestions;
+    anything still unmatched is an unlabeled `section` — no invented pop
+    labels (research constraint). Each section's evidence quotes the
+    numbers that fired (or failed to fire) its rule.
     """
     n = len(arc)
     if n == 0:
@@ -603,57 +903,18 @@ def detect_sections(arc: list[dict], phrase_bars: int = 4) -> list[dict]:
 
     # --- drop: full jumps >=3 dB over the previous 4-bar mean AND sub
     # within 6 dB of its max, sustained >=4 bars ---------------------------
-    drop_flag = np.zeros(n, dtype=bool)
-    drop_delta = np.full(n, np.nan)
-    for i in range(DROP_PREV_MEAN_BARS, n):
-        prev_mean = np.mean(full_s[i - DROP_PREV_MEAN_BARS : i])
-        delta = full_s[i] - prev_mean
-        if delta >= DROP_JUMP_DB and sub_s[i] >= -DROP_SUB_WITHIN_MAX_DB:
-            drop_flag[i] = True
-            drop_delta[i] = delta
-    drop_runs = _runs(drop_flag, DROP_MIN_SUSTAIN_BARS)
+    drop_runs, drop_delta = _detect_drop_runs(full_s, sub_s, DROP_JUMP_DB, DROP_SUB_WITHIN_MAX_DB)
 
     # --- breakdown: full >=3 dB below the previous 8-bar mean OR sub
     # falls >=8 dB below its max, sustained >=4 bars, after >=1 drop -------
     first_drop_start = drop_runs[0][0] if drop_runs else None
-    breakdown_flag = np.zeros(n, dtype=bool)
-    breakdown_delta = np.full(n, np.nan)
-    for i in range(BREAKDOWN_PREV_MEAN_BARS, n):
-        if first_drop_start is None or i < first_drop_start:
-            continue
-        prev_mean = np.mean(full_s[i - BREAKDOWN_PREV_MEAN_BARS : i])
-        delta = full_s[i] - prev_mean
-        if delta <= -BREAKDOWN_DROP_DB or sub_s[i] <= -BREAKDOWN_SUB_BELOW_MAX_DB:
-            breakdown_flag[i] = True
-            breakdown_delta[i] = delta
-    breakdown_runs = _runs(breakdown_flag, BREAKDOWN_MIN_SUSTAIN_BARS)
+    breakdown_runs, breakdown_delta = _detect_breakdown_runs(
+        full_s, sub_s, BREAKDOWN_DROP_DB, BREAKDOWN_SUB_BELOW_MAX_DB, first_drop_start
+    )
 
     # --- build: positive fitted slope >=0.3 dB/bar over >=4 bars,
     # terminating at a drop -------------------------------------------------
-    build_runs = []  # (start0, end0_excl, slope)
-    for d_start, _d_end in drop_runs:
-        best = None
-        for w in range(BUILD_MIN_BARS, min(d_start, BUILD_MAX_WINDOW_BARS) + 1):
-            start = d_start - w
-            ys = full_s[start:d_start]
-            xs = np.arange(w, dtype=np.float64)
-            slope = float(np.polyfit(xs, ys, 1)[0])
-            if slope < BUILD_MIN_SLOPE_DB_PER_BAR:
-                continue
-            # Prefer the STEEPEST qualifying window, not the longest one:
-            # a long window that also swallows a flat lead-in (e.g. the
-            # intro) still averages out to a positive slope, but dilutes
-            # it — the steepest window is the one that actually captures
-            # where the rise happens. Ties (a clean linear ramp scores
-            # near-identically at every sub-window) favor the longer span,
-            # so we still report the ramp's full extent.
-            if best is None or slope > best[2] + BUILD_SLOPE_TIE_TOL or (
-                abs(slope - best[2]) <= BUILD_SLOPE_TIE_TOL and w > best[1]
-            ):
-                best = (start, w, slope)
-        if best is not None:
-            start, w, slope = best
-            build_runs.append((start, d_start, slope))
+    build_runs = _detect_build_runs(full_s, [d[0] for d in drop_runs], BUILD_MIN_SLOPE_DB_PER_BAR)
 
     # Each event carries an `extend` flag: drop/breakdown's rule only
     # fires ON THE TRANSITION (the previous-N-bar-mean baseline slides to
@@ -790,20 +1051,19 @@ def detect_sections(arc: list[dict], phrase_bars: int = 4) -> list[dict]:
         if end0 > start0:
             resolved.append((start0, end0, name, conf, evidence))
 
+    # --- fill every gap the primary pass left: a relaxed second pass first
+    # (may surface likely-* suggestions), then whatever's still unmatched
+    # becomes an unlabeled `section` — see `_relaxed_gap_events`. ----------
+    confirmed_drop_starts = [start for start, _end in drop_runs]
+
     sections: list[dict] = []
     cursor = 0
     for start0, end0, name, conf, evidence in resolved:
         if start0 > cursor:
-            mean_full = float(np.mean(full_s[cursor:start0]))
-            mean_sub = float(np.mean(sub_s[cursor:start0]))
-            sections.append(
-                {
-                    "name": "section",
-                    "start_bar": cursor + 1,
-                    "end_bar": start0,
-                    "confidence": 0.3,
-                    "evidence": f"full {mean_full:+.1f} dB, sub {mean_sub:+.1f} dB from max; no rule matched",
-                }
+            sections.extend(
+                _relaxed_gap_events(
+                    full_s, sub_s, cursor, start0, phrase_bars, first_drop_start, confirmed_drop_starts
+                )
             )
         sections.append(
             {
@@ -816,16 +1076,8 @@ def detect_sections(arc: list[dict], phrase_bars: int = 4) -> list[dict]:
         )
         cursor = end0
     if cursor < n:
-        mean_full = float(np.mean(full_s[cursor:n]))
-        mean_sub = float(np.mean(sub_s[cursor:n]))
-        sections.append(
-            {
-                "name": "section",
-                "start_bar": cursor + 1,
-                "end_bar": n,
-                "confidence": 0.3,
-                "evidence": f"full {mean_full:+.1f} dB, sub {mean_sub:+.1f} dB from max; no rule matched",
-            }
+        sections.extend(
+            _relaxed_gap_events(full_s, sub_s, cursor, n, phrase_bars, first_drop_start, confirmed_drop_starts)
         )
 
     return sections
@@ -836,10 +1088,51 @@ def detect_sections(arc: list[dict], phrase_bars: int = 4) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 
-def analyze_reference(path: str, phrase_bars: int = 4) -> dict:
+def _apply_bpm_hint(tempo: dict, hint_bpm: float | None) -> list[str]:
+    """Let an owner-supplied tempo hint disambiguate winner vs. runner-up
+    when autocorrelation alone can't (confidence 0.0 is a legitimate
+    outcome on ambiguous real material). The hint may only ever SWAP
+    between the two candidates `estimate_tempo` already found — it never
+    invents a tempo neither candidate surfaced. Mutates `tempo` in place
+    (bpm/runner_up/runner_up_ratio) when it swaps; always returns the notes
+    to append (possibly empty, when no hint was given).
+    """
+    if hint_bpm is None:
+        return []
+
+    def matches(bpm: float | None) -> bool:
+        return bpm is not None and abs(bpm - hint_bpm) <= BPM_HINT_MATCH_TOL * hint_bpm
+
+    winner_bpm, runner_bpm = tempo["bpm"], tempo["runner_up"]
+    if matches(winner_bpm):
+        return [f"tempo hint {hint_bpm:g} matched the reported {winner_bpm:.1f} BPM — confirmed."]
+    if matches(runner_bpm):
+        old_ratio = tempo["runner_up_ratio"]
+        tempo["bpm"], tempo["runner_up"] = runner_bpm, winner_bpm
+        # runner_up_ratio described the (old) runner-up's score as a
+        # fraction of the (old) winner's — reused as-is after the swap: it
+        # still describes how close autocorrelation judged these same two
+        # candidates, just now framed from the new winner's side.
+        tempo["runner_up_ratio"] = old_ratio
+        return [
+            f"tempo hint {hint_bpm:g} matched the runner-up — swapped "
+            f"(autocorrelation preferred {winner_bpm:.1f} BPM at ratio {old_ratio:.2f})"
+        ]
+    runner_str = f"{runner_bpm:.1f}" if runner_bpm is not None else "n/a"
+    return [
+        f"tempo hint {hint_bpm:g} matched neither candidate "
+        f"({winner_bpm:.1f} / {runner_str} BPM) — ignored."
+    ]
+
+
+def analyze_reference(path: str, phrase_bars: int = 4, hint_bpm: float | None = None) -> dict:
     """Full M8 reference-track analysis: tempo/grid, bar-synced energy arc,
     and a draft section map, plus the M6 measurement profile so the same
     file doubles as an arrangement map and a tonal target.
+
+    `hint_bpm`, if given, can only pick between the tempo candidates
+    autocorrelation already surfaced (winner/runner-up, within
+    BPM_HINT_MATCH_TOL) — see `_apply_bpm_hint`. It never invents a tempo.
     """
     x, sr = load(path)
     duration_s = x.shape[0] / sr
@@ -853,6 +1146,7 @@ def analyze_reference(path: str, phrase_bars: int = 4) -> dict:
 
     onset_env, sub_env, hop_s = onset_and_subband(mono, sr)
     tempo = estimate_tempo(onset_env, hop_s)
+    hint_notes = _apply_bpm_hint(tempo, hint_bpm)
     bpm = tempo["bpm"]
 
     beat_offset_s = beat_phase(onset_env, hop_s, bpm)
@@ -861,7 +1155,7 @@ def analyze_reference(path: str, phrase_bars: int = 4) -> dict:
     arc = bar_arc(mono, sr, bpm, downbeat["downbeat_offset_s"])
     sections = detect_sections(arc, phrase_bars)
 
-    notes: list[str] = []
+    notes: list[str] = list(hint_notes)
     if tempo["runner_up"] is not None and tempo["runner_up_ratio"] >= TEMPO_AMBIGUITY_NOTE_RATIO:
         notes.append(
             f"Tempo autocorrelation is ambiguous between {bpm:.1f} BPM and "
@@ -873,6 +1167,8 @@ def analyze_reference(path: str, phrase_bars: int = 4) -> dict:
             f"Downbeat confidence is low ({downbeat['confidence']:.2f}) — bar 1 may be "
             "off by a beat or two; correct by ear."
         )
+    if any(s["name"].startswith("likely-") for s in sections):
+        notes.append(LIKELY_SECTIONS_NOTE)
 
     # report.analyze() on the FULL file does not scale to reference-length
     # audio: dynamics.phase_rotation_headroom alone re-oversamples the

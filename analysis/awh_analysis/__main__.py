@@ -259,7 +259,7 @@ def _render_ref_text(result: dict) -> str:
 
 
 def _cmd_ref(args: argparse.Namespace) -> int:
-    result = ref.analyze_reference(args.file, phrase_bars=args.phrase)
+    result = ref.analyze_reference(args.file, phrase_bars=args.phrase, hint_bpm=args.hint_bpm)
     if args.save_record:
         ref.save_reference_record(args.save_record, args.file, result)
     if args.json:
@@ -334,6 +334,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_ref.add_argument("file")
     p_ref.add_argument("--phrase", type=int, default=4,
                        help="phrase length in bars for section boundary snapping (default 4)")
+    p_ref.add_argument("--hint-bpm", type=float, default=None,
+                       help="disambiguate half/double-time: matches the runner-up "
+                            "within 2%% -> swap (never invents a tempo)")
     p_ref.add_argument("--save-record", type=str, default=None,
                        help="also write a reference-analysis record JSON to this path")
     p_ref.add_argument("--json", action="store_true")
