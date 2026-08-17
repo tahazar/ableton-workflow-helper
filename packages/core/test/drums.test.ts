@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { makeRng } from "../src/transforms/rng.js";
 import { GM_DRUM_KIT, mapPadRoles, roleOfNote } from "../src/drums/roles.js";
-import { generateDrumPattern, listDrumStyles } from "../src/drums/grammars.js";
+import {
+  TRAP_KICK_CELLS,
+  generateDrumPattern,
+  generateDrumPatternDetailed,
+  listDrumStyles,
+  listDrumVariants,
+} from "../src/drums/grammars.js";
 import { drumFill, humanizeDrums, varyDrums } from "../src/drums/fills.js";
 import type { DrumContext, DrumKit } from "../src/drums/types.js";
 import type { NoteSpec } from "../src/bridge/types.js";
@@ -157,6 +163,45 @@ describe("generateDrumPattern", () => {
     const notes = generateDrumPattern("trap", FULL_KIT, ctx({ bars, beatsPerBar: 4 }));
     const snareBeats = notes.filter((n) => n.pitch === FULL_KIT.snare).map((n) => n.start);
     expect(snareBeats).toEqual([2, 6, 10]); // beat index 2 (0-based) of each 4-beat bar
+  });
+
+  it("trap: the kick CELL is locked across ordinary bars (only velocities breathe)", () => {
+    // bars 0 and 1 of a 3-bar loop are ordinary; bar 2 is the turnaround
+    const { notes, meta } = generateDrumPatternDetailed("trap", FULL_KIT, ctx({ bars: 3 }));
+    const kickOffsets = (bar: number) =>
+      notes
+        .filter((n) => n.pitch === FULL_KIT.kick && n.start >= bar * 4 && n.start < (bar + 1) * 4)
+        .map((n) => n.start - bar * 4);
+    const cell = TRAP_KICK_CELLS.find((c) => c.name === meta.kickCell)!;
+    expect(kickOffsets(0)).toEqual(cell.offsets);
+    expect(kickOffsets(1)).toEqual(cell.offsets);
+    // turnaround may add a ghost on the final 16th but never loses the cell
+    expect(kickOffsets(2).slice(0, cell.offsets.length)).toEqual(cell.offsets);
+    expect(kickOffsets(2).length).toBeLessThanOrEqual(cell.offsets.length + 1);
+  });
+
+  it("trap: --variant forces a named kick cell; different variants differ", () => {
+    expect(listDrumVariants("trap")).toEqual(TRAP_KICK_CELLS.map((c) => c.name));
+    expect(listDrumVariants("house")).toEqual([]);
+    const a = generateDrumPatternDetailed("trap", FULL_KIT, ctx(), { variant: 0 });
+    const b = generateDrumPatternDetailed("trap", FULL_KIT, ctx(), { variant: 4 });
+    expect(a.meta.kickCell).toBe("hold");
+    expect(b.meta.kickCell).toBe("sparse");
+    const kicksIn = (notes: NoteSpec[]) =>
+      notes.filter((n) => n.pitch === FULL_KIT.kick && n.start < 4).map((n) => n.start);
+    expect(kicksIn(a.notes)).toEqual([0, 3.25]);
+    expect(kicksIn(b.notes)).toEqual([0, 2.5]);
+  });
+
+  it("trap: turnaround bars always carry a hat event on the final beat", () => {
+    for (const seed of [1, 2, 3, 4, 5]) {
+      const notes = generateDrumPattern("trap", FULL_KIT, ctx({ bars: 4, rng: makeRng(seed) }));
+      // bar 3 (index) is a turnaround: final beat spans [15, 16)
+      const lastBeatHats = notes.filter(
+        (n) => n.pitch === FULL_KIT["hat-closed"] && n.start >= 15 && n.start < 16,
+      );
+      expect(lastBeatHats.length).toBeGreaterThanOrEqual(3); // roll, not a lone 8th
+    }
   });
 
   it("no open hat pad -> no open-hat notes", () => {

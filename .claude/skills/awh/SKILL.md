@@ -135,6 +135,12 @@ awh drums vary <clipPath> [-n 4] [--amount 0..1]   # role-aware variations
 - `gen` maps the track's drum-rack pads to roles (kick/snare/clap/hats/...)
   by pad name, GM notes as fallback — it warns when no rack was found; check
   the track has a drum rack first via `awh status`.
+- Grooves are CELL-based: the kick figure is a seeded pick from curated
+  common variations, held for the whole loop (only velocities/ghosts/rolls
+  breathe per bar; every 4th bar is a turnaround with a fill gesture). Trap
+  cells are nameable — `--variant hold|double-tap|late-lean|rolling|sparse|
+  syncopated` — so "try the other common kick feel" = re-run with a
+  different variant, not a different seed. gen prints which cell it chose.
 - Use `drums vary` (not plain `vary`) for drum clips: it keeps kick anchors
   and backbeats while re-rolling hats and ghosts. `fill`/`humanize` edit IN
   PLACE — one undo reverts; re-read to show the user what changed.

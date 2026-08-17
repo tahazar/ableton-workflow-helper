@@ -39,9 +39,10 @@ import {
   writePack,
   GM_DRUM_KIT,
   drumFill,
-  generateDrumPattern,
+  generateDrumPatternDetailed,
   humanizeDrums,
   listDrumStyles,
+  listDrumVariants,
   mapPadRoles,
   varyDrums,
   type ClipDetail,
@@ -699,6 +700,11 @@ drums
   .option("--slot <slotPath>", "explicit session slot target")
   .option("--at-bar <bar>", "arrangement position (1-based bar)")
   .option("--name <name>", "clip name (default: <style>-drums)")
+  .option(
+    "--variant <variant>",
+    "force a named groove variant (e.g. trap kick cell: hold, double-tap, " +
+      "late-lean, rolling, sparse, syncopated) or its index",
+  )
   .action(
     async (
       trackPath: string,
@@ -711,13 +717,33 @@ drums
         slot?: string;
         atBar?: string;
         name?: string;
+        variant?: string;
       },
     ) => {
       const opts = program.opts<GlobalOpts>();
       const summary = (await op(opts, "set.summary")) as SetSummary;
       const { kit, usedRack } = trackDrumKit(summary, trackPath);
       const ctx = drumContext(cmdOpts);
-      const notes = generateDrumPattern(cmdOpts.style, kit, ctx);
+
+      let variant: number | undefined;
+      if (cmdOpts.variant !== undefined) {
+        const names = listDrumVariants(cmdOpts.style);
+        if (names.length === 0) {
+          throw new Error(`style "${cmdOpts.style}" has no named variants (seed-only)`);
+        }
+        variant = /^\d+$/.test(cmdOpts.variant)
+          ? Number(cmdOpts.variant)
+          : names.indexOf(cmdOpts.variant);
+        if (variant < 0) {
+          throw new Error(
+            `unknown variant "${cmdOpts.variant}" (available: ${names.join(", ")})`,
+          );
+        }
+      }
+
+      const { notes, meta } = generateDrumPatternDetailed(cmdOpts.style, kit, ctx, {
+        ...(variant !== undefined ? { variant } : {}),
+      });
       const lengthBeats = ctx.bars * ctx.beatsPerBar;
 
       let target: unknown;
@@ -752,9 +778,13 @@ drums
         notes,
         name,
       })) as { path: string };
-      output(opts, { path: result.path, notes: notes.length, usedRack }, () =>
+      const metaLine = Object.entries(meta)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" · ");
+      output(opts, { path: result.path, notes: notes.length, usedRack, meta }, () =>
         [
           `${cmdOpts.style} pattern -> ${where} (${notes.length} hits, ${ctx.bars} bars, seed ${cmdOpts.seed})`,
+          ...(metaLine ? [metaLine] : []),
           usedRack
             ? `pad roles mapped from the track's drum rack`
             : `NOTE: no drum rack on ${trackPath} — used General MIDI note numbers`,

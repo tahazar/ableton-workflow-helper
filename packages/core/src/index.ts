@@ -113,7 +113,16 @@ export {
 } from "./alc/pack.js";
 export { type DrumContext, type DrumKit, type DrumRole } from "./drums/types.js";
 export { GM_DRUM_KIT, mapPadRoles, roleOfNote } from "./drums/roles.js";
-export { generateDrumPattern, listDrumStyles } from "./drums/grammars.js";
+export {
+  TRAP_KICK_CELLS,
+  generateDrumPattern,
+  generateDrumPatternDetailed,
+  listDrumStyles,
+  listDrumVariants,
+  type GeneratePatternOptions,
+  type GeneratedPattern,
+  type TrapKickCell,
+} from "./drums/grammars.js";
 export {
   drumFill,
   humanizeDrums,
