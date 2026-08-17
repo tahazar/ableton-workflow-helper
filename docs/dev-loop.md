@@ -223,3 +223,18 @@ already-validated clip ops), so this is a musical sanity pass, not an API one:
       last arrangement clip with no overlap (verified both via the API and
       visually in Live's Arrangement view), and `sweep` removes exactly the
       swept clips from the arrangement without touching real content.
+
+## M4 in-Live verification checklist
+
+SDK-free (renders through validated clip ops); this is a musical + safety pass:
+
+- [ ] `awh sections plan --form house --role drums=<real loop> --role bass=<real loop> -o plan.yaml`
+      → YAML reads sensibly; edit a section's bars/ops
+- [ ] `awh sections apply plan.yaml --dry-run` → clip list matches the plan
+- [ ] apply on an EMPTY arrangement span → skeleton appears; play through:
+      intro is thinned, builds ramp, drops hit full, sections named on timeline
+- [ ] Re-apply same plan+seed at a different --at-bar → identical material
+- [ ] Safety: apply over existing clips WITHOUT --clear → refuses with the
+      clear/at-bar hint; with --clear → span cleared then written
+- [ ] Skill: ask a local session "build me a house skeleton from my drum and
+      bass loops" → it plans, shows you the YAML, dry-runs, applies (M4 exit)

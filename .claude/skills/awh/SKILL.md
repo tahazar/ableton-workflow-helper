@@ -100,6 +100,28 @@ Flow: vary → tell the user which slots to audition → they pick favourites �
 the user before sweeping anything they might have renamed). Vary needs enough
 empty slots; create scenes via `awh call scene.create` if it says there aren't.
 
+## Sections (`awh sections`) — motif -> arrangement skeleton
+
+Build a full arrangement from source loops via an editable YAML plan:
+
+```sh
+awh sections plan --form house --role drums=track:0/slot:0 --role bass=track:2/slot:0 -o plan.yaml
+# edit plan.yaml (bars, per-section ops, add/remove layers), then:
+awh sections apply plan.yaml --seed 42 [--at-bar N] [--clear] [--dry-run]
+```
+
+- Forms: `house` (intro/build/drop/breakdown/build/drop/outro, 128 bars),
+  `trap` (intro/verse/hook x2/outro, 80 bars). The plan is a STARTING POINT —
+  edit bars and ops per section; each layer derives from its source clip via a
+  transform pipeline (never verbatim tiling unless ops are omitted).
+- apply REFUSES to write over existing arrangement material — offer the user
+  `--clear` (clears the span first) or `--at-bar` past the song's end. Always
+  `--dry-run` first when the Set has real material, and show the user the plan.
+- Deterministic: same plan + seed = identical skeleton. Sections are named
+  `<section>-<role>` on the timeline.
+- Flow: plan -> user reviews/edits YAML (or asks you to adjust it) -> dry-run
+  -> apply -> user auditions -> iterate on the YAML, not the clips.
+
 Raw ops cover everything else (see `awh ops` for the full list + args):
 tracks (`track.create/update/delete/duplicate/clear-range/mixer`), scenes,
 devices (`device.insert/get/param/delete` — stock Live devices only),

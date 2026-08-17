@@ -67,3 +67,13 @@ export {
   registerTransform,
   type PipelineStep,
 } from "./transforms/registry.js";
+export {
+  tileNotes,
+  validateSectionsPlan,
+  type LayerDirective,
+  type RenderedClip,
+  type SectionSpec,
+  type SectionsPlan,
+} from "./sections/types.js";
+export { renderSections, type RenderOptions, type SourceClip } from "./sections/render.js";
+export { listForms, planFromForm } from "./sections/presets.js";
