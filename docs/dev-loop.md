@@ -452,6 +452,47 @@ paste/build the patch, save). Suite includes Max.
       target, PSR below the clean-loudness guideline) with concrete
       EQ Eight moves suggested.
 
+## M6 follow-up: `awh mix duck` toolchain (fit/setup/calibrate/measure)
+
+Built in response to the pump-detection lessons above (see
+`docs/lessons-learned.md`, `knowledge/setup/sidechain-template.md`) — a
+trigger-aligned envelope fitter plus a closed-loop stock-Compressor
+calibrator, verified live on a purpose-built kick/snare/hat/bassline project:
+
+- [x] `duck fit <kick render> --triggers <beats>` → real, sensible envelope
+      (depth/hold/release + exact Volume Shaper draw points) from an actual
+      16-hit kick pattern. `--bass <file>` masking-based depth confirmed too
+      (correctly clamped to the 3 dB floor on this material).
+- [x] `duck setup <track>` → inserts + presets a Compressor (Attack min,
+      Ratio max). **Found and fixed a real bug**: every `device.param` call
+      across `setup`/`calibrate` (5 call sites) passed `{ path, name, value }`
+      — the op actually expects `{ path, param, value }` — so every one of
+      them failed with `"param" must be a non-empty string`. TypeScript
+      didn't catch it because `op()`'s args are typed `unknown`. Fixed all 5.
+- [x] Manual touches (Sidechain On + Audio From, Release — SDK has no
+      routing/automation API): found live that "Sidechain On" is actually a
+      normal automatable param despite being one of the documented "manual
+      touches" — `duck setup` could set it directly instead of asking the
+      owner to toggle it by hand. "Audio From" genuinely isn't exposed.
+- [x] `duck calibrate` → closed-loop bisection converged in ONE iteration
+      (baseline 0.62 dB natural modulation → probes at 0.25/0.75 raw showed
+      16.93/0.00 dB → bisected to raw 0.500 → 3.71 dB against a 3.0 dB
+      target, within tolerance). Independently re-verified: read the
+      Threshold param back (0.5, correct), captured fresh, and re-measured
+      (4.34 dB — same ballpark, real run-to-run variance).
+- [x] Cross-check against the redesigned `pump()` shape classifier
+      (see the M6 entry above): on this SAME confirmed-genuine-ducking
+      capture, `mix report` labeled it `shape: decay-like` — a real
+      remaining accuracy gap (the kick/trigger's own presence dominates the
+      low band on a full-mix capture, biasing the shape heuristic). BUT the
+      finding severity is `[INFO]` (not a warning) and its text explicitly
+      says "a single file cannot prove a sidechain is engaged" and points to
+      `mix ab` on/off — so the honest-scope framing prevents this from
+      misleading anyone, even though the label itself is wrong here. The
+      purpose-built `duck measure`/`duck calibrate` (trigger-aligned, not
+      beat-grid-folded) are the reliable path for this template; treat
+      `pump_shape_*` as a rough single-file heads-up, not a verdict.
+
 ## Troubleshooting
 
 - **Restarted Live? Restart `extensions-cli` too.** A stale extension-host
