@@ -228,16 +228,42 @@ already-validated clip ops), so this is a musical sanity pass, not an API one:
 
 SDK-free (renders through validated clip ops); this is a musical + safety pass:
 
-- [ ] `awh sections plan --form house --role drums=<real loop> --role bass=<real loop> -o plan.yaml`
-      → YAML reads sensibly; edit a section's bars/ops
-- [ ] `awh sections apply plan.yaml --dry-run` → clip list matches the plan
-- [ ] apply on an EMPTY arrangement span → skeleton appears; play through:
-      intro is thinned, builds ramp, drops hit full, sections named on timeline
-- [ ] Re-apply same plan+seed at a different --at-bar → identical material
-- [ ] Safety: apply over existing clips WITHOUT --clear → refuses with the
-      clear/at-bar hint; with --clear → span cleared then written
-- [ ] Skill: ask a local session "build me a house skeleton from my drum and
-      bass loops" → it plans, shows you the YAML, dry-runs, applies (M4 exit)
+- [x] `awh sections plan --form house --role drums=<real loop> --role bass=<real loop> -o plan.yaml`
+      → YAML reads sensibly; edit a section's bars/ops. Confirmed: house preset
+      is 128 bars (16/16/32/16/8/32/8), edited breakdown 16→8 bars cleanly.
+- [x] `awh sections apply plan.yaml --dry-run` → clip list matches the plan.
+      Confirmed exactly: 12 clips, correct cumulative bar positions reflecting
+      the edit.
+- [x] apply on an EMPTY arrangement span → skeleton appears; play through:
+      intro is thinned, builds ramp, drops hit full, sections named on timeline.
+      Confirmed via the API (positions/spans byte-accurate — bar N = beat
+      (N-1)×4 exactly) and note density (intro/breakdown thinned, drops full,
+      bass "off" sections correctly skipped).
+- [x] Re-apply same plan+seed at a different --at-bar → identical material.
+      Confirmed byte-for-byte identical (both tracks, all clips) across two
+      full apply round-trips through the real Extension Host.
+- [x] Safety: apply over existing clips WITHOUT --clear → refuses with the
+      clear/at-bar hint; with --clear → span cleared then written. Confirmed
+      both: clean refusal with zero partial writes, then `--clear` genuinely
+      replaced the span (verified via different random-seed content, not just
+      a duplicate write).
+- [x] Skill: ask a local session "build me a house skeleton from my drum and
+      bass loops" → it plans, shows you the YAML, dry-runs, applies (M4 exit
+      criterion). **First attempt failed the intent** (not the mechanism,
+      again): a fresh agent bypassed `awh sections` entirely and hand-wrote a
+      skeleton directly onto two REAL tracks via `clip create`/`clip write` —
+      same root cause as the M3 bug: `SKILL.md`'s "Typical flows" section had
+      an entry for varying loops but none at all for building a skeleton,
+      despite `awh sections` being a whole dedicated, documented feature.
+      Nothing pre-existing was destroyed (it filled an empty placeholder and
+      used empty timeline space), but it was unreviewed — no plan shown, no
+      dry-run, no `awh sections` at all. Removed that content, added a
+      "Build an arrangement/skeleton from loops" flow entry to SKILL.md, and
+      re-ran with a second fresh agent: it correctly ran `awh sections plan
+      --form house` → `apply --seed 42`, produced the full 128-bar skeleton
+      with the tool's own naming convention (`intro-drums`, `drop1-drums`,
+      …) — independently verified against the live Set (positions, note
+      density, in-scale pitches all correct).
 
 ## B3 (library) + B3d (.alc mirror) verification checklist
 

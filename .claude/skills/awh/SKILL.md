@@ -219,6 +219,23 @@ syncopated", "denser", etc. on material that already exists in the Set):
 4. Tell the user which slots/positions to audition; `awh sweep` the rest once
    they've picked favourites.
 
+**Build an arrangement/skeleton from loops** ("build me a house/trap
+skeleton", "turn my drum and bass loops into an arrangement", "lay out the
+song structure"):
+1. `awh status --json` → identify the source loops (drums/bass/etc.) and the
+   Set's active scale.
+2. Don't hand-compose section-by-section with `clip create`/`clip write` —
+   that's slower, undocumented to the user, and skips the safety checks.
+   `awh sections plan --form <house|trap> --role <name>=<sourcePath> ...`
+   generates an editable YAML plan from a researched genre-form preset.
+3. Show the user the YAML (or the edits you made to it) before writing
+   anything — the plan IS the review step.
+4. `awh sections apply <plan> --dry-run` → confirm the clip list looks right.
+5. `awh sections apply <plan> [--at-bar N] [--clear]` → writes the skeleton.
+   It refuses to overwrite existing arrangement material without `--clear`;
+   don't fight that by hand-placing clips instead — use `--at-bar` past the
+   song's end, or ask the user before `--clear`ing real content.
+
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not
 assumed units), then `device.param`. For mixer moves use `track.mixer`
