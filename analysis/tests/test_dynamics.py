@@ -69,3 +69,49 @@ def test_pump_requires_bpm():
     x = to_stereo(sine(110.0, SR, 2.0, amp=0.5))
     with pytest.raises(ValueError):
         dynamics.pump(x, SR, 0)
+
+
+def _make_decaying_retrigger_signal(sr: int, bpm: float, duration_s: float, depth_db: float):
+    """NEGATIVE CONTROL: no sidechain anywhere — a bass note retriggered on
+    each beat whose own decay produces a beat-synced RMS trough. A naive
+    periodicity detector reads this as 'pumping'; the shape features must
+    not call it ducking.
+    """
+    period = 60.0 / bpm
+    t = np.arange(int(round(duration_s * sr))) / sr
+    carrier = sine(55.0, sr, duration_s, amp=1.0) + 0.5 * sine(1000.0, sr, duration_s, amp=1.0)
+    phase = np.mod(t, period) / period
+    env_db = -depth_db * phase  # falls all cycle, resets at each retrigger
+    sig = carrier * 10.0 ** (env_db / 20.0)
+    sig = sig / np.max(np.abs(sig)) * 0.8
+    return to_stereo(sig)
+
+
+def test_pump_shape_distinguishes_ducking_from_natural_decay():
+    """The live-verification lesson (M6): depth/periodicity alone can't tell
+    a sidechain from a decaying note. The SHAPE features must.
+    """
+    bpm = 120.0
+    ducked = dynamics.pump(_make_pumped_signal(SR, bpm, 8.0, 8.0), SR, bpm)
+    decayed = dynamics.pump(_make_decaying_retrigger_signal(SR, bpm, 8.0, 8.0), SR, bpm)
+
+    # Both look 'deep' to a naive detector...
+    assert ducked["full"]["depth_db"] > 4.0
+    assert decayed["full"]["depth_db"] > 4.0
+    # ...but the shapes separate them.
+    assert ducked["full"]["shape"] == "ducking-like"
+    assert ducked["full"]["recovery_fraction"] > 0.6
+    assert decayed["full"]["shape"] == "decay-like"
+    assert decayed["full"]["recovery_fraction"] < 0.3
+    assert decayed["full"]["trough_position"] > 0.75
+
+
+def test_pump_ab_control_sidechain_on_vs_off():
+    """The definitive verification path: same material with and without
+    ducking — the depth delta is the evidence."""
+    bpm = 120.0
+    t = 8.0
+    on = dynamics.pump(_make_pumped_signal(SR, bpm, t, 8.0), SR, bpm)
+    flat = to_stereo((sine(55.0, SR, t, amp=1.0) + 0.5 * sine(1000.0, SR, t, amp=1.0)) * 0.5)
+    off = dynamics.pump(flat, SR, bpm)
+    assert on["full"]["depth_db"] - off["full"]["depth_db"] > 4.0

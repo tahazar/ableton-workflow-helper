@@ -1,0 +1,208 @@
+{
+  "schema": 1,
+  "saved": "2026-08-17",
+  "file": "/tmp/claude-0/-home-user-ableton-workflow-helper/bad01df2-6806-5bab-8aa2-79fdbb4205b6/scratchpad/mix-smoke.wav",
+  "sha256": "34e2e508e744413e5d3667ec7669ed42489cf38ea215170add53b28fd39d1c23",
+  "measurements": {
+    "file": "mix-smoke.wav",
+    "samplerate": 44100,
+    "channels": 2,
+    "duration_s": 6.0,
+    "bpm": 124.0,
+    "loudness": {
+      "lufs_integrated": -11.149687382127963,
+      "lufs_short_term": {
+        "times": [
+          0.0,
+          1.0,
+          2.0,
+          3.0
+        ],
+        "values": [
+          -11.218699724189149,
+          -11.183470982498944,
+          -11.160807744439678,
+          -11.145981056299213
+        ]
+      },
+      "true_peak_db": -4.727074626075659,
+      "psr": {
+        "min_psr_loud": 6.387491596873507,
+        "windows": [
+          {
+            "time": 0.0,
+            "lufs_s": -11.218699724189149,
+            "true_peak_db": -4.749255863615557,
+            "psr": 6.469443860573592
+          },
+          {
+            "time": 1.0,
+            "lufs_s": -11.183470982498944,
+            "true_peak_db": -4.773316147566171,
+            "psr": 6.410154834932773
+          },
+          {
+            "time": 2.0,
+            "lufs_s": -11.160807744439678,
+            "true_peak_db": -4.773316147566171,
+            "psr": 6.387491596873507
+          },
+          {
+            "time": 3.0,
+            "lufs_s": -11.145981056299213,
+            "true_peak_db": -4.727074626075659,
+            "psr": 6.418906430223554
+          }
+        ]
+      }
+    },
+    "spectrum": {
+      "freqs": [
+        25.118864315095795,
+        31.622776601683793,
+        39.810717055349734,
+        50.11872336272722,
+        63.09573444801933,
+        79.43282347242814,
+        100.0,
+        125.89254117941672,
+        158.48931924611134,
+        199.526231496888,
+        251.188643150958,
+        316.22776601683796,
+        398.1071705534972,
+        501.18723362727224,
+        630.9573444801932,
+        794.3282347242815,
+        1000.0,
+        1258.9254117941673,
+        1584.8931924611136,
+        1995.2623149688795,
+        2511.8864315095802,
+        3162.2776601683795,
+        3981.0717055349724,
+        5011.872336272722,
+        6309.573444801933,
+        7943.282347242815,
+        10000.0,
+        12589.254117941675,
+        15848.931924611134,
+        19952.623149688796
+      ],
+      "db": [
+        1.222204878661195,
+        16.201566623242698,
+        27.699776153707088,
+        35.75755669819597,
+        34.78192549067336,
+        22.18224423567262,
+        27.176208899726504,
+        24.95896598891696,
+        10.806578075640836,
+        8.22705725212436,
+        5.572012506755499,
+        -3.7467760244515986,
+        -7.118355846623039,
+        -8.861325650331594,
+        -9.63372678826584,
+        -7.971568086523895,
+        -5.709020597373986,
+        -5.739752932748864,
+        -10.624936674067094,
+        -4.309676062308874,
+        -5.653758539551767,
+        -3.059804880266661,
+        -4.312120640650939,
+        -1.8640430711059253,
+        -1.1348901179668403,
+        -0.2637444098665398,
+        0.9502041404155506,
+        1.2850046478973027,
+        3.016068376076255,
+        3.273166155122624
+      ],
+      "tilt_db_per_oct": -4.991652959854173
+    },
+    "stereo": {
+      "width_db": -28.806402255861787,
+      "banded_width_db": {
+        "low": -62.79902701285711,
+        "mid": -20.454020157961516,
+        "high": -0.1342625138208423
+      },
+      "correlation": {
+        "full": 0.9973667603711793,
+        "low": 0.9999989488206955
+      }
+    },
+    "dynamics": {
+      "asymmetry": [
+        {
+          "ratio_db": -2.322957546717041,
+          "skewness": -0.5129896417564782
+        },
+        {
+          "ratio_db": -2.357132204944708,
+          "skewness": -0.5132085189180828
+        }
+      ],
+      "phase_rotation_headroom": {
+        "best_db": -0.6706016782895077,
+        "f0": 400.0,
+        "poles": 2
+      },
+      "pump": {
+        "beat_period_s": 0.4838709677419355,
+        "full": {
+          "depth_db": 5.921405498513126,
+          "recovery_time_s": 0.13967409378117726,
+          "trough_offset_ms": 2.494180246092451,
+          "trough_time_s": 0.002494180246092451,
+          "trough_position": 0.005154639175257732,
+          "recovery_fraction": 0.9368800937195924,
+          "shape": "ducking-like"
+        },
+        "low": {
+          "depth_db": 5.658943777672883,
+          "recovery_time_s": 0.12969737279680746,
+          "trough_offset_ms": 7.482540738277353,
+          "trough_time_s": 0.0074825407382773535,
+          "trough_position": 0.015463917525773196,
+          "recovery_fraction": 0.9328374902052643,
+          "shape": "ducking-like"
+        }
+      }
+    },
+    "target_comparison": null,
+    "target_sources": null
+  },
+  "findings": [
+    {
+      "id": "psr_low",
+      "severity": "alert",
+      "metric": "psr_min_loud",
+      "value": 6.387491596873507,
+      "threshold": 8.0,
+      "explanation": "PSR (peak-to-short-term-loudness) is 6.4 in the loudest section, below Ian Shepherd's PSR \u2265 8 guideline for clean loudness.",
+      "suggestion": "Raise the limiter's output ceiling or reduce input gain into the limiter \u2014 the mix is being squashed harder than it needs to be."
+    },
+    {
+      "id": "pump_shape_full",
+      "severity": "info",
+      "metric": "pump.full.depth_db",
+      "value": 5.921405498513126,
+      "threshold": 3.0,
+      "explanation": "Beat-synced level modulation (full band): 5.9 dB deep, shape 'ducking-like' (recovery fraction 0.94). A single file cannot prove a sidechain is engaged \u2014 decay-shaped material pumps too.",
+      "suggestion": "To verify a sidechain definitively: capture the span with the compressor on and bypassed, then `awh mix ab` the two \u2014 the depth delta is the evidence."
+    },
+    {
+      "id": "pump_shape_low",
+      "severity": "info",
+      "metric": "pump.low.depth_db",
+      "value": 5.658943777672883,
+      "threshold": 3.0,
+      "explanation": "Beat-synced level modulation (<120 Hz): 5.7 dB deep, shape 'ducking-like' (recovery fraction 0.93). A single file cannot prove a sidechain is engaged \u2014 decay-shaped material pumps too.",
+      "suggestion": "To verify a sidechain definitively: capture the span with the compressor on and bypassed, then `awh mix ab` the two \u2014 the depth delta is the evidence."
+    }
+  ]
+}

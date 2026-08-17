@@ -451,3 +451,22 @@ paste/build the patch, save). Suite includes Max.
       `trap.json`: real per-band findings (25/32/40/50Hz all well above
       target, PSR below the clean-loudness guideline) with concrete
       EQ Eight moves suggested.
+
+## Troubleshooting
+
+- **Restarted Live? Restart `extensions-cli` too.** A stale extension-host
+  connection keeps answering `awh ping` successfully while every real
+  operation hangs or fails with generic SDK errors. If ops hang after a
+  Live restart, kill and rerun `extensions-cli run` before debugging
+  anything else.
+- Small A/B gain changes not showing up in `awh mix ab`? Check for clip/
+  limiter utilities (GClip etc.) sitting before the capture tap — bypass
+  them or move the tap after.
+
+## Definition of done (see docs/lessons-learned.md)
+
+A new `awh` command is NOT done until: (1) SKILL.md's Typical Flows names it
+for its natural request; (2) a negative-control test inverts its detection
+claim against synthetic fixtures; (3) its behavior for occupied-but-empty
+targets is decided and tested; (4) its zero-item path still runs cleanup/
+sync side effects.

@@ -6,10 +6,10 @@
  * extension running inside Live, or `awh serve-fake` for offline dev).
  * The same commands are what a Claude Code skill drives — no AI-only paths.
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
-import { dirname, join, resolve } from "node:path";
+import { basename, dirname, join, resolve } from "node:path";
 import { Command } from "commander";
 import { TAP_PORT, sendToTap } from "./osc.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
@@ -1398,10 +1398,21 @@ mix
   .option("--delivery <preset>", "delivery check: club | streaming | apple")
   .option("--from <seconds>", "analyze from this time")
   .option("--to <seconds>", "analyze up to this time")
+  .option(
+    "--save [name]",
+    "also save a measurement record to library/measurements/ (default name: from the file)",
+  )
   .action(
     async (
       file: string,
-      cmdOpts: { bpm?: string; target?: string; delivery?: string; from?: string; to?: string },
+      cmdOpts: {
+        bpm?: string;
+        target?: string;
+        delivery?: string;
+        from?: string;
+        to?: string;
+        save?: string | boolean;
+      },
     ) => {
       const opts = program.opts<GlobalOpts>();
       const args = ["report", file];
@@ -1410,6 +1421,16 @@ mix
       if (cmdOpts.delivery) args.push("--delivery", cmdOpts.delivery);
       if (cmdOpts.from) args.push("--from", cmdOpts.from);
       if (cmdOpts.to) args.push("--to", cmdOpts.to);
+      if (cmdOpts.save !== undefined) {
+        const name =
+          typeof cmdOpts.save === "string"
+            ? cmdOpts.save
+            : slugify(basename(file).replace(/\.[^.]+$/, "") || "record");
+        const recordPath = join(findLibraryRoot(), "measurements", `${name}.json`);
+        await mkdir(dirname(recordPath), { recursive: true });
+        args.push("--save-record", recordPath);
+        process.stderr.write(`record -> ${recordPath}\n`);
+      }
       if (opts.json) args.push("--json");
       await runAnalysis(args);
     },
@@ -1429,15 +1450,100 @@ mix
 
 mix
   .command("target <files...>")
-  .description("Measure YOUR reference tracks into a genre target profile")
+  .description(
+    "Measure YOUR reference tracks into a genre target profile (also records " +
+      "each reference into library/measurements/ for future retrieval)",
+  )
   .requiredOption("--save <name>", "target name (stored in library/targets/<name>.json)")
-  .action(async (files: string[], cmdOpts: { save: string }) => {
+  .option("--no-records", "skip writing per-reference measurement records")
+  .action(async (files: string[], cmdOpts: { save: string; records: boolean }) => {
     const opts = program.opts<GlobalOpts>();
     const dest = join(findLibraryRoot(), "targets", `${cmdOpts.save}.json`);
     await mkdir(dirname(dest), { recursive: true });
     const args = ["target", ...files, "--save", dest];
+    if (cmdOpts.records) {
+      const recordsDir = join(findLibraryRoot(), "measurements");
+      await mkdir(recordsDir, { recursive: true });
+      args.push("--records-dir", recordsDir);
+    }
     if (opts.json) args.push("--json");
     await runAnalysis(args);
+  });
+
+mix
+  .command("records [name]")
+  .description(
+    "List saved measurement records (library/measurements/), or show one by name",
+  )
+  .action(async (name: string | undefined) => {
+    const opts = program.opts<GlobalOpts>();
+    const dir = join(findLibraryRoot(), "measurements");
+    if (name !== undefined) {
+      const file = join(dir, `${name}.json`);
+      if (!existsSync(file)) throw new Error(`no measurement record ${file}`);
+      const record = JSON.parse(readFileSync(file, "utf8")) as {
+        saved: string;
+        file: string;
+        measurements: Record<string, never>;
+        findings: { severity: string; explanation: string; suggestion: string }[];
+      };
+      output(opts, record, () => {
+        const m = record.measurements as unknown as {
+          loudness: { lufs_integrated: number; true_peak_db: number; psr: { min_psr_loud: number } };
+          spectrum: { tilt_db_per_oct: number };
+          bpm?: number;
+        };
+        return [
+          `${name} — saved ${record.saved}`,
+          `  source  ${record.file}`,
+          `  LUFS-I ${m.loudness.lufs_integrated.toFixed(2)} · TP ${m.loudness.true_peak_db.toFixed(2)} dBTP · ` +
+            `PSR ${m.loudness.psr.min_psr_loud.toFixed(1)} · tilt ${m.spectrum.tilt_db_per_oct.toFixed(2)} dB/oct` +
+            (m.bpm ? ` · ${m.bpm} BPM` : ""),
+          ``,
+          ...record.findings.map(
+            (f) => `  [${f.severity.toUpperCase().padEnd(5)}] ${f.explanation}`,
+          ),
+          ``,
+          `full JSON: ${file} (or --json)`,
+        ].join("\n");
+      });
+      return;
+    }
+    if (!existsSync(dir)) {
+      output(opts, [], () => "no measurement records yet — awh mix report <file> --save");
+      return;
+    }
+    const rows = (await readdir(dir))
+      .filter((f) => f.endsWith(".json"))
+      .sort()
+      .map((f) => {
+        const r = JSON.parse(readFileSync(join(dir, f), "utf8")) as {
+          saved: string;
+          file: string;
+          measurements: {
+            loudness: { lufs_integrated: number };
+            spectrum: { tilt_db_per_oct: number };
+          };
+        };
+        return {
+          name: f.replace(/\.json$/, ""),
+          saved: r.saved,
+          lufs: r.measurements.loudness.lufs_integrated,
+          tilt: r.measurements.spectrum.tilt_db_per_oct,
+          file: basename(r.file),
+        };
+      });
+    output(opts, rows, () =>
+      rows.length === 0
+        ? "no measurement records yet — awh mix report <file> --save"
+        : rows
+            .map(
+              (r) =>
+                `${r.name.padEnd(32)} ${r.saved}  ${r.lufs.toFixed(1).padStart(6)} LUFS  ` +
+                `${r.tilt.toFixed(1).padStart(5)} dB/oct  ${r.file}`,
+            )
+            .join("\n"),
+    );
   });
 
 mix
