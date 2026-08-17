@@ -6,9 +6,15 @@
  * extension running inside Live, or `awh serve-fake` for offline dev).
  * The same commands are what a Claude Code skill drives — no AI-only paths.
  */
-import { readFile } from "node:fs/promises";
+import { readFile, writeFile } from "node:fs/promises";
 import { Command } from "commander";
+import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
+  listForms,
+  planFromForm,
+  renderSections,
+  validateSectionsPlan,
+  type SourceClip,
   DEFAULT_GATEWAY_PORT,
   FakeLiveBridge,
   applyPipeline,
@@ -466,6 +472,160 @@ program
         : `deleted ${doomed.length} clips: ${doomed.map((c) => c.name).join(", ")}`,
     );
   });
+
+const sections = program
+  .command("sections")
+  .description("Build an arrangement skeleton from source clips via a YAML plan");
+
+sections
+  .command("plan")
+  .description("Emit an editable YAML sections plan from a genre form preset")
+  .requiredOption("--form <form>", `genre form: ${listForms().join(" | ")}`)
+  .requiredOption(
+    "--role <role=clipPath...>",
+    "role bindings, repeatable: --role drums=track:1/slot:0 --role bass=track:2/slot:0",
+    (value: string, acc: string[]) => [...acc, value],
+    [] as string[],
+  )
+  .option("-o, --out <file>", "write the plan to a file (default: stdout)")
+  .action(async (cmdOpts: { form: string; role: string[]; out?: string }) => {
+    const roles: Record<string, { trackPath: string; source: string }> = {};
+    for (const binding of cmdOpts.role) {
+      const [role, source] = binding.split("=", 2);
+      if (!role || !source) throw new Error(`bad --role "${binding}" (expected role=clipPath)`);
+      const trackPath = source.replace(/\/(slot|arr):\d+$/, "");
+      if (trackPath === source) throw new Error(`--role ${role}: "${source}" is not a clip path`);
+      roles[role] = { trackPath, source };
+    }
+    const plan = planFromForm(cmdOpts.form, roles);
+    const text = stringifyYaml(plan);
+    if (cmdOpts.out) {
+      await writeFile(cmdOpts.out, text, "utf8");
+      process.stdout.write(`wrote ${cmdOpts.out} — edit it, then: awh sections apply ${cmdOpts.out}\n`);
+    } else {
+      process.stdout.write(text);
+    }
+  });
+
+sections
+  .command("apply <planFile>")
+  .description("Render a YAML sections plan into arrangement clips (create-at-position)")
+  .option("--at-bar <bar>", "1-based bar to start the skeleton at", "1")
+  .option("--seed <seed>", "base seed (same seed + plan = same skeleton)", "1")
+  .option("--scale <scale>", 'scale for scale-aware ops (default: Set scale if active)')
+  .option("--clear", "clear each target track's arrangement span first (truncates boundary clips)")
+  .option("--dry-run", "print what would be created without writing")
+  .action(
+    async (
+      planFile: string,
+      cmdOpts: { atBar: string; seed: string; scale?: string; clear?: boolean; dryRun?: boolean },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const beatsPerBar = 4;
+      const atBar = Number(cmdOpts.atBar);
+      const plan = validateSectionsPlan(parseYaml(await readFile(planFile, "utf8")));
+
+      const summary = (
+        (await callGateway(opts, "/api/ops/set.summary", { method: "POST" })) as {
+          result: SetSummary;
+        }
+      ).result;
+      const scale = cmdOpts.scale
+        ? parseScale(cmdOpts.scale)
+        : summary.scale.active
+          ? { rootNote: summary.scale.rootNote, intervals: summary.scale.intervals }
+          : undefined;
+
+      // Fetch every distinct source once.
+      const sourcePaths = new Set<string>();
+      for (const section of plan.sections) {
+        for (const directive of Object.values(section.tracks)) {
+          if (directive !== "off") sourcePaths.add(directive.source);
+        }
+      }
+      const sources = new Map<string, SourceClip>();
+      for (const path of sourcePaths) {
+        const clip = (
+          (await callGateway(opts, "/api/ops/clip.get", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ path }),
+          })) as { result: ClipDetail }
+        ).result;
+        if (clip.kind !== "midi" || !clip.notes) throw new Error(`source ${path} is not a MIDI clip`);
+        sources.set(path, { notes: clip.notes, lengthBeats: clip.duration });
+      }
+
+      const rendered = renderSections(plan, sources, {
+        atBar,
+        beatsPerBar,
+        seed: Number(cmdOpts.seed),
+        ...(scale ? { scale } : {}),
+      });
+      const startBeat = (atBar - 1) * beatsPerBar;
+      const endBeat = startBeat + rendered.totalBars * beatsPerBar;
+
+      // Safety: refuse to write over existing arrangement material unless --clear.
+      const targetTracks = [...new Set(rendered.clips.map((c) => c.trackPath))];
+      for (const trackPath of targetTracks) {
+        const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
+        if (!track) throw new Error(`plan targets unknown track ${trackPath}`);
+        const collision = track.arrangementClips.some(
+          (c) => (c.startTime ?? 0) < endBeat && (c.endTime ?? 0) > startBeat,
+        );
+        if (collision && !cmdOpts.clear && !cmdOpts.dryRun) {
+          throw new Error(
+            `${trackPath} already has arrangement clips in bars ${atBar}-${atBar + rendered.totalBars} — ` +
+              `re-run with --clear to clear that span, or --at-bar past the song's end`,
+          );
+        }
+      }
+
+      if (cmdOpts.dryRun) {
+        output(opts, rendered, () =>
+          [
+            `${plan.name}: ${rendered.totalBars} bars, ${rendered.clips.length} clips (dry run)`,
+            ...rendered.clips.map(
+              (c) =>
+                `  bar ${c.startBeat / beatsPerBar + 1}`.padEnd(10) +
+                `${c.name.padEnd(22)} ${c.trackPath} (${c.lengthBeats} beats, ${c.notes.length} notes)`,
+            ),
+          ].join("\n"),
+        );
+        return;
+      }
+
+      if (cmdOpts.clear) {
+        for (const trackPath of targetTracks) {
+          await callGateway(opts, "/api/ops/track.clear-range", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ path: trackPath, startBeat, endBeat }),
+          });
+        }
+      }
+
+      for (const clip of rendered.clips) {
+        await callGateway(opts, "/api/ops/clip.create-midi", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            target: { type: "arrangement", trackPath: clip.trackPath, startBeat: clip.startBeat },
+            lengthBeats: clip.lengthBeats,
+            notes: clip.notes,
+            name: clip.name,
+          }),
+        });
+      }
+      output(opts, rendered, () =>
+        [
+          `${plan.name}: ${rendered.totalBars} bars, ${rendered.clips.length} clips written from bar ${atBar}`,
+          ...plan.sections.map((s) => `  ${s.name}`),
+          `press play — and re-run with the same --seed to reproduce exactly`,
+        ].join("\n"),
+      );
+    },
+  );
 
 program
   .command("render <trackPath>")

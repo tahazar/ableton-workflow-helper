@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@awh/core": "workspace:*",
-    "commander": "^12.1.0"
+    "commander": "^12.1.0",
+    "yaml": "^2.9.0"
   },
   "devDependencies": {
     "@types/node": "^22.20.1",
