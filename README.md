@@ -12,8 +12,7 @@ real work outside.
 
 ## Status
 
-**M0–M3 done (validated in Live) · M4 + B3 (clip library + Live-browser
-mirror) + M5 (drums) built (awaiting in-Live pass)** —
+**M0–M6 + B3 done (all validated in Live) · B4 (knowledge base) in build** —
 the gateway serves 23 ops; the `awh` CLI speaks bar|beat notation; the `awh`
 Claude skill drives the Set conversationally; `awh vary` generates seeded,
 reproducible variations through a 17-transform pipeline vocabulary; `awh
