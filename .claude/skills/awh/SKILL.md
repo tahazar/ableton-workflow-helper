@@ -318,6 +318,32 @@ song structure"):
    don't fight that by hand-placing clips instead — use `--at-bar` past the
    song's end, or ask the user before `--clear`ing real content.
 
+**Map out a reference track / build a matching skeleton** ("map out this
+reference and build me a matching skeleton", "structure my track like
+<reference>", "what's the arrangement of this reference song"):
+1. Get the reference audio (owner-provided file, or a track/clip already in
+   the Set — render it with `awh render` if it's on an audio track).
+2. `awh ref analyze <audio> [--save <name>]` → BPM/grid + a rule-based DRAFT
+   section map. This is NOT `awh sections` (that builds skeletons from the
+   owner's OWN loops) — `awh ref` deconstructs someone else's track first.
+3. `awh ref sections apply <analysis.json|audio>` → named empty clips on a
+   "Sections" track. Tell the owner the per-section confidence and that
+   low-confidence/unlabeled stretches are expected — the rules refuse to
+   guess past their evidence rather than mislabel. Never present a
+   low-confidence section as settled fact.
+4. Owner corrects by dragging boundaries/renaming clips in Live. Then
+   `awh ref sections read <trackPath> [--save <name>]` pulls the correction
+   back — `--save` merges it into the saved reference record (`analyze`'s
+   file only ever holds what was true at analyze time otherwise). Names are
+   parsed leniently; don't "fix" a non-standard name the owner chose.
+5. To build a matching skeleton: `awh sections plan --from-ref <file> --role
+   <role>=<sourceClip> ...` where `<file>` is the `-o` output of `ref
+   sections read` (or a saved `library/references/*.json`) — bars come
+   straight from the reference's corrected map, every layer verbatim (no
+   genre ops guessed, since an arbitrary reference has no known convention
+   to apply). Mutually exclusive with `--form`. Same review-before-apply
+   flow as the preset path: show the YAML, `apply --dry-run`, then apply.
+
 **Save/place a library clip** ("save that hat loop for later", "place my
 garage hats", "use my saved bassline"):
 1. Saving: `awh save <clipPath> --category <c> [--tags ...] [--tier ...]` —
