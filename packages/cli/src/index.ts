@@ -1676,7 +1676,7 @@ duckCmd
     const setRaw = async (name: string, value: number): Promise<string> => {
       const p = byName.get(name);
       if (!p) return `  !  param "${name}" not found — set it by hand`;
-      await op(opts, "device.param", { path: inserted.path, name, value });
+      await op(opts, "device.param", { path: inserted.path, param: name, value });
       return `  ok ${name} -> ${value} (raw range ${p.min}..${p.max})`;
     };
     const lines = [
@@ -1769,7 +1769,7 @@ duckCmd
 
       const measureAt = async (label: string, raw?: number): Promise<number> => {
         if (raw !== undefined) {
-          await op(opts, "device.param", { path: devicePath, name: cmdOpts.param, value: raw });
+          await op(opts, "device.param", { path: devicePath, param: cmdOpts.param, value: raw });
         }
         const out = join(scratch, `${label}.wav`);
         await captureSpan(opts, { ...spec, out });
@@ -1778,9 +1778,9 @@ duckCmd
       };
 
       // baseline: duck bypassed -> the material's natural modulation
-      if (onParam) await op(opts, "device.param", { path: devicePath, name: "Device On", value: 0 });
+      if (onParam) await op(opts, "device.param", { path: devicePath, param: "Device On", value: 0 });
       const baseline = await measureAt("baseline");
-      if (onParam) await op(opts, "device.param", { path: devicePath, name: "Device On", value: 1 });
+      if (onParam) await op(opts, "device.param", { path: devicePath, param: "Device On", value: 1 });
       process.stderr.write(`baseline (bypassed): ${baseline.toFixed(2)} dB natural modulation\n`);
 
       // bracket probes at 25% / 75% of the raw range to learn direction
@@ -1807,7 +1807,7 @@ duckCmd
         else deepRaw = mid;
       }
 
-      await op(opts, "device.param", { path: devicePath, name: cmdOpts.param, value: best.raw });
+      await op(opts, "device.param", { path: devicePath, param: cmdOpts.param, value: best.raw });
       output(opts, { param: cmdOpts.param, raw: best.raw, achievedDepth: best.depth, baseline }, () =>
         [
           `calibrated: ${cmdOpts.param} = ${best.raw.toFixed(3)} (raw) -> ` +
