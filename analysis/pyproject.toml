@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "awh-analysis"
+version = "0.1.0"
+description = "M6 analysis engine: measurements + explanations for rendered audio (BS.1770 loudness, spectrum, stereo, dynamics)."
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+    "numpy",
+    "scipy",
+    "soundfile",
+    "pyloudnorm",
+]
+
+[project.scripts]
+awh-analysis = "awh_analysis.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["awh_analysis*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

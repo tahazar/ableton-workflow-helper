@@ -6,10 +6,12 @@
  * extension running inside Live, or `awh serve-fake` for offline dev).
  * The same commands are what a Claude Code skill drives — no AI-only paths.
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { basename, dirname, join, resolve } from "node:path";
 import { Command } from "commander";
+import { TAP_PORT, sendToTap } from "./osc.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   listForms,
@@ -1332,6 +1334,556 @@ lib
       await store.buildIndex();
       output(opts, { file, slug }, () =>
         `imported ${alcFile} -> ${file} (${parsed.notes.length} notes, ${parsed.lengthBeats} beats)`,
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Mix analysis (M6): measurement engine (Python) + M4L capture tap driver.
+// ---------------------------------------------------------------------------
+
+function repoRoot(): string {
+  // library root is <repo>/library (findLibraryRoot walks up) — its parent.
+  return dirname(findLibraryRoot());
+}
+
+function analysisPython(): { python: string; cwd: string } {
+  const root = repoRoot();
+  const venv = join(root, ".venv", "bin", "python");
+  const python = process.env.AWH_PYTHON ?? (existsSync(venv) ? venv : "python3");
+  return { python, cwd: join(root, "analysis") };
+}
+
+/** Run `python -m awh_analysis <args>` streaming stdio through. */
+async function runAnalysis(args: string[]): Promise<void> {
+  const { python, cwd } = analysisPython();
+  if (!existsSync(cwd)) {
+    throw new Error(`analysis engine not found at ${cwd} — is the repo checkout complete?`);
+  }
+  const child = spawn(python, ["-m", "awh_analysis", ...args], {
+    cwd,
+    stdio: "inherit",
+  });
+  const code = await new Promise<number>((resolve, reject) => {
+    child.on("error", (err) =>
+      reject(
+        new Error(
+          `could not run ${python} (${err.message}) — create the venv per docs/dev-loop.md ` +
+            "or set AWH_PYTHON",
+        ),
+      ),
+    );
+    child.on("close", (c) => resolve(c ?? 1));
+  });
+  if (code !== 0) process.exitCode = code;
+}
+
+/** Resolve --target: an existing file path, or a name in library/targets/. */
+function resolveTarget(target: string): string {
+  if (existsSync(target)) return target;
+  const named = join(findLibraryRoot(), "targets", `${target}.json`);
+  if (existsSync(named)) return named;
+  throw new Error(`target "${target}" is neither a file nor library/targets/${target}.json`);
+}
+
+const mix = program
+  .command("mix")
+  .description("Measurement-based mix feedback (LUFS/PSR/spectrum/phase/pump)");
+
+mix
+  .command("report <file>")
+  .description("Measure a rendered/captured audio file and report prioritized findings")
+  .option("--bpm <bpm>", "Set tempo — enables sidechain-pump verification")
+  .option("--target <nameOrPath>", "genre target (library/targets/<name>.json)")
+  .option("--delivery <preset>", "delivery check: club | streaming | apple")
+  .option("--from <seconds>", "analyze from this time")
+  .option("--to <seconds>", "analyze up to this time")
+  .option(
+    "--save [name]",
+    "also save a measurement record to library/measurements/ (default name: from the file)",
+  )
+  .action(
+    async (
+      file: string,
+      cmdOpts: {
+        bpm?: string;
+        target?: string;
+        delivery?: string;
+        from?: string;
+        to?: string;
+        save?: string | boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const args = ["report", file];
+      if (cmdOpts.bpm) args.push("--bpm", cmdOpts.bpm);
+      if (cmdOpts.target) args.push("--target", resolveTarget(cmdOpts.target));
+      if (cmdOpts.delivery) args.push("--delivery", cmdOpts.delivery);
+      if (cmdOpts.from) args.push("--from", cmdOpts.from);
+      if (cmdOpts.to) args.push("--to", cmdOpts.to);
+      if (cmdOpts.save !== undefined) {
+        const name =
+          typeof cmdOpts.save === "string"
+            ? cmdOpts.save
+            : slugify(basename(file).replace(/\.[^.]+$/, "") || "record");
+        const recordPath = join(findLibraryRoot(), "measurements", `${name}.json`);
+        await mkdir(dirname(recordPath), { recursive: true });
+        args.push("--save-record", recordPath);
+        process.stderr.write(`record -> ${recordPath}\n`);
+      }
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+mix
+  .command("ab <fileA> <fileB>")
+  .description("Loudness-matched A/B comparison of two renders (counters louder=better)")
+  .option("--bpm <bpm>", "Set tempo — includes pump comparison")
+  .action(async (fileA: string, fileB: string, cmdOpts: { bpm?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const args = ["ab", fileA, fileB];
+    if (cmdOpts.bpm) args.push("--bpm", cmdOpts.bpm);
+    if (opts.json) args.push("--json");
+    await runAnalysis(args);
+  });
+
+mix
+  .command("target <files...>")
+  .description(
+    "Measure YOUR reference tracks into a genre target profile (also records " +
+      "each reference into library/measurements/ for future retrieval)",
+  )
+  .requiredOption("--save <name>", "target name (stored in library/targets/<name>.json)")
+  .option("--no-records", "skip writing per-reference measurement records")
+  .action(async (files: string[], cmdOpts: { save: string; records: boolean }) => {
+    const opts = program.opts<GlobalOpts>();
+    const dest = join(findLibraryRoot(), "targets", `${cmdOpts.save}.json`);
+    await mkdir(dirname(dest), { recursive: true });
+    const args = ["target", ...files, "--save", dest];
+    if (cmdOpts.records) {
+      const recordsDir = join(findLibraryRoot(), "measurements");
+      await mkdir(recordsDir, { recursive: true });
+      args.push("--records-dir", recordsDir);
+    }
+    if (opts.json) args.push("--json");
+    await runAnalysis(args);
+  });
+
+mix
+  .command("records [name]")
+  .description(
+    "List saved measurement records (library/measurements/), or show one by name",
+  )
+  .action(async (name: string | undefined) => {
+    const opts = program.opts<GlobalOpts>();
+    const dir = join(findLibraryRoot(), "measurements");
+    if (name !== undefined) {
+      const file = join(dir, `${name}.json`);
+      if (!existsSync(file)) throw new Error(`no measurement record ${file}`);
+      const record = JSON.parse(readFileSync(file, "utf8")) as {
+        saved: string;
+        file: string;
+        measurements: Record<string, never>;
+        findings: { severity: string; explanation: string; suggestion: string }[];
+      };
+      output(opts, record, () => {
+        const m = record.measurements as unknown as {
+          loudness: { lufs_integrated: number; true_peak_db: number; psr: { min_psr_loud: number } };
+          spectrum: { tilt_db_per_oct: number };
+          bpm?: number;
+        };
+        return [
+          `${name} — saved ${record.saved}`,
+          `  source  ${record.file}`,
+          `  LUFS-I ${m.loudness.lufs_integrated.toFixed(2)} · TP ${m.loudness.true_peak_db.toFixed(2)} dBTP · ` +
+            `PSR ${m.loudness.psr.min_psr_loud.toFixed(1)} · tilt ${m.spectrum.tilt_db_per_oct.toFixed(2)} dB/oct` +
+            (m.bpm ? ` · ${m.bpm} BPM` : ""),
+          ``,
+          ...record.findings.map(
+            (f) => `  [${f.severity.toUpperCase().padEnd(5)}] ${f.explanation}`,
+          ),
+          ``,
+          `full JSON: ${file} (or --json)`,
+        ].join("\n");
+      });
+      return;
+    }
+    if (!existsSync(dir)) {
+      output(opts, [], () => "no measurement records yet — awh mix report <file> --save");
+      return;
+    }
+    const rows = (await readdir(dir))
+      .filter((f) => f.endsWith(".json"))
+      .sort()
+      .map((f) => {
+        const r = JSON.parse(readFileSync(join(dir, f), "utf8")) as {
+          saved: string;
+          file: string;
+          measurements: {
+            loudness: { lufs_integrated: number };
+            spectrum: { tilt_db_per_oct: number };
+          };
+        };
+        return {
+          name: f.replace(/\.json$/, ""),
+          saved: r.saved,
+          lufs: r.measurements.loudness.lufs_integrated,
+          tilt: r.measurements.spectrum.tilt_db_per_oct,
+          file: basename(r.file),
+        };
+      });
+    output(opts, rows, () =>
+      rows.length === 0
+        ? "no measurement records yet — awh mix report <file> --save"
+        : rows
+            .map(
+              (r) =>
+                `${r.name.padEnd(32)} ${r.saved}  ${r.lufs.toFixed(1).padStart(6)} LUFS  ` +
+                `${r.tilt.toFixed(1).padStart(5)} dB/oct  ${r.file}`,
+            )
+            .join("\n"),
+    );
+  });
+
+/**
+ * Typed wrapper for device.param — op() args are `unknown`, so a wrong field
+ * name compiles fine and only fails at runtime inside Live (the {name} vs
+ * {param} bug found in live verification). Repeat-use ops get typed wrappers;
+ * see docs/lessons-learned.md.
+ */
+async function setDeviceParam(
+  opts: GlobalOpts,
+  path: string,
+  param: string,
+  value: number,
+): Promise<void> {
+  await op(opts, "device.param", { path, param, value });
+}
+
+/** Resolve trigger positions (seconds) from the Trigger MIDI clip or manual beats. */
+async function resolveTriggerSeconds(
+  opts: GlobalOpts,
+  cmdOpts: { triggerClip?: string; triggers?: string },
+): Promise<{ seconds: number[]; cycle?: number; tempo: number }> {
+  if (!cmdOpts.triggerClip && !cmdOpts.triggers) {
+    throw new Error("pass --trigger-clip <path> (the Trigger MIDI clip) or --triggers <beats>");
+  }
+  const summary = (await op(opts, "set.summary")) as SetSummary;
+  const secPerBeat = 60 / summary.tempo;
+  if (cmdOpts.triggerClip) {
+    const detail = (await op(opts, "clip.get", { path: cmdOpts.triggerClip })) as ClipDetail;
+    if (detail.kind !== "midi" || !detail.notes?.length) {
+      throw new Error(`${cmdOpts.triggerClip} is not a MIDI clip with notes`);
+    }
+    const starts = [...new Set(detail.notes.map((n) => n.start))].sort((a, b) => a - b);
+    return {
+      seconds: starts.map((b) => b * secPerBeat),
+      cycle: detail.duration * secPerBeat,
+      tempo: summary.tempo,
+    };
+  }
+  return {
+    seconds: cmdOpts.triggers!.split(",").map((b) => Number(b.trim()) * secPerBeat),
+    tempo: summary.tempo,
+  };
+}
+
+function triggerArgs(t: { seconds: number[]; cycle?: number }): string[] {
+  const args = ["--triggers", t.seconds.map((s) => s.toFixed(6)).join(",")];
+  if (t.cycle !== undefined) args.push("--cycle", t.cycle.toFixed(6));
+  return args;
+}
+
+/** Drive the M4L tap through one loop-record-play-stop cycle. */
+async function captureSpan(
+  opts: GlobalOpts,
+  spec: { fromBar: number; bars: number; beatsPerBar: number; tapPort: number; out: string; tailS: number },
+): Promise<number> {
+  const summary = (await op(opts, "set.summary")) as SetSummary;
+  const startBeat = (spec.fromBar - 1) * spec.beatsPerBar;
+  const lengthBeats = spec.bars * spec.beatsPerBar;
+  const seconds = (lengthBeats / summary.tempo) * 60 + spec.tailS;
+  await sendToTap("/awh/loop", [startBeat, lengthBeats], spec.tapPort);
+  await sendToTap("/awh/record", [spec.out], spec.tapPort);
+  await sendToTap("/awh/play", [1], spec.tapPort);
+  await new Promise((r) => setTimeout(r, seconds * 1000));
+  await sendToTap("/awh/play", [0], spec.tapPort);
+  await sendToTap("/awh/stop", [], spec.tapPort);
+  if (!existsSync(spec.out)) {
+    throw new Error(
+      `${spec.out} was not created — is the AWH Capture Tap device loaded (m4l/README.md) ` +
+        "and listening on the right port?",
+    );
+  }
+  return seconds;
+}
+
+/** Run the analysis CLI capturing stdout as JSON (for internal loops). */
+async function runAnalysisJson(args: string[]): Promise<Record<string, number>> {
+  const { python, cwd } = analysisPython();
+  const child = spawn(python, ["-m", "awh_analysis", ...args, "--json"], { cwd });
+  let out = "";
+  let err = "";
+  child.stdout.on("data", (d: Buffer) => (out += d.toString()));
+  child.stderr.on("data", (d: Buffer) => (err += d.toString()));
+  const code = await new Promise<number>((resolve) => child.on("close", (c) => resolve(c ?? 1)));
+  if (code !== 0) throw new Error(`analysis failed: ${err.trim() || out.trim()}`);
+  return JSON.parse(out) as Record<string, number>;
+}
+
+const duckCmd = mix
+  .command("duck")
+  .description(
+    "Sidechain ducking toolkit: fit the ideal envelope to your drums, set up an " +
+      "automatic stock-Compressor duck, measure/calibrate the result. ShaperBox " +
+      "hand-drawing is one strategy; the compressor path is the automatic one.",
+  );
+
+duckCmd
+  .command("fit <drumsFile>")
+  .description(
+    "Fit the duck envelope to YOUR drums: trigger-aligned low-band decay -> " +
+      "depth/hold/release + exact Volume Shaper points to draw",
+  )
+  .option(
+    "--trigger-clip <clipPath>",
+    "the Trigger MIDI clip (note starts become trigger times; capture must start " +
+      "on the clip's loop boundary)",
+  )
+  .option("--triggers <beats>", "manual comma-separated trigger positions in BEATS")
+  .option("--bass <file>", "bass capture at session levels — enables masking-based depth")
+  .option("--depth <db>", "force duck depth in dB")
+  .action(
+    async (
+      drumsFile: string,
+      cmdOpts: { triggerClip?: string; triggers?: string; bass?: string; depth?: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const t = await resolveTriggerSeconds(opts, cmdOpts);
+      const args = ["duck", drumsFile, ...triggerArgs(t)];
+      if (cmdOpts.bass) args.push("--bass", cmdOpts.bass);
+      if (cmdOpts.depth) args.push("--depth", cmdOpts.depth);
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+duckCmd
+  .command("setup <trackPath>")
+  .description(
+    "AUTOMATIC strategy: insert a stock Compressor on the track (usually the " +
+      "Sidechain bus) preset for ducking — fastest attack, max ratio. Two manual " +
+      "touches remain (the SDK has no routing/automation API): enable Sidechain " +
+      "with Audio From = the trigger/kick source, and dial Release to the fitted ms",
+  )
+  .option("--release-ms <ms>", "release target from `duck fit` (printed for the manual dial)")
+  .action(async (trackPath: string, cmdOpts: { releaseMs?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const inserted = (await op(opts, "device.insert", {
+      ownerPath: trackPath,
+      name: "Compressor",
+    })) as { path: string };
+    const detail = (await op(opts, "device.get", { path: inserted.path })) as {
+      params: { name: string; value: number; min: number; max: number }[];
+    };
+    const byName = new Map(detail.params.map((p) => [p.name, p]));
+    const setRaw = async (name: string, value: number): Promise<string> => {
+      const p = byName.get(name);
+      if (!p) return `  !  param "${name}" not found — set it by hand`;
+      await setDeviceParam(opts, inserted.path, name, value);
+      return `  ok ${name} -> ${value} (raw range ${p.min}..${p.max})`;
+    };
+    const lines = [
+      `Compressor inserted at ${inserted.path}`,
+      await setRaw("Attack", byName.get("Attack")?.min ?? 0),
+      await setRaw("Ratio", byName.get("Ratio")?.max ?? 0),
+      "",
+      "Manual touches (SDK cannot set routing or ms-displays):",
+      "  1. Unfold the Compressor's sidechain section -> enable Sidechain,",
+      "     Audio From = your trigger source (Kick / Trigger-audio track)",
+      `  2. Release -> ${cmdOpts.releaseMs ? `${cmdOpts.releaseMs} ms` : "the release_ms from `awh mix duck fit`"}`,
+      "",
+      "Then calibrate the depth automatically:",
+      `  awh mix duck calibrate ${inserted.path} --target-depth <dB from fit> \\`,
+      "    --trigger-clip <Trigger clip> --from-bar <bar> --bars 4",
+    ];
+    output(opts, { devicePath: inserted.path }, () => lines.join("\n"));
+  });
+
+duckCmd
+  .command("measure <bassCapture>")
+  .description("Measure the ACHIEVED duck depth on a bass/sidechain-bus capture")
+  .option("--trigger-clip <clipPath>", "the Trigger MIDI clip")
+  .option("--triggers <beats>", "manual trigger positions in BEATS")
+  .action(
+    async (bassCapture: string, cmdOpts: { triggerClip?: string; triggers?: string }) => {
+      const opts = program.opts<GlobalOpts>();
+      const t = await resolveTriggerSeconds(opts, cmdOpts);
+      const args = ["duckdepth", bassCapture, ...triggerArgs(t)];
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+duckCmd
+  .command("calibrate <devicePath>")
+  .description(
+    "Closed-loop compressor calibration: capture the ducked bus via the tap, " +
+      "measure the achieved depth, adjust Threshold, repeat until it matches " +
+      "--target-depth. Needs Live + the capture tap ON THE DUCKED BUS.",
+  )
+  .requiredOption("--target-depth <db>", "duck depth to hit (from `duck fit`)")
+  .requiredOption("--from-bar <bar>", "capture span start (Trigger pattern boundary)")
+  .requiredOption("--bars <bars>", "capture span length")
+  .option("--trigger-clip <clipPath>", "the Trigger MIDI clip")
+  .option("--triggers <beats>", "manual trigger positions in BEATS")
+  .option("--param <name>", "device parameter to search", "Threshold")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--tap-port <port>", "capture tap OSC port", String(TAP_PORT))
+  .option("--max-iters <n>", "bisection iterations after the bracket probes", "4")
+  .option("--tolerance <db>", "acceptable |achieved - target|", "1.0")
+  .action(
+    async (
+      devicePath: string,
+      cmdOpts: {
+        targetDepth: string;
+        fromBar: string;
+        bars: string;
+        triggerClip?: string;
+        triggers?: string;
+        param: string;
+        sig: string;
+        tapPort: string;
+        maxIters: string;
+        tolerance: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const target = Number(cmdOpts.targetDepth);
+      const t = await resolveTriggerSeconds(opts, cmdOpts);
+      const detail = (await op(opts, "device.get", { path: devicePath })) as {
+        params: { name: string; value: number; min: number; max: number }[];
+      };
+      const param = detail.params.find((p) => p.name === cmdOpts.param);
+      if (!param) {
+        throw new Error(
+          `no "${cmdOpts.param}" param on ${devicePath} — params: ${detail.params.map((p) => p.name).join(", ")}`,
+        );
+      }
+      const onParam = detail.params.find((p) => p.name === "Device On");
+      const spec = {
+        fromBar: Number(cmdOpts.fromBar),
+        bars: Number(cmdOpts.bars),
+        beatsPerBar: Number(cmdOpts.sig),
+        tapPort: Number(cmdOpts.tapPort),
+        tailS: 0.3,
+      };
+      const scratch = join(repoRoot(), ".dev", "duck-calibrate");
+      await mkdir(scratch, { recursive: true });
+
+      const measureAt = async (label: string, raw?: number): Promise<number> => {
+        if (raw !== undefined) {
+          await setDeviceParam(opts, devicePath, cmdOpts.param, raw);
+        }
+        const out = join(scratch, `${label}.wav`);
+        await captureSpan(opts, { ...spec, out });
+        const r = await runAnalysisJson(["duckdepth", out, ...triggerArgs(t)]);
+        return r.depth_db!;
+      };
+
+      // baseline: duck bypassed -> the material's natural modulation
+      if (onParam) await setDeviceParam(opts, devicePath, "Device On", 0);
+      const baseline = await measureAt("baseline");
+      if (onParam) await setDeviceParam(opts, devicePath, "Device On", 1);
+      process.stderr.write(`baseline (bypassed): ${baseline.toFixed(2)} dB natural modulation\n`);
+
+      // bracket probes at 25% / 75% of the raw range to learn direction
+      const lo25 = param.min + 0.25 * (param.max - param.min);
+      const hi75 = param.min + 0.75 * (param.max - param.min);
+      const d25 = Math.max(0, (await measureAt("probe25", lo25)) - baseline);
+      const d75 = Math.max(0, (await measureAt("probe75", hi75)) - baseline);
+      process.stderr.write(`probes: raw ${lo25.toFixed(3)} -> ${d25.toFixed(2)} dB, raw ${hi75.toFixed(3)} -> ${d75.toFixed(2)} dB\n`);
+      // deeperRaw = the end of the range that gives MORE ducking
+      let deepRaw = d25 > d75 ? param.min : param.max;
+      let shallowRaw = d25 > d75 ? param.max : param.min;
+      let best = { raw: d25 > d75 ? lo25 : hi75, depth: Math.max(d25, d75) };
+
+      const tolerance = Number(cmdOpts.tolerance);
+      for (let i = 0; i < Number(cmdOpts.maxIters); i++) {
+        if (Math.abs(best.depth - target) <= tolerance) break;
+        const mid = (deepRaw + shallowRaw) / 2;
+        const depth = Math.max(0, (await measureAt(`iter${i}`, mid)) - baseline);
+        process.stderr.write(`iter ${i + 1}: raw ${mid.toFixed(3)} -> ${depth.toFixed(2)} dB (target ${target})\n`);
+        if (Math.abs(depth - target) < Math.abs(best.depth - target)) best = { raw: mid, depth };
+        // bracket: [shallowRaw, deepRaw]; too little duck -> move the shallow
+        // end to mid, too much -> move the deep end to mid
+        if (depth < target) shallowRaw = mid;
+        else deepRaw = mid;
+      }
+
+      await setDeviceParam(opts, devicePath, cmdOpts.param, best.raw);
+      output(opts, { param: cmdOpts.param, raw: best.raw, achievedDepth: best.depth, baseline }, () =>
+        [
+          `calibrated: ${cmdOpts.param} = ${best.raw.toFixed(3)} (raw) -> ` +
+            `${best.depth.toFixed(2)} dB duck (target ${target} ±${tolerance})`,
+          Math.abs(best.depth - target) <= tolerance
+            ? "within tolerance — audition it"
+            : "NOT within tolerance — the compressor may not reach this depth on this material; " +
+              "consider the ShaperBox strategy or a louder trigger source",
+        ].join("\n"),
+      );
+    },
+  );
+
+mix
+  .command("capture")
+  .description(
+    "Record post-FX audio via the M4L capture tap (m4l/): loops the arrangement " +
+      "over a bar span, records to a file, and stops",
+  )
+  .requiredOption("-o, --out <file>", "output file (absolute path recommended)")
+  .requiredOption("--from-bar <bar>", "1-based arrangement bar to loop from")
+  .requiredOption("--bars <bars>", "loop length in bars")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--tap-port <port>", "capture tap OSC port", String(TAP_PORT))
+  .option("--tail <seconds>", "extra record time after the loop", "0.5")
+  .action(
+    async (cmdOpts: {
+      out: string;
+      fromBar: string;
+      bars: string;
+      sig: string;
+      tapPort: string;
+      tail: string;
+    }) => {
+      const opts = program.opts<GlobalOpts>();
+      const beatsPerBar = Number(cmdOpts.sig);
+      const startBeat = (Number(cmdOpts.fromBar) - 1) * beatsPerBar;
+      const lengthBeats = Number(cmdOpts.bars) * beatsPerBar;
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const seconds = (lengthBeats / summary.tempo) * 60 + Number(cmdOpts.tail);
+      const port = Number(cmdOpts.tapPort);
+      const outPath = resolve(cmdOpts.out);
+
+      await sendToTap("/awh/loop", [startBeat, lengthBeats], port);
+      await sendToTap("/awh/record", [outPath], port);
+      await sendToTap("/awh/play", [1], port);
+      process.stderr.write(
+        `recording ${cmdOpts.bars} bars (~${seconds.toFixed(1)}s) at ${summary.tempo} BPM…\n`,
+      );
+      await new Promise((r) => setTimeout(r, seconds * 1000));
+      await sendToTap("/awh/play", [0], port);
+      await sendToTap("/awh/stop", [], port);
+
+      if (!existsSync(outPath)) {
+        throw new Error(
+          `${outPath} was not created — is the AWH Capture Tap device loaded (m4l/README.md) ` +
+            "and listening on the right port? The tap writes wherever the device sits.",
+        );
+      }
+      output(opts, { file: outPath, seconds }, () =>
+        `captured -> ${outPath}\nanalyze with: awh mix report ${outPath} --bpm ${summary.tempo}`,
       );
     },
   );
