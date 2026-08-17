@@ -1376,7 +1376,11 @@ lib
 
 function knowledgeStore(): KnowledgeStore {
   const root = repoRoot();
-  return new KnowledgeStore(join(root, "knowledge"), join(findLibraryRoot(), "measurements"));
+  return new KnowledgeStore(
+    join(root, "knowledge"),
+    join(findLibraryRoot(), "measurements"),
+    join(findLibraryRoot(), "references"),
+  );
 }
 
 const kb = program
@@ -2065,6 +2069,186 @@ mix
       );
     },
   );
+
+// ---------------------------------------------------------------------------
+// Reference deconstruction (M8): tempo/grid/energy/sections from a reference
+// audio file, draft section map as marker clips, corrections read back.
+// ---------------------------------------------------------------------------
+
+interface RefSection {
+  name: string;
+  start_bar: number;
+  end_bar: number;
+  confidence: number;
+  evidence?: string;
+}
+
+const ref = program
+  .command("ref")
+  .description("Deconstruct reference tracks: tempo, energy arc, section map");
+
+ref
+  .command("analyze <audio>")
+  .description("Analyze a reference: BPM/grid, bar energy arc, rule-based sections")
+  .option("--phrase <bars>", "phrase length sections snap to (4 or 8)", "4")
+  .option("--save [name]", "save to library/references/<name>.json (knowledge citizen)")
+  .action(
+    async (audio: string, cmdOpts: { phrase: string; save?: string | boolean }) => {
+      const opts = program.opts<GlobalOpts>();
+      const args = ["ref", audio, "--phrase", cmdOpts.phrase];
+      if (cmdOpts.save !== undefined) {
+        const name =
+          typeof cmdOpts.save === "string"
+            ? cmdOpts.save
+            : slugify(basename(audio).replace(/\.[^.]+$/, "") || "reference");
+        const dest = join(findLibraryRoot(), "references", `${name}.json`);
+        await mkdir(dirname(dest), { recursive: true });
+        args.push("--save-record", dest);
+        process.stderr.write(`reference record -> ${dest}\n`);
+      }
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+const refSections = ref
+  .command("sections")
+  .description("Draft section map <-> named marker clips on a Sections track");
+
+refSections
+  .command("apply <analysisOrAudio>")
+  .description(
+    "Write the analyzed section map into Live as empty named clips on a " +
+      "'Sections' MIDI track (created if missing) — the owner corrects by " +
+      "dragging/renaming, then `ref sections read` picks the corrections up",
+  )
+  .option("--track <trackPath>", "existing track to use instead of 'Sections'")
+  .option("--phrase <bars>", "phrase length (when analyzing audio directly)", "4")
+  .option("--sig <beatsPerBar>", "beats per bar on the timeline", "4")
+  .option("--clear", "clear existing clips on the target track first")
+  .action(
+    async (
+      analysisOrAudio: string,
+      cmdOpts: { track?: string; phrase: string; sig: string; clear?: boolean },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const beatsPerBar = Number(cmdOpts.sig);
+
+      let sections: RefSection[];
+      let sourceBpm: number | undefined;
+      if (analysisOrAudio.endsWith(".json")) {
+        const parsed = JSON.parse(await readFile(analysisOrAudio, "utf8")) as {
+          sections?: RefSection[];
+          bpm?: number;
+          reference?: { sections: RefSection[]; bpm: number };
+        };
+        const analysis = parsed.reference ?? parsed;
+        if (!analysis.sections) throw new Error(`${analysisOrAudio} has no sections`);
+        sections = analysis.sections;
+        sourceBpm = analysis.bpm;
+      } else {
+        const result = (await runAnalysisJson([
+          "ref",
+          analysisOrAudio,
+          "--phrase",
+          cmdOpts.phrase,
+        ])) as unknown as { sections: RefSection[]; bpm: number };
+        sections = result.sections;
+        sourceBpm = result.bpm;
+      }
+      if (sections.length === 0) throw new Error("no sections detected — nothing to apply");
+
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      let trackPath = cmdOpts.track;
+      if (!trackPath) {
+        const existing = summary.tracks.find(
+          (t) => t.kind === "midi" && t.name.toLowerCase() === "sections",
+        );
+        if (existing) {
+          trackPath = existing.path;
+        } else {
+          const created = (await op(opts, "track.create", {
+            kind: "midi",
+            name: "Sections",
+          })) as { path: string };
+          trackPath = created.path;
+        }
+      }
+      const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
+      if (track && track.arrangementClips.length > 0) {
+        if (!cmdOpts.clear) {
+          throw new Error(
+            `${trackPath} already has ${track.arrangementClips.length} arrangement clips — ` +
+              "pass --clear to replace the map, or --track for a different track",
+          );
+        }
+        const endBeat = Math.max(...track.arrangementClips.map((c) => c.endTime ?? 0));
+        await op(opts, "track.clear-range", { path: trackPath, startBeat: 0, endBeat });
+      }
+
+      for (const s of sections) {
+        const startBeat = (s.start_bar - 1) * beatsPerBar;
+        const lengthBeats = (s.end_bar - s.start_bar + 1) * beatsPerBar;
+        await op(opts, "clip.create-midi", {
+          target: { type: "arrangement", trackPath, startBeat },
+          lengthBeats,
+          notes: [],
+          name: `${s.name} ${s.end_bar - s.start_bar + 1}b [c=${s.confidence.toFixed(2)}]`,
+        });
+      }
+      output(opts, { trackPath, sections: sections.length, bpm: sourceBpm }, () =>
+        [
+          `${sections.length} section markers -> ${trackPath}` +
+            (sourceBpm ? ` (reference ${sourceBpm.toFixed(1)} BPM)` : ""),
+          ...sections.map(
+            (s) =>
+              `  bar ${String(s.start_bar).padStart(3)}-${String(s.end_bar).padEnd(3)} ` +
+              `${s.name} [confidence ${s.confidence.toFixed(2)}]`,
+          ),
+          "correct by dragging/renaming the clips, then: awh ref sections read " + trackPath,
+        ].join("\n"),
+      );
+    },
+  );
+
+refSections
+  .command("read <trackPath>")
+  .description("Read the (corrected) section clips back into an analysis JSON")
+  .option("--sig <beatsPerBar>", "beats per bar on the timeline", "4")
+  .option("-o, --out <file>", "write the updated section map JSON here")
+  .action(async (trackPath: string, cmdOpts: { sig: string; out?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const beatsPerBar = Number(cmdOpts.sig);
+    const summary = (await op(opts, "set.summary")) as SetSummary;
+    const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
+    if (!track) throw new Error(`track not found: ${trackPath}`);
+    const sections = track.arrangementClips
+      .slice()
+      .sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0))
+      .map((c) => {
+        // lenient parse of "<name> <len>b [c=0.82]" — corrections may drop parts
+        const m = c.name.match(/^(.*?)(?:\s+\d+b)?(?:\s+\[c=([\d.]+)\])?\s*$/);
+        return {
+          name: (m?.[1] ?? c.name).trim() || "section",
+          start_bar: Math.round((c.startTime ?? 0) / beatsPerBar) + 1,
+          end_bar: Math.round((c.endTime ?? 0) / beatsPerBar),
+          confidence: m?.[2] ? Number(m[2]) : 1.0, // owner-corrected = certain
+        };
+      });
+    if (sections.length === 0) throw new Error(`no section clips on ${trackPath}`);
+    const result = { trackPath, beatsPerBar, sections };
+    if (cmdOpts.out) {
+      await writeFile(cmdOpts.out, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+    }
+    output(opts, result, () =>
+      [
+        `${sections.length} sections read from ${trackPath}${cmdOpts.out ? ` -> ${cmdOpts.out}` : ""}`,
+        ...sections.map(
+          (s) => `  bar ${String(s.start_bar).padStart(3)}-${String(s.end_bar).padEnd(3)} ${s.name}`,
+        ),
+      ].join("\n"),
+    );
+  });
 
 program
   .command("render <trackPath>")

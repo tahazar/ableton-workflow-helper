@@ -34,14 +34,24 @@ export interface MeasurementRecordSummary {
   findingsCount: number;
 }
 
+export interface ReferenceRecordSummary {
+  name: string;
+  saved?: string;
+  file?: string;
+  bpm?: number;
+  sectionCount?: number;
+}
+
 export class KnowledgeStore {
   /**
    * @param root the knowledge/ directory
    * @param measurementsDir library/measurements (records surface); optional
+   * @param referencesDir library/references (M8 reference maps); optional
    */
   constructor(
     readonly root: string,
     readonly measurementsDir?: string,
+    readonly referencesDir?: string,
   ) {}
 
   entryFilePath(topic: string, slug: string): string {
@@ -142,6 +152,33 @@ export class KnowledgeStore {
     return out;
   }
 
+  async listReferenceRecords(): Promise<ReferenceRecordSummary[]> {
+    if (!this.referencesDir || !existsSync(this.referencesDir)) return [];
+    const out: ReferenceRecordSummary[] = [];
+    for (const f of (await readdir(this.referencesDir)).filter((x) => x.endsWith(".json")).sort()) {
+      try {
+        const raw = JSON.parse(await readFile(join(this.referencesDir, f), "utf8")) as {
+          saved?: string;
+          file?: string;
+          bpm?: number;
+          sections?: unknown[];
+          reference?: { bpm?: number; sections?: unknown[] };
+        };
+        const analysis = raw.reference ?? raw;
+        out.push({
+          name: f.replace(/\.json$/, ""),
+          ...(raw.saved ? { saved: raw.saved } : {}),
+          ...(raw.file ? { file: raw.file } : {}),
+          ...(analysis.bpm !== undefined ? { bpm: analysis.bpm } : {}),
+          ...(analysis.sections ? { sectionCount: analysis.sections.length } : {}),
+        });
+      } catch (err) {
+        throw new Error(`Bad reference record ${f}: ${(err as Error).message}`);
+      }
+    }
+    return out;
+  }
+
   /** Regenerate knowledge/INDEX.md: entries by topic + measurement records. */
   async buildIndex(): Promise<string> {
     const entries = await this.listEntries();
@@ -180,6 +217,22 @@ export class KnowledgeStore {
           `| [${r.name}](../library/measurements/${r.name}.json) | ${r.saved} | ` +
             `${r.lufsIntegrated.toFixed(1)} | ${r.tiltDbPerOct.toFixed(1)} | ${r.bpm ?? ""} | ` +
             `${r.findingsCount} | ${basename(r.file)} |`,
+        );
+      }
+    }
+    const references = await this.listReferenceRecords();
+    if (references.length > 0) {
+      lines.push(
+        "",
+        "## references (library/references/ — deconstructed reference maps)",
+        "",
+        "| reference | saved | bpm | sections | source file |",
+        "|---|---|---|---|---|",
+      );
+      for (const r of references) {
+        lines.push(
+          `| [${r.name}](../library/references/${r.name}.json) | ${r.saved ?? ""} | ` +
+            `${r.bpm?.toFixed(1) ?? ""} | ${r.sectionCount ?? ""} | ${r.file ? basename(r.file) : ""} |`,
         );
       }
     }

@@ -140,3 +140,31 @@ describe("KnowledgeStore", () => {
     expect(await store.buildIndex()).toContain("PROSE-ONLY");
   });
 });
+
+describe("reference records in the index", () => {
+  it("surfaces library/references/ maps alongside measurements", async () => {
+    const base = await mkdtemp(join(tmpdir(), "awh-kbref-"));
+    try {
+      const store = new KnowledgeStore(
+        join(base, "knowledge"),
+        undefined,
+        join(base, "references"),
+      );
+      await store.saveEntry(entry);
+      await mkdir(join(base, "references"), { recursive: true });
+      await writeFile(
+        join(base, "references", "my-ref-track.json"),
+        JSON.stringify({
+          saved: "2026-08-17",
+          file: "/x/my-ref-track.wav",
+          reference: { bpm: 128.02, sections: [{}, {}, {}, {}, {}] },
+        }),
+      );
+      const index = await store.buildIndex();
+      expect(index).toContain("## references");
+      expect(index).toContain("| [my-ref-track](../library/references/my-ref-track.json) | 2026-08-17 | 128.0 | 5 |");
+    } finally {
+      await rm(base, { recursive: true, force: true });
+    }
+  });
+});
