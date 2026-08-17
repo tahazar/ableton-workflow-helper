@@ -1793,6 +1793,12 @@ async function captureSpan(
   await new Promise((r) => setTimeout(r, seconds * 1000));
   await sendToTap("/awh/play", [0], spec.tapPort);
   await sendToTap("/awh/stop", [], spec.tapPort);
+  // sfrecord~ has no completion ack over OSC — give it a moment to flush
+  // and close the WAV header before anything reads the file. Without this,
+  // an immediate read can see a file that `existsSync` but whose header
+  // still reports 0 frames (found live: intermittent "selection is 0.000s"
+  // analysis failures on files that were valid moments later).
+  await new Promise((r) => setTimeout(r, 400));
   if (!existsSync(spec.out)) {
     throw new Error(
       `${spec.out} was not created — is the AWH Capture Tap device loaded (m4l/README.md) ` +
@@ -2041,30 +2047,19 @@ mix
       tail: string;
     }) => {
       const opts = program.opts<GlobalOpts>();
-      const beatsPerBar = Number(cmdOpts.sig);
-      const startBeat = (Number(cmdOpts.fromBar) - 1) * beatsPerBar;
-      const lengthBeats = Number(cmdOpts.bars) * beatsPerBar;
-      const summary = (await op(opts, "set.summary")) as SetSummary;
-      const seconds = (lengthBeats / summary.tempo) * 60 + Number(cmdOpts.tail);
-      const port = Number(cmdOpts.tapPort);
       const outPath = resolve(cmdOpts.out);
-
-      await sendToTap("/awh/loop", [startBeat, lengthBeats], port);
-      await sendToTap("/awh/record", [outPath], port);
-      await sendToTap("/awh/play", [1], port);
       process.stderr.write(
-        `recording ${cmdOpts.bars} bars (~${seconds.toFixed(1)}s) at ${summary.tempo} BPM…\n`,
+        `recording ${cmdOpts.bars} bars at the tap (${outPath})…\n`,
       );
-      await new Promise((r) => setTimeout(r, seconds * 1000));
-      await sendToTap("/awh/play", [0], port);
-      await sendToTap("/awh/stop", [], port);
-
-      if (!existsSync(outPath)) {
-        throw new Error(
-          `${outPath} was not created — is the AWH Capture Tap device loaded (m4l/README.md) ` +
-            "and listening on the right port? The tap writes wherever the device sits.",
-        );
-      }
+      const seconds = await captureSpan(opts, {
+        fromBar: Number(cmdOpts.fromBar),
+        bars: Number(cmdOpts.bars),
+        beatsPerBar: Number(cmdOpts.sig),
+        tapPort: Number(cmdOpts.tapPort),
+        out: outPath,
+        tailS: Number(cmdOpts.tail),
+      });
+      const summary = (await op(opts, "set.summary")) as SetSummary;
       output(opts, { file: outPath, seconds }, () =>
         `captured -> ${outPath}\nanalyze with: awh mix report ${outPath} --bpm ${summary.tempo}`,
       );
