@@ -25,7 +25,8 @@ ENV_WINDOW_S = 0.005
 ENV_HOP_S = 0.0025
 BODY_END_REL_DB = -12.0  # kick "body" = within 12 dB of its low-band peak
 DECAY_DONE_ABOVE_FLOOR_DB = 3.0
-DEFAULT_DEPTH_DB = 12.0
+DEFAULT_DEPTH_DB = 6.0  # tutorial-lore musical range is 3-6 dB (see
+# docs/research/shaperbox-preset-format.md); masking-based depth supersedes
 MIN_DEPTH_DB = 3.0
 MAX_DEPTH_DB = 24.0
 KICK_OVER_BASS_MARGIN_DB = 6.0  # ducked bass sits >= this below the kick peak
@@ -137,7 +138,10 @@ def fit_duck_envelope(
             )
         else:
             depth_db = DEFAULT_DEPTH_DB
-            depth_source = "default (no bass capture given)"
+            depth_source = (
+                "default (no bass capture given; 3-6 dB is the musical convention, "
+                "go deeper for a stylized pump)"
+            )
 
     release_end_s = float(min(max(decay_done_s * 1.1, hold_end_s + 0.02), window_s * RELEASE_HEADROOM))
 
@@ -146,16 +150,23 @@ def fit_duck_envelope(
         return t / window_s
 
     points = [
-        {"ms": 0.0, "frac": 0.0, "gain_db": -depth_db},
-        {"ms": hold_end_s * 1000.0, "frac": frac(hold_end_s), "gain_db": -depth_db},
+        {"ms": 0.0, "frac": 0.0, "gain_db": -depth_db, "curve": "sharp-corner"},
+        {
+            "ms": hold_end_s * 1000.0,
+            "frac": frac(hold_end_s),
+            "gain_db": -depth_db,
+            "curve": "sharp-corner",
+        },
     ]
     n_release = 5
     for k in range(1, n_release + 1):
         t = hold_end_s + (release_end_s - hold_end_s) * k / n_release
         # exponential recovery: fast at first in dB terms mirrors a natural tail
         g = -depth_db * float(np.exp(-3.0 * k / n_release))
-        points.append({"ms": t * 1000.0, "frac": frac(t), "gain_db": round(g, 2)})
-    points.append({"ms": window_s * 1000.0, "frac": 1.0, "gain_db": 0.0})
+        points.append(
+            {"ms": t * 1000.0, "frac": frac(t), "gain_db": round(g, 2), "curve": "smooth"}
+        )
+    points.append({"ms": window_s * 1000.0, "frac": 1.0, "gain_db": 0.0, "curve": "smooth"})
 
     return {
         "window_s": window_s,

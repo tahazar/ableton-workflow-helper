@@ -323,8 +323,14 @@ Sidechain bus, MIDI-triggered by a "Trigger" track:
    → prints measured kick body/tail times and the exact points to draw:
    depth, hold, exponential release, always recovered before the next hit.
 3. Read the numbers to the owner as drawing instructions (ms AND % of the
-   trigger gap). They draw it in Volume Shaper; then verify with an on/off
-   `awh mix ab` capture pair if they want proof it behaves.
+   trigger gap). ShaperBox mechanics (docs/research/shaperbox-preset-format
+   .md): LFO Length in ms = the printed gap, MIDI Trigger "On",
+   sharp-corner points for the dip/hold, smooth points on the release;
+   save to Favorites / LFO copy-paste for reuse. Preset FILES cannot be
+   generated (opaque binary) — never offer to write one.
+4. Verify with an on/off `awh mix ab` capture pair if they want proof, and
+   suggest tightening the kick's own decay if the measured tail forces a
+   groove-killing duck length.
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not
