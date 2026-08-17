@@ -147,6 +147,30 @@ awh drums vary <clipPath> [-n 4] [--amount 0..1]   # role-aware variations
 - density/style requests map naturally: "busier" → higher --density,
   "darker/minimal" → techno at lower density, "half-time/trap" → trap.
 
+## Mix analysis (`awh mix`) — measurements, never vibes
+
+```sh
+awh mix capture -o <file> --from-bar N --bars N   # record post-FX via the M4L tap
+awh mix report <file> [--bpm N] [--target name] [--delivery club|streaming|apple]
+awh mix ab <fileA> <fileB> [--bpm N]              # loudness-matched A/B diff
+awh mix target <refFiles...> --save <name>        # measure refs -> genre target
+```
+
+- **Quote the numbers; never invent one.** The report's findings each carry
+  value/threshold/suggestion — relay them, prioritize alerts, and explain in
+  plain producer language. If a measurement isn't in the output, say so.
+- Typical loop: capture (or ask the user for an export) → report → discuss →
+  user tweaks (or asks you to, e.g. EQ Eight via device ops) → capture again
+  → `awh mix ab` old vs new. AB is loudness-matched — tell the user this
+  kills the louder-sounds-better illusion.
+- Always pass `--bpm` (from `awh status`) so sidechain pump gets verified.
+- Targets are the USER'S own measured references (`awh mix target`), stored
+  in `library/targets/` — offer to build one from their reference tracks
+  before comparing; never compare against a vibe.
+- capture requires the AWH Capture Tap M4L device (m4l/README.md) on the
+  master; if it fails, fall back to asking the user to export the span and
+  run report on that file.
+
 ## Library (`awh save` / `awh lib`) — the owner's clip memory
 
 Git-versioned clips under `library/clips/<category>/<slug>.md` (markdown +
