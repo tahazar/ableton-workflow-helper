@@ -180,11 +180,15 @@ def _cmd_duck(args: argparse.Namespace) -> int:
             f"recovered by {rec['fully_recovered_by_ms']:.0f} ms "
             f"({100 * rec['fully_recovered_by_ms'] / result['window_ms']:.0f}% of the gap)",
             "",
-            "Points to draw (time | % of trigger gap | gain):",
+            "Points to draw (time | % of trigger gap | gain | point type):",
+            "  (Volume Shaper: LFO Length in ms = the trigger gap; MIDI Trigger On;",
+            "   Snap off; sharp-corner points for the dip, smooth for the release.",
+            "   Save to Favorites / LFO copy-paste to reuse across projects.)",
         ]
         for pt in rec["points"]:
             lines.append(
                 f"  {pt['ms']:7.1f} ms  {100 * pt['frac']:5.1f}%  {pt['gain_db']:+6.2f} dB"
+                f"  {pt.get('curve', '')}"
             )
         print("\n".join(lines))
     return 0
