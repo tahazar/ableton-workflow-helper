@@ -538,3 +538,22 @@ Automatic (compressor) strategy:
       depth; A/B by ear vs the ShaperBox curve on the same material
 - [ ] Record the Compressor's raw<->display mappings seen during this pass
       (Threshold/Ratio/Attack/Release) into knowledge/ for future sessions
+
+## B4 (knowledge base) verification checklist
+
+- [ ] `awh kb list` / `kb topics` / `kb show sidechain-template` → the setup
+      entry reads back; `kb index` → INDEX.md includes your saved mix-report
+      records with real numbers
+- [ ] `awh kb new <topic> <slug>` with a BRAND-NEW topic name → directory
+      appears, entry validates, index picks the topic up (open-domain check)
+- [ ] `awh distill -o /tmp/distill.md` on a real project → structure +
+      notations complete enough to curate from
+- [ ] Data-driven drum style: `awh drums gen <track> --style hybrid-trap`
+      (the shipped draft entry) → generates via the knowledge spec, prints
+      the entry tier; edit the entry's YAML (e.g. a kick cell) → next gen
+      reflects it with NO rebuild
+- [ ] Skill: "what do we know about my sidechain setup?" → fresh agent
+      retrieves + cites the entry with tier; "remember this hat trick" →
+      creates a draft entry with an Executable section
+- [ ] Seeding: request one real distillation ("distill common UK garage hat
+      tropes") → sourced entries with citations arrive as a reviewable PR

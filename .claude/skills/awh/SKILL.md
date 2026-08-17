@@ -171,6 +171,34 @@ awh mix target <refFiles...> --save <name>        # measure refs -> genre target
   master; if it fails, fall back to asking the user to export the span and
   run report on that file.
 
+## Knowledge base (`awh kb` / `awh distill`) — read before you reason
+
+`knowledge/<topic>/<slug>.md`: tiered (verified/sourced/draft), executable-
+first entries. Topics are OPEN-ENDED (new domain = new directory). Saved mix
+reports (`library/measurements/`) are part of the same surface.
+
+```sh
+awh kb list [--topic t] [--tag t] [--tier t]   # browse entries
+awh kb topics / awh kb show <slug> / awh kb index
+awh kb new <topic> <slug>            # scaffold a well-formed draft entry
+awh distill [-o file]                # dump the open project for curation
+```
+
+- **Retrieval-first**: BEFORE genre/technique/setup tasks, grep
+  `knowledge/INDEX.md` (or `awh kb list --topic <t>`). Setup entries (e.g.
+  `sidechain-template`) are read before designing anything touching that
+  part of the studio. Cite `slug [tier]` when applying an entry; NEVER
+  present a `draft` as fact.
+- **Capture**: when the owner says "remember this" / "save what we learned",
+  `awh kb new` + fill in Executable + rule; end-of-session distillation via
+  `awh distill` → curate notable clips into `awh save` and rules into
+  entries. New entries you author are tier `draft` (or `sourced` WITH
+  citations) — never `verified`; only the owner promotes.
+- **Data-driven drum styles**: a `drum-style-<name>` entry with an
+  ```awh-style-spec``` block makes `awh drums gen --style <name>` work for
+  styles beyond the built-ins — adding a style = writing knowledge, not
+  code. gen prints the entry's tier when it uses one.
+
 ## Library (`awh save` / `awh lib`) — the owner's clip memory
 
 Git-versioned clips under `library/clips/<category>/<slug>.md` (markdown +
