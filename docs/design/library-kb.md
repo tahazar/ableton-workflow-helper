@@ -113,6 +113,22 @@ storage/temp dirs — pre-announced OS sandbox). Design: an **outbox**.
    quick capture mid-session, curation later. v1 is zero-dialog (auto-slug);
    a name/tags webview dialog is a later nicety.
 
+## Knowledge domains (owner requirements, 2026-08-17)
+
+- **Domains are open-ended.** `knowledge/<topic>/<slug>.md` imposes no fixed
+  topic list — new domains appear by creating a directory (`setup/` was
+  first: the sidechain template; `rhythm/`, `mixing/`, `sound-design/`,
+  `projects/` are anticipated, not enumerated). The INDEX generator and
+  retrieval instructions must discover topics from the tree, never from a
+  hardcoded list.
+- **Measurement records are knowledge citizens.** `library/measurements/`
+  (mix reports saved by `awh mix report --save` / auto-recorded reference
+  measurements) is part of the knowledge surface: indexed alongside
+  `knowledge/`, retrievable by the same flows ("what did my references
+  measure?"), and citable in entries (a mixing note can link the record it
+  was derived from). Records stay JSON (they're data, not prose); knowledge
+  entries wrap interpretation around them.
+
 ## Knowledge lifecycle
 
 - **Seeding**: research agents distill external sources (genre tropes, sound
