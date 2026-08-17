@@ -42,3 +42,15 @@ def test_to_mono():
     x = np.stack([np.ones(10), -np.ones(10)], axis=1)
     mono = audio.to_mono(x)
     assert np.allclose(mono, 0.0)
+
+
+def test_sanitize_json_strips_non_finite():
+    import json
+    import math
+
+    from awh_analysis.audio import sanitize_json
+
+    dirty = {"a": float("-inf"), "b": [1.0, float("nan"), {"c": float("inf")}], "d": "x", "e": 3}
+    clean = sanitize_json(dirty)
+    assert clean == {"a": None, "b": [1.0, None, {"c": None}], "d": "x", "e": 3}
+    json.dumps(clean, allow_nan=False)  # must not raise
