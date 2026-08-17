@@ -38,9 +38,11 @@ def _low_band(x: np.ndarray, sr: int) -> np.ndarray:
     return sosfiltfilt(sos, to_mono(np.asarray(x, dtype=np.float64)))
 
 
-def _rms_env(sig: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray]:
-    win = max(1, int(round(ENV_WINDOW_S * sr)))
-    hop = max(1, int(round(ENV_HOP_S * sr)))
+def _rms_env(
+    sig: np.ndarray, sr: int, window_s: float = ENV_WINDOW_S, hop_s: float = ENV_HOP_S
+) -> tuple[np.ndarray, np.ndarray]:
+    win = max(1, int(round(window_s * sr)))
+    hop = max(1, int(round(hop_s * sr)))
     n = (len(sig) - win) // hop + 1
     if n <= 0:
         return np.array([]), np.array([])
@@ -52,7 +54,11 @@ def _rms_env(sig: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray]:
 
 
 def trigger_aligned_envelope(
-    x: np.ndarray, sr: int, trigger_times_s: list[float]
+    x: np.ndarray,
+    sr: int,
+    trigger_times_s: list[float],
+    env_window_s: float = ENV_WINDOW_S,
+    env_hop_s: float = ENV_HOP_S,
 ) -> dict:
     """Average low-band RMS envelope aligned at each trigger, over a window
     of the (robust) minimum inter-trigger gap."""
@@ -78,7 +84,7 @@ def trigger_aligned_envelope(
 
     stacked = np.stack([s[: min(len(s) for s in segments)] for s in segments])
     mean_power_signal = np.sqrt(np.mean(stacked**2, axis=0))
-    times, rms = _rms_env(mean_power_signal, sr)
+    times, rms = _rms_env(mean_power_signal, sr, env_window_s, env_hop_s)
     env_db = 20.0 * np.log10(np.maximum(rms, 1e-9))
     return {
         "window_s": window_s,
@@ -189,4 +195,30 @@ def fit_duck_envelope(
             "fully_recovered_by_ms": release_end_s * 1000.0,
             "points": points,
         },
+    }
+
+
+def measure_duck_depth(
+    x: np.ndarray, sr: int, trigger_times_s: list[float]
+) -> dict:
+    """Measure the ACHIEVED duck on a bass/sidechain-bus capture: the
+    peak-to-trough span of the trigger-aligned low-band envelope. Used by
+    the calibration loop (compressor strategy) and for verifying a drawn
+    ShaperBox curve. On un-ducked sustained material this reads near 0.
+
+    Uses a 25 ms envelope window: long enough to average out sub-bass
+    carrier ripple (a 5 ms window beats against a 50 Hz cycle), short
+    enough to resolve any real duck (>= ~70 ms in practice)."""
+    aligned = trigger_aligned_envelope(x, sr, trigger_times_s, 0.025, 0.005)
+    env_db = aligned["env_db"]
+    times = aligned["times"]
+    finite = np.isfinite(env_db)
+    if not finite.any():
+        raise ValueError("could not compute an envelope from the capture")
+    trough_idx = int(np.nanargmin(env_db))
+    return {
+        "depth_db": float(np.nanmax(env_db) - np.nanmin(env_db)),
+        "trough_ms": float(times[trough_idx]) * 1000.0,
+        "window_ms": aligned["window_s"] * 1000.0,
+        "used_triggers": aligned["used_triggers"],
     }

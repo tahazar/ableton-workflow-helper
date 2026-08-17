@@ -64,3 +64,14 @@ Practical notes for capture-based checks on this template:
   isolates the ducked signal cleanly; a tap on Main mixes drums back in.
 - "Bypass" for A/B = ShaperBox **Device On → 0** on the Sidechain track
   (one `device.param` call — automatable in an `awh` flow).
+
+## Ducking strategies (owner decision 2026-08-17: ShaperBox = one option)
+
+| Strategy | Automation level | How |
+|---|---|---|
+| **ShaperBox Volume Shaper** | manual draw, fitted numbers | `awh mix duck fit` → draw the printed points (preset files are unwritable — see docs/research/shaperbox-preset-format.md) |
+| **Stock Compressor (sidechain)** | near-automatic | `awh mix duck setup <Sidechain track>` inserts + presets it (fastest attack, max ratio); TWO manual touches (SDK has no routing API): enable Sidechain + Audio From = trigger source, and dial Release to the fitted ms. Then `awh mix duck calibrate` closes the loop: capture → measure achieved depth → adjust Threshold → repeat until it hits the fitted target |
+| **Volume automation** | NOT writable | the Extensions SDK has no automation/clip-envelope API (ADR-001 accepted loss). Paths that could restore it: the parked offline-.als-injection experiment, or a future AWH M4L ducker device (transport-synced gain envelope pushed over OSC — fully automatic, no routing clicks) |
+
+Verification is strategy-independent: `awh mix duck measure` on a Sidechain-
+bus capture (achieved depth), or an on/off `awh mix ab` pair.

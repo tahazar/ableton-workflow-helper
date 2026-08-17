@@ -119,6 +119,27 @@ uses ShaperBox Volume Shaper on a Sidechain bus, retriggered by a MIDI
    beat-fold; the trigger-aligned path is preferred whenever a Trigger clip
    exists.
 
+## Duck strategies (`awh mix duck` — fit / setup / measure / calibrate)
+
+`fit` derives the ideal duck from the drums (trigger-aligned low-band
+envelope). Realization strategies (owner decision: ShaperBox is ONE option):
+
+- **ShaperBox** (manual): draw the fitted points; preset files are
+  unwritable (docs/research/shaperbox-preset-format.md).
+- **Stock Compressor** (near-automatic): `setup` inserts + presets
+  (fastest attack, max ratio); routing and ms-dials stay manual (the SDK
+  has no routing API). `calibrate` then closes the loop — capture the
+  ducked bus via the tap, `measure` the achieved trigger-aligned depth
+  (25 ms envelope window to ride over sub-bass carrier ripple), bisect the
+  Threshold raw value (direction learned from two bracket probes — raw
+  scales are unmapped) until the target depth is hit. Raw↔display
+  mappings observed during validation get recorded to knowledge/.
+- **Volume automation**: not writable via the Extensions SDK (no
+  automation/clip-envelope API — ADR-001). Future full-auto option: an AWH
+  M4L "Ducker" device (transport-synced gain envelope, curve + trigger
+  pattern pushed over OSC like the capture tap — no routing clicks at
+  all); or the parked offline-.als envelope-injection experiment.
+
 ## Non-goals (honest scope, per research)
 
 No taste judgments, no arrangement opinions, no auto-apply of EQ moves

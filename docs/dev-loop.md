@@ -471,10 +471,10 @@ claim against synthetic fixtures; (3) its behavior for occupied-but-empty
 targets is decided and tested; (4) its zero-item path still runs cleanup/
 sync side effects.
 
-## Duck-fit (`awh mix duck`) verification checklist
+## Duck toolkit (`awh mix duck`) verification checklist
 
 - [ ] Capture the Drums bus over 4-8 bars starting on the Trigger pattern's
-      boundary; `awh mix duck <capture> --trigger-clip <Trigger clip>` →
+      boundary; `awh mix duck fit <capture> --trigger-clip <Trigger clip>` →
       body/tail times look plausible against the waveform
 - [ ] Draw the printed points in Volume Shaper (depth/hold/exponential
       release) → bass audibly locks to the kick without pumping artifacts
@@ -482,3 +482,16 @@ sync side effects.
       the default 12 dB
 - [ ] Proof loop: capture sidechain bus with the drawn envelope on vs
       Device On -> 0, `awh mix ab` → depth delta ≈ the drawn depth
+
+Automatic (compressor) strategy:
+
+- [ ] `awh mix duck setup <Sidechain track>` → Compressor appears, Attack
+      fastest / Ratio max set; do the two printed manual touches
+- [ ] Tap on the Sidechain bus: `awh mix duck calibrate <devicePath>
+      --target-depth <fit depth> --trigger-clip <Trigger> --from-bar X
+      --bars 4` → baseline + probes + iterations print sensibly; final
+      achieved depth within tolerance; Threshold left at the calibrated raw
+- [ ] `awh mix duck measure <fresh Sidechain capture>` ≈ the calibrated
+      depth; A/B by ear vs the ShaperBox curve on the same material
+- [ ] Record the Compressor's raw<->display mappings seen during this pass
+      (Threshold/Ratio/Attack/Release) into knowledge/ for future sessions
