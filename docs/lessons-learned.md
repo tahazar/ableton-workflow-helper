@@ -26,7 +26,14 @@ time). These lessons are the "definition of done" for future milestones.
    independent agents hand-worked around it identically. Every "write X
    into Y" tool must decide (and document) its behavior for occupied-but-
    trivial targets.
-4. **Zero items is a state, not an error.** `export-alc`'s
+4. **Typed wrappers for repeat-use gateway ops.** `op(name, args)` takes
+   `unknown`, so a wrong field name compiles clean and fails only at
+   runtime inside Live — the duck toolchain shipped five `device.param`
+   calls with `{name}` instead of `{param}` and every one failed live.
+   Any op called from more than one CLI site gets a typed wrapper
+   (`setDeviceParam(...)`), and new call sites use the wrapper, not raw
+   `op()`.
+5. **Zero items is a state, not an error.** `export-alc`'s
    `if (entries.length === 0) throw` guard sat in front of the
    wipe-stale-content logic it should have protected — so emptying the
    library silently stopped syncing the mirror. Ask of every early guard:

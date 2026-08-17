@@ -509,7 +509,9 @@ calibrator, verified live on a purpose-built kick/snare/hat/bassline project:
 A new `awh` command is NOT done until: (1) SKILL.md's Typical Flows names it
 for its natural request; (2) a negative-control test inverts its detection
 claim against synthetic fixtures; (3) its behavior for occupied-but-empty
-targets is decided and tested; (4) its zero-item path still runs cleanup/
+targets is decided and tested; (4) gateway ops it calls from more than one
+site go through typed wrappers (op() args are unknown — wrong field names
+only fail at runtime in Live); (5) its zero-item path still runs cleanup/
 sync side effects.
 
 ## Duck toolkit (`awh mix duck`) verification checklist
