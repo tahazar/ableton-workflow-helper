@@ -2216,7 +2216,12 @@ refSections
   .description("Read the (corrected) section clips back into an analysis JSON")
   .option("--sig <beatsPerBar>", "beats per bar on the timeline", "4")
   .option("-o, --out <file>", "write the updated section map JSON here")
-  .action(async (trackPath: string, cmdOpts: { sig: string; out?: string }) => {
+  .option(
+    "--save <name>",
+    "merge the correction into an existing library/references/<name>.json " +
+      "(the saved reference's sections field; bpm/arc/etc. untouched)",
+  )
+  .action(async (trackPath: string, cmdOpts: { sig: string; out?: string; save?: string }) => {
     const opts = program.opts<GlobalOpts>();
     const beatsPerBar = Number(cmdOpts.sig);
     const summary = (await op(opts, "set.summary")) as SetSummary;
@@ -2233,6 +2238,7 @@ refSections
           start_bar: Math.round((c.startTime ?? 0) / beatsPerBar) + 1,
           end_bar: Math.round((c.endTime ?? 0) / beatsPerBar),
           confidence: m?.[2] ? Number(m[2]) : 1.0, // owner-corrected = certain
+          evidence: "owner correction",
         };
       });
     if (sections.length === 0) throw new Error(`no section clips on ${trackPath}`);
@@ -2240,12 +2246,26 @@ refSections
     if (cmdOpts.out) {
       await writeFile(cmdOpts.out, `${JSON.stringify(result, null, 2)}\n`, "utf8");
     }
-    output(opts, result, () =>
+    let savedTo: string | undefined;
+    if (cmdOpts.save) {
+      const dest = join(findLibraryRoot(), "references", `${cmdOpts.save}.json`);
+      if (!existsSync(dest)) {
+        throw new Error(`${dest} does not exist — run \`awh ref analyze --save ${cmdOpts.save}\` first`);
+      }
+      const record = JSON.parse(await readFile(dest, "utf8")) as {
+        reference: { sections: unknown };
+      };
+      record.reference.sections = sections;
+      await writeFile(dest, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+      savedTo = dest;
+    }
+    output(opts, { ...result, ...(savedTo ? { savedTo } : {}) }, () =>
       [
         `${sections.length} sections read from ${trackPath}${cmdOpts.out ? ` -> ${cmdOpts.out}` : ""}`,
         ...sections.map(
           (s) => `  bar ${String(s.start_bar).padStart(3)}-${String(s.end_bar).padEnd(3)} ${s.name}`,
         ),
+        ...(savedTo ? [`merged into ${savedTo} — run \`awh kb index\` to refresh the index`] : []),
       ].join("\n"),
     );
   });

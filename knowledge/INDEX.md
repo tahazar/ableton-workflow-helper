@@ -46,3 +46,9 @@ Cite slug + tier when applying an entry. Executable sections are the contract.
 | [isoxo-snare-bus-processing](sound-design/isoxo-snare-bus-processing.md) | sourced | isoxo, snare, trap, sound-design, saturation, bus, compression | yes | 1 |
 | [isoxo-snare-layering](sound-design/isoxo-snare-layering.md) | sourced | isoxo, snare, trap, hybrid-trap, sound-design, layering | yes | 2 |
 | [isoxo-snare-pitch-resample](sound-design/isoxo-snare-pitch-resample.md) | sourced | isoxo, snare, trap, sound-design, resampling, pitch | yes | 2 |
+
+## references (library/references/ — deconstructed reference maps)
+
+| reference | saved | bpm | sections | source file |
+|---|---|---|---|---|
+| [viperactive-dead-to-me](../library/references/viperactive-dead-to-me.json) | 2026-08-17 | 140.0 | 8 | Viperactive - Dead To Me (Official Visualizer).mp3 |
