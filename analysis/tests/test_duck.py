@@ -94,3 +94,21 @@ def test_duck_fit_input_validation():
         duck.fit_duck_envelope(x, SR, [0.5])  # one trigger: no gap
     with pytest.raises(ValueError):
         duck.fit_duck_envelope(x, SR, [10.0, 10.5])  # outside the audio
+
+
+def test_measure_duck_depth_ducked_vs_flat():
+    t = np.arange(int(4.5 * SR)) / SR
+    carrier = 0.5 * np.sin(2 * np.pi * 50.0 * t)
+    period = 0.5
+    phase = np.mod(t, period) / period
+    # 8 dB duck for the first 40% of each cycle, linear recovery
+    env_db = np.where(phase < 0.4, -8.0 * (1.0 - phase / 0.4), 0.0)
+    ducked = to_stereo(carrier * 10.0 ** (env_db / 20.0))
+    flat = to_stereo(carrier)
+    triggers = [0.5 * k for k in range(9)]
+
+    d = duck.measure_duck_depth(ducked, SR, triggers)
+    f = duck.measure_duck_depth(flat, SR, triggers)
+    assert d["depth_db"] == pytest.approx(8.0, abs=1.5)
+    assert f["depth_db"] < 1.0
+    assert d["depth_db"] - f["depth_db"] > 6.0

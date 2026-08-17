@@ -311,26 +311,35 @@ loud enough for clubs", "did that EQ change help"):
 4. No target yet? Offer `awh mix target <owner's reference tracks> --save
    <genre>` first — comparisons run against THEIR references, not folklore.
 
-**Sculpt the sidechain duck envelope** ("tune my sidechain", "fix my
-ShaperBox curve", "duck the bass to my kick"). The owner's template
-(knowledge/setup/sidechain-template.md — read it) uses Volume Shaper on a
-Sidechain bus, MIDI-triggered by a "Trigger" track:
-1. Capture the DRUMS bus over a representative span (`awh mix capture` with
-   the tap on that bus, or ask for a solo render), starting exactly where
-   the Trigger clip's pattern starts.
-2. `awh mix duck <drumsCapture> --trigger-clip <Trigger clip path>`
-   (`--bass <bassCapture>` for a masking-based depth instead of the default)
-   → prints measured kick body/tail times and the exact points to draw:
-   depth, hold, exponential release, always recovered before the next hit.
-3. Read the numbers to the owner as drawing instructions (ms AND % of the
-   trigger gap). ShaperBox mechanics (docs/research/shaperbox-preset-format
+**Sidechain ducking** ("tune my sidechain", "duck the bass to my kick",
+"set up sidechaining"). Read knowledge/setup/sidechain-template.md first —
+the owner's template routes BASS/SAMPLES through a Sidechain bus with a
+MIDI "Trigger" track. Always start from the fit, then pick a strategy:
+1. FIT (both strategies): capture the DRUMS bus over a span starting on the
+   Trigger pattern's boundary, then
+   `awh mix duck fit <drumsCapture> --trigger-clip <Trigger clip>`
+   (`--bass <bassCapture>` → masking-based depth) → measured kick body/tail
+   + depth/hold/release + points.
+2. AUTOMATIC strategy (default when the owner says "automatic" or has no
+   ShaperBox on the track): `awh mix duck setup <Sidechain track>` inserts
+   a preset stock Compressor and prints the TWO manual touches (enable
+   Sidechain + Audio From = trigger source; Release dial) — the SDK cannot
+   set routing, don't pretend otherwise. Then with the tap on the ducked
+   bus: `awh mix duck calibrate <devicePath> --target-depth <fit depth>
+   --trigger-clip ... --from-bar N --bars 4` — it captures/measures/adjusts
+   Threshold in a closed loop and reports the achieved depth.
+3. SHAPERBOX strategy (owner's classic template): read the fit numbers as
+   drawing instructions. Mechanics (docs/research/shaperbox-preset-format
    .md): LFO Length in ms = the printed gap, MIDI Trigger "On",
-   sharp-corner points for the dip/hold, smooth points on the release;
-   save to Favorites / LFO copy-paste for reuse. Preset FILES cannot be
-   generated (opaque binary) — never offer to write one.
-4. Verify with an on/off `awh mix ab` capture pair if they want proof, and
-   suggest tightening the kick's own decay if the measured tail forces a
-   groove-killing duck length.
+   sharp-corner points for dip/hold, smooth for release; Favorites /
+   LFO copy-paste for reuse. Preset FILES cannot be generated — never
+   offer to write one.
+4. VERIFY (either): `awh mix duck measure <SidechainBusCapture>
+   --trigger-clip ...` (achieved depth) or an on/off `awh mix ab` pair.
+   If the measured kick tail forces a groove-killing duck, suggest
+   tightening the kick's own decay.
+Volume-automation ducking is NOT possible via the gateway (no automation
+API) — say so if asked; don't improvise workarounds into real projects.
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not

@@ -194,6 +194,33 @@ def _cmd_duck(args: argparse.Namespace) -> int:
     return 0
 
 
+
+
+def _cmd_duckdepth(args: argparse.Namespace) -> int:
+    from . import audio
+
+    triggers = [float(t) for t in args.triggers.split(",") if t.strip()]
+    x, sr = audio.load(args.file)
+    if args.cycle:
+        duration_s = x.shape[0] / sr
+        tiled = []
+        k = 0
+        while k * args.cycle < duration_s:
+            tiled.extend(t + k * args.cycle for t in triggers)
+            k += 1
+        triggers = [t for t in tiled if t < duration_s]
+    result = duck.measure_duck_depth(x, sr, triggers)
+    if args.json:
+        _print_json(result)
+    else:
+        print(
+            f"achieved duck: {result['depth_db']:.2f} dB deep, trough at "
+            f"{result['trough_ms']:.0f} ms ({result['used_triggers']} triggers, "
+            f"window {result['window_ms']:.0f} ms)"
+        )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -232,6 +259,13 @@ def build_parser() -> argparse.ArgumentParser:
                         help="force duck depth in dB (skips the computed recommendation)")
     p_duck.add_argument("--json", action="store_true")
     p_duck.set_defaults(func=_cmd_duck)
+
+    p_dd = sub.add_parser("duckdepth", help="Measure the achieved duck depth on a capture")
+    p_dd.add_argument("file")
+    p_dd.add_argument("--triggers", type=str, required=True)
+    p_dd.add_argument("--cycle", type=float, default=None)
+    p_dd.add_argument("--json", action="store_true")
+    p_dd.set_defaults(func=_cmd_duckdepth)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")

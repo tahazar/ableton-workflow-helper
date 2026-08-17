@@ -1546,11 +1546,90 @@ mix
     );
   });
 
-mix
-  .command("duck <drumsFile>")
+/** Resolve trigger positions (seconds) from the Trigger MIDI clip or manual beats. */
+async function resolveTriggerSeconds(
+  opts: GlobalOpts,
+  cmdOpts: { triggerClip?: string; triggers?: string },
+): Promise<{ seconds: number[]; cycle?: number; tempo: number }> {
+  if (!cmdOpts.triggerClip && !cmdOpts.triggers) {
+    throw new Error("pass --trigger-clip <path> (the Trigger MIDI clip) or --triggers <beats>");
+  }
+  const summary = (await op(opts, "set.summary")) as SetSummary;
+  const secPerBeat = 60 / summary.tempo;
+  if (cmdOpts.triggerClip) {
+    const detail = (await op(opts, "clip.get", { path: cmdOpts.triggerClip })) as ClipDetail;
+    if (detail.kind !== "midi" || !detail.notes?.length) {
+      throw new Error(`${cmdOpts.triggerClip} is not a MIDI clip with notes`);
+    }
+    const starts = [...new Set(detail.notes.map((n) => n.start))].sort((a, b) => a - b);
+    return {
+      seconds: starts.map((b) => b * secPerBeat),
+      cycle: detail.duration * secPerBeat,
+      tempo: summary.tempo,
+    };
+  }
+  return {
+    seconds: cmdOpts.triggers!.split(",").map((b) => Number(b.trim()) * secPerBeat),
+    tempo: summary.tempo,
+  };
+}
+
+function triggerArgs(t: { seconds: number[]; cycle?: number }): string[] {
+  const args = ["--triggers", t.seconds.map((s) => s.toFixed(6)).join(",")];
+  if (t.cycle !== undefined) args.push("--cycle", t.cycle.toFixed(6));
+  return args;
+}
+
+/** Drive the M4L tap through one loop-record-play-stop cycle. */
+async function captureSpan(
+  opts: GlobalOpts,
+  spec: { fromBar: number; bars: number; beatsPerBar: number; tapPort: number; out: string; tailS: number },
+): Promise<number> {
+  const summary = (await op(opts, "set.summary")) as SetSummary;
+  const startBeat = (spec.fromBar - 1) * spec.beatsPerBar;
+  const lengthBeats = spec.bars * spec.beatsPerBar;
+  const seconds = (lengthBeats / summary.tempo) * 60 + spec.tailS;
+  await sendToTap("/awh/loop", [startBeat, lengthBeats], spec.tapPort);
+  await sendToTap("/awh/record", [spec.out], spec.tapPort);
+  await sendToTap("/awh/play", [1], spec.tapPort);
+  await new Promise((r) => setTimeout(r, seconds * 1000));
+  await sendToTap("/awh/play", [0], spec.tapPort);
+  await sendToTap("/awh/stop", [], spec.tapPort);
+  if (!existsSync(spec.out)) {
+    throw new Error(
+      `${spec.out} was not created — is the AWH Capture Tap device loaded (m4l/README.md) ` +
+        "and listening on the right port?",
+    );
+  }
+  return seconds;
+}
+
+/** Run the analysis CLI capturing stdout as JSON (for internal loops). */
+async function runAnalysisJson(args: string[]): Promise<Record<string, number>> {
+  const { python, cwd } = analysisPython();
+  const child = spawn(python, ["-m", "awh_analysis", ...args, "--json"], { cwd });
+  let out = "";
+  let err = "";
+  child.stdout.on("data", (d: Buffer) => (out += d.toString()));
+  child.stderr.on("data", (d: Buffer) => (err += d.toString()));
+  const code = await new Promise<number>((resolve) => child.on("close", (c) => resolve(c ?? 1)));
+  if (code !== 0) throw new Error(`analysis failed: ${err.trim() || out.trim()}`);
+  return JSON.parse(out) as Record<string, number>;
+}
+
+const duckCmd = mix
+  .command("duck")
   .description(
-    "Fit the sidechain duck envelope to YOUR drums: measures the trigger-aligned " +
-      "low-band decay and prints the exact Volume Shaper points to draw",
+    "Sidechain ducking toolkit: fit the ideal envelope to your drums, set up an " +
+      "automatic stock-Compressor duck, measure/calibrate the result. ShaperBox " +
+      "hand-drawing is one strategy; the compressor path is the automatic one.",
+  );
+
+duckCmd
+  .command("fit <drumsFile>")
+  .description(
+    "Fit the duck envelope to YOUR drums: trigger-aligned low-band decay -> " +
+      "depth/hold/release + exact Volume Shaper points to draw",
   )
   .option(
     "--trigger-clip <clipPath>",
@@ -1560,47 +1639,185 @@ mix
   .option("--triggers <beats>", "manual comma-separated trigger positions in BEATS")
   .option("--bass <file>", "bass capture at session levels — enables masking-based depth")
   .option("--depth <db>", "force duck depth in dB")
-  .option("--sig <beatsPerBar>", "beats per bar", "4")
   .action(
     async (
       drumsFile: string,
-      cmdOpts: {
-        triggerClip?: string;
-        triggers?: string;
-        bass?: string;
-        depth?: string;
-        sig: string;
-      },
+      cmdOpts: { triggerClip?: string; triggers?: string; bass?: string; depth?: string },
     ) => {
       const opts = program.opts<GlobalOpts>();
-      if (!cmdOpts.triggerClip && !cmdOpts.triggers) {
-        throw new Error("pass --trigger-clip <path> (the Trigger MIDI clip) or --triggers <beats>");
-      }
-      const summary = (await op(opts, "set.summary")) as SetSummary;
-      const secPerBeat = 60 / summary.tempo;
-
-      let triggerSeconds: number[];
-      let cycleSeconds: number | undefined;
-      if (cmdOpts.triggerClip) {
-        const detail = (await op(opts, "clip.get", { path: cmdOpts.triggerClip })) as ClipDetail;
-        if (detail.kind !== "midi" || !detail.notes?.length) {
-          throw new Error(`${cmdOpts.triggerClip} is not a MIDI clip with notes`);
-        }
-        const starts = [...new Set(detail.notes.map((n) => n.start))].sort((a, b) => a - b);
-        triggerSeconds = starts.map((b) => b * secPerBeat);
-        cycleSeconds = detail.duration * secPerBeat;
-      } else {
-        triggerSeconds = cmdOpts
-          .triggers!.split(",")
-          .map((b) => Number(b.trim()) * secPerBeat);
-      }
-
-      const args = ["duck", drumsFile, "--triggers", triggerSeconds.map((t) => t.toFixed(6)).join(",")];
-      if (cycleSeconds !== undefined) args.push("--cycle", cycleSeconds.toFixed(6));
+      const t = await resolveTriggerSeconds(opts, cmdOpts);
+      const args = ["duck", drumsFile, ...triggerArgs(t)];
       if (cmdOpts.bass) args.push("--bass", cmdOpts.bass);
       if (cmdOpts.depth) args.push("--depth", cmdOpts.depth);
       if (opts.json) args.push("--json");
       await runAnalysis(args);
+    },
+  );
+
+duckCmd
+  .command("setup <trackPath>")
+  .description(
+    "AUTOMATIC strategy: insert a stock Compressor on the track (usually the " +
+      "Sidechain bus) preset for ducking — fastest attack, max ratio. Two manual " +
+      "touches remain (the SDK has no routing/automation API): enable Sidechain " +
+      "with Audio From = the trigger/kick source, and dial Release to the fitted ms",
+  )
+  .option("--release-ms <ms>", "release target from `duck fit` (printed for the manual dial)")
+  .action(async (trackPath: string, cmdOpts: { releaseMs?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const inserted = (await op(opts, "device.insert", {
+      ownerPath: trackPath,
+      name: "Compressor",
+    })) as { path: string };
+    const detail = (await op(opts, "device.get", { path: inserted.path })) as {
+      params: { name: string; value: number; min: number; max: number }[];
+    };
+    const byName = new Map(detail.params.map((p) => [p.name, p]));
+    const setRaw = async (name: string, value: number): Promise<string> => {
+      const p = byName.get(name);
+      if (!p) return `  !  param "${name}" not found — set it by hand`;
+      await op(opts, "device.param", { path: inserted.path, name, value });
+      return `  ok ${name} -> ${value} (raw range ${p.min}..${p.max})`;
+    };
+    const lines = [
+      `Compressor inserted at ${inserted.path}`,
+      await setRaw("Attack", byName.get("Attack")?.min ?? 0),
+      await setRaw("Ratio", byName.get("Ratio")?.max ?? 0),
+      "",
+      "Manual touches (SDK cannot set routing or ms-displays):",
+      "  1. Unfold the Compressor's sidechain section -> enable Sidechain,",
+      "     Audio From = your trigger source (Kick / Trigger-audio track)",
+      `  2. Release -> ${cmdOpts.releaseMs ? `${cmdOpts.releaseMs} ms` : "the release_ms from `awh mix duck fit`"}`,
+      "",
+      "Then calibrate the depth automatically:",
+      `  awh mix duck calibrate ${inserted.path} --target-depth <dB from fit> \\`,
+      "    --trigger-clip <Trigger clip> --from-bar <bar> --bars 4",
+    ];
+    output(opts, { devicePath: inserted.path }, () => lines.join("\n"));
+  });
+
+duckCmd
+  .command("measure <bassCapture>")
+  .description("Measure the ACHIEVED duck depth on a bass/sidechain-bus capture")
+  .option("--trigger-clip <clipPath>", "the Trigger MIDI clip")
+  .option("--triggers <beats>", "manual trigger positions in BEATS")
+  .action(
+    async (bassCapture: string, cmdOpts: { triggerClip?: string; triggers?: string }) => {
+      const opts = program.opts<GlobalOpts>();
+      const t = await resolveTriggerSeconds(opts, cmdOpts);
+      const args = ["duckdepth", bassCapture, ...triggerArgs(t)];
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+duckCmd
+  .command("calibrate <devicePath>")
+  .description(
+    "Closed-loop compressor calibration: capture the ducked bus via the tap, " +
+      "measure the achieved depth, adjust Threshold, repeat until it matches " +
+      "--target-depth. Needs Live + the capture tap ON THE DUCKED BUS.",
+  )
+  .requiredOption("--target-depth <db>", "duck depth to hit (from `duck fit`)")
+  .requiredOption("--from-bar <bar>", "capture span start (Trigger pattern boundary)")
+  .requiredOption("--bars <bars>", "capture span length")
+  .option("--trigger-clip <clipPath>", "the Trigger MIDI clip")
+  .option("--triggers <beats>", "manual trigger positions in BEATS")
+  .option("--param <name>", "device parameter to search", "Threshold")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--tap-port <port>", "capture tap OSC port", String(TAP_PORT))
+  .option("--max-iters <n>", "bisection iterations after the bracket probes", "4")
+  .option("--tolerance <db>", "acceptable |achieved - target|", "1.0")
+  .action(
+    async (
+      devicePath: string,
+      cmdOpts: {
+        targetDepth: string;
+        fromBar: string;
+        bars: string;
+        triggerClip?: string;
+        triggers?: string;
+        param: string;
+        sig: string;
+        tapPort: string;
+        maxIters: string;
+        tolerance: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const target = Number(cmdOpts.targetDepth);
+      const t = await resolveTriggerSeconds(opts, cmdOpts);
+      const detail = (await op(opts, "device.get", { path: devicePath })) as {
+        params: { name: string; value: number; min: number; max: number }[];
+      };
+      const param = detail.params.find((p) => p.name === cmdOpts.param);
+      if (!param) {
+        throw new Error(
+          `no "${cmdOpts.param}" param on ${devicePath} — params: ${detail.params.map((p) => p.name).join(", ")}`,
+        );
+      }
+      const onParam = detail.params.find((p) => p.name === "Device On");
+      const spec = {
+        fromBar: Number(cmdOpts.fromBar),
+        bars: Number(cmdOpts.bars),
+        beatsPerBar: Number(cmdOpts.sig),
+        tapPort: Number(cmdOpts.tapPort),
+        tailS: 0.3,
+      };
+      const scratch = join(repoRoot(), ".dev", "duck-calibrate");
+      await mkdir(scratch, { recursive: true });
+
+      const measureAt = async (label: string, raw?: number): Promise<number> => {
+        if (raw !== undefined) {
+          await op(opts, "device.param", { path: devicePath, name: cmdOpts.param, value: raw });
+        }
+        const out = join(scratch, `${label}.wav`);
+        await captureSpan(opts, { ...spec, out });
+        const r = await runAnalysisJson(["duckdepth", out, ...triggerArgs(t)]);
+        return r.depth_db!;
+      };
+
+      // baseline: duck bypassed -> the material's natural modulation
+      if (onParam) await op(opts, "device.param", { path: devicePath, name: "Device On", value: 0 });
+      const baseline = await measureAt("baseline");
+      if (onParam) await op(opts, "device.param", { path: devicePath, name: "Device On", value: 1 });
+      process.stderr.write(`baseline (bypassed): ${baseline.toFixed(2)} dB natural modulation\n`);
+
+      // bracket probes at 25% / 75% of the raw range to learn direction
+      const lo25 = param.min + 0.25 * (param.max - param.min);
+      const hi75 = param.min + 0.75 * (param.max - param.min);
+      const d25 = Math.max(0, (await measureAt("probe25", lo25)) - baseline);
+      const d75 = Math.max(0, (await measureAt("probe75", hi75)) - baseline);
+      process.stderr.write(`probes: raw ${lo25.toFixed(3)} -> ${d25.toFixed(2)} dB, raw ${hi75.toFixed(3)} -> ${d75.toFixed(2)} dB\n`);
+      // deeperRaw = the end of the range that gives MORE ducking
+      let deepRaw = d25 > d75 ? param.min : param.max;
+      let shallowRaw = d25 > d75 ? param.max : param.min;
+      let best = { raw: d25 > d75 ? lo25 : hi75, depth: Math.max(d25, d75) };
+
+      const tolerance = Number(cmdOpts.tolerance);
+      for (let i = 0; i < Number(cmdOpts.maxIters); i++) {
+        if (Math.abs(best.depth - target) <= tolerance) break;
+        const mid = (deepRaw + shallowRaw) / 2;
+        const depth = Math.max(0, (await measureAt(`iter${i}`, mid)) - baseline);
+        process.stderr.write(`iter ${i + 1}: raw ${mid.toFixed(3)} -> ${depth.toFixed(2)} dB (target ${target})\n`);
+        if (Math.abs(depth - target) < Math.abs(best.depth - target)) best = { raw: mid, depth };
+        // bracket: [shallowRaw, deepRaw]; too little duck -> move the shallow
+        // end to mid, too much -> move the deep end to mid
+        if (depth < target) shallowRaw = mid;
+        else deepRaw = mid;
+      }
+
+      await op(opts, "device.param", { path: devicePath, name: cmdOpts.param, value: best.raw });
+      output(opts, { param: cmdOpts.param, raw: best.raw, achievedDepth: best.depth, baseline }, () =>
+        [
+          `calibrated: ${cmdOpts.param} = ${best.raw.toFixed(3)} (raw) -> ` +
+            `${best.depth.toFixed(2)} dB duck (target ${target} ±${tolerance})`,
+          Math.abs(best.depth - target) <= tolerance
+            ? "within tolerance — audition it"
+            : "NOT within tolerance — the compressor may not reach this depth on this material; " +
+              "consider the ShaperBox strategy or a louder trigger source",
+        ].join("\n"),
+      );
     },
   );
 
