@@ -232,7 +232,10 @@ Commands: `awh save`, `awh chain save`, `awh lib list/show/place/index`,
 Right-click capture via the extension **outbox** pattern (sandbox-safe:
 menu action buffers in storageDirectory, `awh lib import` drains to repo).
 Zero new bridge capabilities needed beyond the outbox op. Phases: B3a
-CLI save/list/place (buildable today) → B3b right-click outbox → B3c distill.
+CLI save/list/place (buildable today) → B3b right-click outbox → B3c distill
+→ B3d Live-browser mirror: library clips exported as `.alc` Live Clips in a
+generated directory Pack with Live 12 XMP tags (`PackRevision` bump =
+re-index). Research done, design firm — `docs/research/alc-live-library.md`.
 
 **B4 — Knowledge base (deterministic production wiki).**
 Design: `docs/design/library-kb.md`. `knowledge/<topic>/<slug>.md`, tiered
