@@ -635,3 +635,20 @@ Automatic (compressor) strategy:
       precision — matches the "never invent a number" discipline from M6.
       `pnpm test` (169 tests) and `kb index` both clean against the full
       18-entry store.
+
+## M8 (reference deconstruction) verification checklist
+
+- [ ] `awh ref analyze <a real house/techno reference>` → BPM matches the
+      known tempo ±0.1; sections read sensibly against your ears (drops
+      where drops are); evidence strings quote real numbers
+- [ ] A trap/half-time reference → bpm or its runner-up is right and the
+      ambiguity note appears (honest, not silently wrong)
+- [ ] `awh ref sections apply <analysis>` → "Sections" track appears with
+      named empty clips spanning the right bars; refuses re-apply without
+      --clear
+- [ ] Correct the map by hand (drag a boundary, rename a section) →
+      `awh ref sections read` returns YOUR corrected bars/names
+- [ ] `--save` → library/references/<name>.json exists; `kb index` lists it
+- [ ] Skill: "map out this reference and build me a matching skeleton" →
+      analyze -> apply -> (you correct) -> read -> a sections plan whose
+      bars match the corrected reference map
