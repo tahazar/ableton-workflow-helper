@@ -129,31 +129,53 @@ storage/temp dirs — pre-announced OS sandbox). Design: an **outbox**.
   `awh chain apply` (recipe) — both resolved by search over the owner's own
   captured material.
 
-## B3d — Live User Library sync (.alc mirror) [research in progress]
+## B3d — Live User Library sync (.alc mirror) [design firm; research done]
 
 Owner requirement (2026-08-17): saved clips should ALSO appear in Live's own
-browser as `.alc` Live Clips — with Live 12's tag system where feasible
-(Clips: Drum/Music Clip, Key, Creator: User) — so the library is usable from
-inside Live without touching a terminal.
+browser as `.alc` Live Clips, tagged, so the library is usable from inside
+Live without touching a terminal. Research complete — full findings and
+sources in `docs/research/alc-live-library.md`. **Verdict: feasible in Node
+under MIT, high confidence.**
 
-Direction (agreed; format details pending research):
-- **The git library stays the source of truth.** The User Library copy is a
-  generated MIRROR: `awh lib export-alc` renders every (or tagged-subset)
-  library clip to `<User Library>/Clips/AWH/<category>/<slug>.alc`,
-  regenerating on change. Generation-only — we never edit existing user files
-  (that safety line is what un-parks the gzipped-XML approach: a bad
-  generated file fails to load and harms nothing).
-- **Reverse flow**: clips the owner drags into the browser by hand can be
-  imported (`awh lib import-alc <file>`) by parsing the same XML — capture
-  path for material that never went through awh.
-- **Tags**: pending research on where Live 12 stores browser tags and whether
-  third-party writes are safe. Fallback that always works: encode category/
-  tags in folder structure + filenames (both browser-searchable); rely on
-  Live's auto-derived tags (Key, Creator: User) where they prove automatic.
-- Research task: .alc internal structure + minimal valid file, existing
-  MIT-compatible Ableton-XML parsers/writers, Live 12 tag storage mechanism,
-  auto-tagging behavior. Findings will land in
-  `docs/research/alc-live-library.md` and firm this section up.
+Architecture (firm):
+
+- **The git library stays the source of truth.** The Live-visible copy is a
+  generated, disposable **directory-based Pack** ("AWH Library", alpax model):
+  `awh lib export-alc` renders each library clip to
+  `<mirror>/<category>/<slug>.alc`, writes `Ableton Folder Info/
+  Properties.cfg` with a stable `PackUniqueID` and a **`PackRevision` bumped
+  on every export** — that bump is Live's supported re-index trigger, so
+  changes appear without database hacks or restarts. The owner drags the
+  folder into Places once. Generation-only: a bad generated file fails to
+  load and harms nothing.
+- **.alc generation = template capture.** An .alc is a gzipped one-track
+  LiveSet XML (`Tracks > MidiTrack > … > MidiClip > Notes > KeyTracks`, notes
+  as `MidiNoteEvent Time/Duration/Velocity` grouped per-pitch under
+  `KeyTrack/MidiKey`). No published minimal file exists and old Lives
+  hard-reject unknown elements while wrong values crash silently — so we
+  never hand-construct the schema: capture ONE golden template by saving a
+  real clip from the owner's Live 12, keep the gunzipped XML, and substitute
+  notes/name/length/signature at export. MIDI-only clips avoid the
+  sample-FileRef minefield entirely.
+- **Tags: verified writable.** Live 12 tags live in XMP sidecars
+  (`Ableton Folder Info/*.xmp`, namespace `ablFR`, keywords as
+  `Group|Tag|Sub Tag` paths); the SQLite Live Database is a rebuildable cache
+  and `Library.cfg` holds config we never touch. Live auto-creates unknown
+  tags on scan, so the pack XMP maps each clip to `AWH|<category>` plus its
+  frontmatter tags. Proven by MIT prior art (LiveTagger, alpax).
+  **Correction:** there is no "Clips: Drum/Music Clip" tag group (that's a
+  content-type filter) and no auto Key tag for clips — key/genre tags are
+  ours to assign from frontmatter.
+- **Belt-and-braces**: category + slug also encoded in folder/filenames
+  (browser-searchable regardless of XMP format changes).
+- **Reverse flow**: `awh lib import-alc <file>` gunzips and walks KeyTracks
+  (alcmixer's MIT traversal as parse spec) + reads the folder sidecar XMP for
+  user-assigned tags — capture path for material that never went through awh.
+- **Safety lines**: write only inside our own mirror; never edit user files,
+  `Library.cfg`, the Live Database, or `Ableton Folder Info` folders we
+  didn't create; back up any XMP we rewrite. Don't attempt Key/similarity
+  metadata (analysis-derived, not writable) or .alp binary packs
+  (undocumented; directory packs suffice).
 
 ## Out of scope (recorded so they don't creep in silently)
 
