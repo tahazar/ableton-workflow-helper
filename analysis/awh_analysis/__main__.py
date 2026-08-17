@@ -9,11 +9,15 @@ from typing import Any
 
 import soundfile as sf
 
-from . import ab, duck, report, targets
+from . import ab, duck, ref, report, targets
 
 
 def _print_json(obj: Any) -> None:
-    print(json.dumps(obj, indent=2))
+    from .audio import sanitize_json
+
+    # allow_nan=False + sanitize: -inf/nan become null instead of the
+    # invalid-JSON Infinity tokens that crash strict parsers (Node).
+    print(json.dumps(sanitize_json(obj), indent=2, allow_nan=False))
 
 
 def _fmt(v: Any, digits: int = 2) -> str:
@@ -221,6 +225,45 @@ def _cmd_duckdepth(args: argparse.Namespace) -> int:
     return 0
 
 
+def _render_ref_text(result: dict) -> str:
+    lines = [
+        f"File: {result['file']}  ({result['duration_s']:.1f} s)",
+        f"BPM: {result['bpm']:.2f}  (confidence {result['bpm_confidence']:.2f}"
+        + (
+            f", runner-up {result['bpm_runner_up']:.2f}"
+            if result["bpm_runner_up"] is not None
+            else ""
+        )
+        + ")",
+        f"Beat offset: {result['beat_offset_s']:.3f} s  "
+        f"(downbeat confidence {result['downbeat_confidence']:.2f})",
+        f"Bars: {result['bar_count']}",
+        "",
+        "Sections:",
+        f"  {'name':<10s} {'bars':<12s} {'conf':<5s} evidence",
+    ]
+    for s in result["sections"]:
+        bars = f"{s['start_bar']}-{s['end_bar']}"
+        lines.append(f"  {s['name']:<10s} {bars:<12s} {s['confidence']:<5.2f} {s['evidence']}")
+    if result["notes"]:
+        lines.append("")
+        lines.append("Notes:")
+        for note in result["notes"]:
+            lines.append(f"  - {note}")
+    return "\n".join(lines)
+
+
+def _cmd_ref(args: argparse.Namespace) -> int:
+    result = ref.analyze_reference(args.file, phrase_bars=args.phrase)
+    if args.save_record:
+        ref.save_reference_record(args.save_record, args.file, result)
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_ref_text(result))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -266,6 +309,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_dd.add_argument("--cycle", type=float, default=None)
     p_dd.add_argument("--json", action="store_true")
     p_dd.set_defaults(func=_cmd_duckdepth)
+
+    p_ref = sub.add_parser("ref", help="Analyze a reference track: tempo/grid, energy arc, section map")
+    p_ref.add_argument("file")
+    p_ref.add_argument("--phrase", type=int, default=4,
+                       help="phrase length in bars for section boundary snapping (default 4)")
+    p_ref.add_argument("--save-record", type=str, default=None,
+                       help="also write a reference-analysis record JSON to this path")
+    p_ref.add_argument("--json", action="store_true")
+    p_ref.set_defaults(func=_cmd_ref)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")
