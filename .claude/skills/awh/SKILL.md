@@ -100,6 +100,28 @@ Flow: vary → tell the user which slots to audition → they pick favourites �
 the user before sweeping anything they might have renamed). Vary needs enough
 empty slots; create scenes via `awh call scene.create` if it says there aren't.
 
+## Sections (`awh sections`) — motif -> arrangement skeleton
+
+Build a full arrangement from source loops via an editable YAML plan:
+
+```sh
+awh sections plan --form house --role drums=track:0/slot:0 --role bass=track:2/slot:0 -o plan.yaml
+# edit plan.yaml (bars, per-section ops, add/remove layers), then:
+awh sections apply plan.yaml --seed 42 [--at-bar N] [--clear] [--dry-run]
+```
+
+- Forms: `house` (intro/build/drop/breakdown/build/drop/outro, 128 bars),
+  `trap` (intro/verse/hook x2/outro, 80 bars). The plan is a STARTING POINT —
+  edit bars and ops per section; each layer derives from its source clip via a
+  transform pipeline (never verbatim tiling unless ops are omitted).
+- apply REFUSES to write over existing arrangement material — offer the user
+  `--clear` (clears the span first) or `--at-bar` past the song's end. Always
+  `--dry-run` first when the Set has real material, and show the user the plan.
+- Deterministic: same plan + seed = identical skeleton. Sections are named
+  `<section>-<role>` on the timeline.
+- Flow: plan -> user reviews/edits YAML (or asks you to adjust it) -> dry-run
+  -> apply -> user auditions -> iterate on the YAML, not the clips.
+
 Raw ops cover everything else (see `awh ops` for the full list + args):
 tracks (`track.create/update/delete/duplicate/clear-range/mixer`), scenes,
 devices (`device.insert/get/param/delete` — stock Live devices only),
@@ -150,6 +172,23 @@ syncopated", "denser", etc. on material that already exists in the Set):
    users). Re-read one or two to sanity-check before handing back.
 4. Tell the user which slots/positions to audition; `awh sweep` the rest once
    they've picked favourites.
+
+**Build an arrangement/skeleton from loops** ("build me a house/trap
+skeleton", "turn my drum and bass loops into an arrangement", "lay out the
+song structure"):
+1. `awh status --json` → identify the source loops (drums/bass/etc.) and the
+   Set's active scale.
+2. Don't hand-compose section-by-section with `clip create`/`clip write` —
+   that's slower, undocumented to the user, and skips the safety checks.
+   `awh sections plan --form <house|trap> --role <name>=<sourcePath> ...`
+   generates an editable YAML plan from a researched genre-form preset.
+3. Show the user the YAML (or the edits you made to it) before writing
+   anything — the plan IS the review step.
+4. `awh sections apply <plan> --dry-run` → confirm the clip list looks right.
+5. `awh sections apply <plan> [--at-bar N] [--clear]` → writes the skeleton.
+   It refuses to overwrite existing arrangement material without `--clear`;
+   don't fight that by hand-placing clips instead — use `--at-bar` past the
+   song's end, or ask the user before `--clear`ing real content.
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not

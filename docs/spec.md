@@ -222,6 +222,34 @@ parameters the SDK actually exposes (drawn-partials editing expected missing;
 that bounds the feature). Constraint: starts from default preset — no preset
 loading in the SDK.
 
+**B3 — Clip library ("save that clip for later").**
+Design: `docs/design/library-kb.md`. Git-versioned `library/` in this repo:
+clips as markdown + YAML frontmatter with EXECUTABLE bar|beat notation
+(notes + tempo/scale/tags/source-project context; audio clips reference
+sample paths, no media in git), device chains as param-snapshot recipes.
+Commands: `awh save`, `awh chain save`, `awh lib list/show/place/index`,
+`awh distill` (batch, Claude-guided capture from the open project).
+Right-click capture via the extension **outbox** pattern (sandbox-safe:
+menu action buffers in storageDirectory, `awh lib import` drains to repo).
+Zero new bridge capabilities needed beyond the outbox op. Phases: B3a
+CLI save/list/place (buildable today) → B3b right-click outbox → B3c distill
+→ B3d Live-browser mirror: library clips exported as `.alc` Live Clips in a
+generated directory Pack with Live 12 XMP tags (`PackRevision` bump =
+re-index). Research done, design firm — `docs/research/alc-live-library.md`.
+
+**B4 — Knowledge base (deterministic production wiki).**
+Design: `docs/design/library-kb.md`. `knowledge/<topic>/<slug>.md`, tiered
+(`verified`/`sourced`/`draft`) with a mandatory **Executable section**
+(notation patterns, transform pipeline specs, device recipes) wherever the
+knowledge can be expressed as one — prose-only is a last resort; Claude cites
+slug + tier when applying an entry. Seeded by research agents distilling
+cited external sources (genre tropes, artist techniques) into reviewable
+PRs; grown from own projects via `awh distill` and end-of-session capture;
+promoted to `verified` only after real use in Live. Retrieval = grep + tags +
+generated INDEX (no vector search until that demonstrably fails). Directly
+serves the determinism principle: predefined accurate references over
+per-session re-reasoning.
+
 ### Parked (explicitly out of v1)
 Automation (offline .als injection experiment, backup-gated) · warp-marker write ·
 structure-spec + reference-form project scaffolding (builds on M8) · Windows ·
