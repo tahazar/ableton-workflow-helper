@@ -3,12 +3,14 @@ import { makeRng } from "../src/transforms/rng.js";
 import { GM_DRUM_KIT, mapPadRoles, roleOfNote } from "../src/drums/roles.js";
 import {
   TRAP_KICK_CELLS,
+  TRAP_STYLE_SPEC,
   generateDrumPattern,
   generateDrumPatternDetailed,
   listDrumStyles,
   listDrumVariants,
 } from "../src/drums/grammars.js";
 import { drumFill, humanizeDrums, varyDrums } from "../src/drums/fills.js";
+import { parseDrumStyleSpec, type TrapFamilyStyleSpec } from "../src/drums/styleSpec.js";
 import type { DrumContext, DrumKit } from "../src/drums/types.js";
 import type { NoteSpec } from "../src/bridge/types.js";
 
@@ -314,6 +316,239 @@ describe("humanizeDrums", () => {
     const a = humanizeDrums(notes, FULL_KIT, c());
     const b = humanizeDrums(notes, FULL_KIT, c());
     expect(a).toEqual(b);
+  });
+});
+
+describe("parseDrumStyleSpec (B4 StyleSpec)", () => {
+  const validYaml = `
+name: custom-trap
+family: trap
+snareBeat: 4
+clapWithSnare: false
+kickCells:
+  - name: solo
+    offsets: [0, 2]
+  - name: duo
+    offsets: [0, 1.5, 3]
+hatBases: [straight-8ths]
+rollDensity: 0.5
+openHatChance: 0.2
+swingDelay: 0.04
+`;
+
+  it("round-trips a fully-specified document", () => {
+    const spec = parseDrumStyleSpec(validYaml);
+    expect(spec).toEqual({
+      name: "custom-trap",
+      family: "trap",
+      snareBeat: 4,
+      clapWithSnare: false,
+      kickCells: [
+        { name: "solo", offsets: [0, 2] },
+        { name: "duo", offsets: [0, 1.5, 3] },
+      ],
+      hatBases: ["straight-8ths"],
+      rollDensity: 0.5,
+      openHatChance: 0.2,
+      swingDelay: 0.04,
+    });
+  });
+
+  it("fills in the documented defaults when optional fields are omitted", () => {
+    const spec = parseDrumStyleSpec(`
+name: minimal-trap
+family: trap
+kickCells:
+  - name: only
+    offsets: [0]
+`);
+    expect(spec.name).toBe("minimal-trap");
+    expect(spec.family).toBe("trap");
+    expect(spec.kickCells).toEqual([{ name: "only", offsets: [0] }]);
+    expect(spec.snareBeat).toBeUndefined();
+    expect(spec.clapWithSnare).toBeUndefined();
+    expect(spec.hatBases).toBeUndefined();
+    expect(spec.rollDensity).toBeUndefined();
+    expect(spec.openHatChance).toBeUndefined();
+    expect(spec.swingDelay).toBeUndefined();
+  });
+
+  it("rejects an unknown family", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: house
+kickCells:
+  - name: a
+    offsets: [0]
+`),
+    ).toThrowError(/family/);
+  });
+
+  it("rejects an unknown top-level key (typo protection)", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: trap
+kikcCells:
+  - name: a
+    offsets: [0]
+`),
+    ).toThrowError(/unknown field "kikcCells"/);
+  });
+
+  it("rejects a kick cell missing a 0 offset", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: trap
+kickCells:
+  - name: a
+    offsets: [1, 2]
+`),
+    ).toThrowError(/must include 0/);
+  });
+
+  it("rejects a kick cell with a negative offset", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: trap
+kickCells:
+  - name: a
+    offsets: [0, -1]
+`),
+    ).toThrowError(/>= 0/);
+  });
+
+  it("rejects an empty kickCells array", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: trap
+kickCells: []
+`),
+    ).toThrowError(/non-empty array/);
+  });
+
+  it("rejects rollDensity out of range", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: trap
+kickCells:
+  - name: a
+    offsets: [0]
+rollDensity: 1.5
+`),
+    ).toThrowError(/rollDensity.*\[0, 1\]/);
+  });
+
+  it("rejects an unknown hatBases value", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: trap
+kickCells:
+  - name: a
+    offsets: [0]
+hatBases: [straight-8ths, wobbly]
+`),
+    ).toThrowError(/hatBases/);
+  });
+});
+
+describe("data-driven trap-family StyleSpec generation", () => {
+  const customSpec: TrapFamilyStyleSpec = parseDrumStyleSpec(`
+name: custom-trap
+family: trap
+snareBeat: 4
+clapWithSnare: false
+kickCells:
+  - name: solo
+    offsets: [0, 2]
+hatBases: [straight-8ths]
+`);
+
+  it("generates snare only on the specified beat, with no claps", () => {
+    const { notes } = generateDrumPatternDetailed("custom-trap", FULL_KIT, ctx({ bars: 3 }), {
+      styleSpec: customSpec,
+    });
+    const snareBeats = notes.filter((n) => n.pitch === FULL_KIT.snare).map((n) => n.start);
+    expect(snareBeats).toEqual([3, 7, 11]); // beat index 3 (0-based) of each 4-beat bar
+    expect(notes.some((n) => n.pitch === FULL_KIT.clap)).toBe(false);
+  });
+
+  it("locks the kick cell exactly in ordinary bars and reports it in meta", () => {
+    const { notes, meta } = generateDrumPatternDetailed("custom-trap", FULL_KIT, ctx({ bars: 2 }), {
+      styleSpec: customSpec,
+    });
+    expect(meta.kickCell).toBe("solo");
+    const kickOffsets = notes
+      .filter((n) => n.pitch === FULL_KIT.kick && n.start < 4)
+      .map((n) => n.start);
+    expect(kickOffsets).toEqual([0, 2]);
+  });
+
+  it("is deterministic per seed", () => {
+    const a = generateDrumPattern("custom-trap", FULL_KIT, ctx({ rng: makeRng(13) }), {
+      styleSpec: customSpec,
+    });
+    const b = generateDrumPattern("custom-trap", FULL_KIT, ctx({ rng: makeRng(13) }), {
+      styleSpec: customSpec,
+    });
+    expect(a).toEqual(b);
+  });
+
+  it("listDrumVariants(style, spec) returns the spec's own kick-cell names", () => {
+    expect(listDrumVariants("custom-trap", customSpec)).toEqual(["solo"]);
+
+    const multiCellSpec = parseDrumStyleSpec(`
+name: multi
+family: trap
+kickCells:
+  - name: alpha
+    offsets: [0]
+  - name: beta
+    offsets: [0, 2]
+`);
+    expect(listDrumVariants("multi", multiCellSpec)).toEqual(["alpha", "beta"]);
+  });
+
+  it("--variant forces a named kick cell against a spec", () => {
+    const multiCellSpec = parseDrumStyleSpec(`
+name: multi
+family: trap
+kickCells:
+  - name: alpha
+    offsets: [0]
+  - name: beta
+    offsets: [0, 2]
+`);
+    const a = generateDrumPatternDetailed("multi", FULL_KIT, ctx(), {
+      styleSpec: multiCellSpec,
+      variant: 0,
+    });
+    const b = generateDrumPatternDetailed("multi", FULL_KIT, ctx(), {
+      styleSpec: multiCellSpec,
+      variant: 1,
+    });
+    expect(a.meta.kickCell).toBe("alpha");
+    expect(b.meta.kickCell).toBe("beta");
+  });
+
+  it("REGRESSION: the built-in trap style is byte-identical via the default path and via its spec", () => {
+    for (const seed of [1, 7, 42]) {
+      const viaStyle = generateDrumPatternDetailed("trap", FULL_KIT, ctx({ bars: 5, rng: makeRng(seed) }));
+      const viaSpec = generateDrumPatternDetailed(
+        "trap-via-spec",
+        FULL_KIT,
+        ctx({ bars: 5, rng: makeRng(seed) }),
+        { styleSpec: TRAP_STYLE_SPEC },
+      );
+      expect(viaSpec.notes).toEqual(viaStyle.notes);
+      expect(viaSpec.meta).toEqual(viaStyle.meta);
+    }
   });
 });
 
