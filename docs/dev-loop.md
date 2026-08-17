@@ -238,3 +238,49 @@ SDK-free (renders through validated clip ops); this is a musical + safety pass:
       clear/at-bar hint; with --clear → span cleared then written
 - [ ] Skill: ask a local session "build me a house skeleton from my drum and
       bass loops" → it plans, shows you the YAML, dry-runs, applies (M4 exit)
+
+## B3 (library) + B3d (.alc mirror) verification checklist
+
+Library round-trip (SDK-free, validated clip ops underneath):
+
+- [ ] `awh save <a real clip> --category hats --tags <...>` → markdown entry
+      appears under `library/clips/hats/`, INDEX.md regenerated, bpm/scale
+      context captured from the Set
+- [ ] `awh lib list` / `awh lib show <slug>` → entry reads sensibly
+- [ ] `awh lib place <slug> <empty slot or --at-bar>` → clip lands in Live and
+      sounds identical to the saved source
+- [ ] Skill: "save that hat loop for later" then, in a NEW Set, "place my
+      garage hats" → Claude captures/places via the library, citing slug+tier
+
+.alc mirror (THE Live-facing new ground — take it slowly):
+
+- [ ] Golden template: in Live 12, put one MIDI clip (a few notes) on a
+      device-free track, drag it into the User Library, then
+      `awh lib capture-template "<User Library>/Clips/<name>.alc"` →
+      reports Live's real Creator string + note schema
+- [ ] `awh lib export-alc` → `live-mirror/AWH Library/` appears with
+      `<category>/<slug>.alc` files + `Ableton Folder Info/`
+- [ ] Drag the `AWH Library` folder into Live's Places → clips browse, PREVIEW
+      (double-click), and drag into a track; notes/length/name all correct
+- [ ] Tags: browser Filter view shows an `AWH` group with your categories
+      (+ `AWH Tags`) after Live indexes the pack
+- [ ] Re-export after editing an entry (`--overwrite` save or hand-edit) →
+      WITHOUT re-dragging, Live picks up the change (PackRevision bump; may
+      need a moment or a browser rescan — note which)
+- [ ] Reverse: drag a NEW clip from a Set into the User Library by hand, then
+      `awh lib import-alc <that file> --category <c>` → entry matches the clip
+- [ ] Safety spot-check: `live-mirror/` is gitignored; nothing outside it was
+      touched; `library/mirror.json` revision incremented
+
+## M5 (drums) in-Live verification checklist
+
+- [ ] `awh drums gen <drum-rack track> --style house --bars 4` into an empty
+      slot → pads mapped to sensible roles (kick/clap/hats), pattern grooves
+- [ ] `--style techno` and `--style trap` → idiomatic (trap: beat-3 snare,
+      hat rolls); different `--seed` → different ghost placement
+- [ ] Track WITHOUT a drum rack → GM fallback notes, warning printed
+- [ ] `awh drums fill <clip>` → last bar gets a fill, crescendos into the loop
+- [ ] `awh drums humanize <clip>` → kick stays tight, hats loosen; still grooves
+- [ ] `awh drums vary <clip>` → recognizably the same pattern, reworked
+- [ ] Skill: "give me a darker techno groove on my drum rack" → gen + audition
+      loop works end to end
