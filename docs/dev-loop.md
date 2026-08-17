@@ -576,14 +576,14 @@ Automatic (compressor) strategy:
       8/8 triggers used — same ballpark as the calibrated 5.34 dB (real
       run-to-run material variance, consistent with the earlier M6-follow-up
       pass's own variance).
-- [ ] Record the Compressor's raw<->display mappings seen during this pass
+- [x] Record the Compressor's raw<->display mappings seen during this pass
       (Threshold/Ratio/Attack/Release) into knowledge/ for future sessions.
-      BLOCKED on a human UI readout: the SDK exposes only raw 0..1 values
-      (`device.get` has no display-string field), so this needs the owner
-      to glance at Live's Compressor UI for the raw values hit this pass
-      (Threshold 0.438, Release 0.157, Attack 0, Ratio 1) and report the
-      shown dB/ms/ratio — same gap as the earlier mixer-calibration research
-      (`docs/research/mixer-calibration.md`).
+      Confirmed: owner read Live's UI at the calibrated raw values and
+      reported it back — Threshold raw 0.5 -> -14.0 dB, Ratio raw 1.0 ->
+      inf:1, Attack raw 0.0 -> 0.01 ms, Release raw ~0.157 -> 30.0 ms.
+      Recorded as `knowledge/setup/compressor-raw-display-mapping.md`
+      (tier verified, explicitly caveated as a single-point snapshot, not
+      an assumed-linear curve) and picked up by `awh kb index`.
 
 ## B4 (knowledge base) verification checklist
 
