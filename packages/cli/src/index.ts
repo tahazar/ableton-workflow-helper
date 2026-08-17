@@ -34,6 +34,7 @@ import {
   renderAlcClip,
   serializeNotation,
   slugify,
+  tileNotes,
   ungzipAlc,
   variantSeed,
   writePack,
@@ -1062,7 +1063,9 @@ lib
 lib
   .command("place <slug> <target>")
   .description(
-    "Write a library clip into the Set. Target: slot path, or track path with --at-bar",
+    "Write a library clip into the Set. Target: slot path, arr clip path, or " +
+      "track path with --at-bar. An EXISTING clip at the target is filled " +
+      "(notes tiled/truncated to its length) rather than skipped or duplicated.",
   )
   .option("--at-bar <bar>", "arrangement position (1-based bar) for track targets")
   .option("--name <name>", "clip name (default: the slug)")
@@ -1077,25 +1080,70 @@ lib
       const entry = await libraryStore(cmdOpts).loadClip(slug);
       if (!entry.notation) throw new Error(`${slug} has no notation block to place`);
       const beatsPerBar = entry.beatsPerBar ?? 4;
-      const { notes } = parseNotation(entry.notation, { beatsPerBar });
-      const isSlot = /\/slot:\d+$/.test(target);
-      if (!isSlot && cmdOpts.atBar === undefined) {
-        throw new Error("Track targets need --at-bar <bar> (or pass a slot path).");
+      const { notes: sourceNotes } = parseNotation(entry.notation, { beatsPerBar });
+      const isSlotPath = /\/slot:\d+$/.test(target);
+      const isArrPath = /\/arr:\d+$/.test(target);
+
+      let existing: { path: string; lengthBeats: number } | undefined;
+      if (isSlotPath || isArrPath) {
+        try {
+          const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
+          existing = { path: target, lengthBeats: detail.duration };
+        } catch {
+          // no clip there yet — fall through to create (slot paths only; an
+          // arr path with nothing at it isn't a valid create target).
+          if (isArrPath) {
+            throw new Error(
+              `no clip at ${target} — arr paths must point at an existing clip to fill`,
+            );
+          }
+        }
+      } else if (cmdOpts.atBar !== undefined) {
+        const summary = (await op(opts, "set.summary")) as SetSummary;
+        const track = [...summary.tracks, ...summary.returnTracks].find(
+          (t) => t.path === target,
+        );
+        if (!track) throw new Error(`track not found: ${target}`);
+        const startBeat = (Number(cmdOpts.atBar) - 1) * beatsPerBar;
+        const endBeat = startBeat + entry.lengthBeats;
+        const overlap = track.arrangementClips.find(
+          (c) => startBeat < (c.endTime ?? 0) && endBeat > (c.startTime ?? 0),
+        );
+        if (overlap) existing = { path: overlap.path, lengthBeats: overlap.duration };
+      } else {
+        throw new Error(
+          "Track targets need --at-bar <bar> (or pass a slot/arr clip path).",
+        );
       }
-      const result = (await op(opts, "clip.create-midi", {
-        target: isSlot
-          ? { type: "session", slotPath: target }
-          : {
-              type: "arrangement",
-              trackPath: target,
-              startBeat: (Number(cmdOpts.atBar) - 1) * beatsPerBar,
-            },
-        lengthBeats: entry.lengthBeats,
-        notes,
-        name: cmdOpts.name ?? entry.slug,
-      })) as { path: string };
+
+      let result: { path: string };
+      let placedNotes = sourceNotes;
+      if (existing) {
+        placedNotes = tileNotes(sourceNotes, entry.lengthBeats, existing.lengthBeats);
+        await op(opts, "clip.notes", { path: existing.path, notes: placedNotes });
+        await op(opts, "clip.update", {
+          path: existing.path,
+          name: cmdOpts.name ?? entry.slug,
+        });
+        result = { path: existing.path };
+      } else {
+        result = (await op(opts, "clip.create-midi", {
+          target: isSlotPath
+            ? { type: "session", slotPath: target }
+            : {
+                type: "arrangement",
+                trackPath: target,
+                startBeat: (Number(cmdOpts.atBar) - 1) * beatsPerBar,
+              },
+          lengthBeats: entry.lengthBeats,
+          notes: sourceNotes,
+          name: cmdOpts.name ?? entry.slug,
+        })) as { path: string };
+      }
       output(opts, result, () =>
-        `placed ${slug} [${entry.tier}] -> ${result.path} (${notes.length} notes, ${entry.lengthBeats} beats)`,
+        `placed ${slug} [${entry.tier}] -> ${result.path} ` +
+          `(${placedNotes.length} notes, ${existing ? existing.lengthBeats : entry.lengthBeats} beats` +
+          `${existing ? ", filled existing clip" : ""})`,
       );
     },
   );

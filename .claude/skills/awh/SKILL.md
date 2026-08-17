@@ -160,7 +160,9 @@ awh save <clipPath> --category hats [--as slug] [--tags garage,shuffle]
     [--tier draft|sourced|verified] [--project name]   # capture from the Set
 awh lib list [--category c] [--tag t]     # browse
 awh lib show <slug>                       # full entry incl. notation + notes
-awh lib place <slug> <target> [--at-bar N]   # write it into the Set
+awh lib place <slug> <target> [--at-bar N]   # write it into the Set —
+    # FILLS an existing clip at the target (tiled/truncated to its length)
+    # rather than erroring or duplicating; creates fresh only if empty
 awh lib index                             # regenerate INDEX.md
 ```
 
@@ -241,6 +243,24 @@ song structure"):
    It refuses to overwrite existing arrangement material without `--clear`;
    don't fight that by hand-placing clips instead — use `--at-bar` past the
    song's end, or ask the user before `--clear`ing real content.
+
+**Save/place a library clip** ("save that hat loop for later", "place my
+garage hats", "use my saved bassline"):
+1. Saving: `awh save <clipPath> --category <c> [--tags ...] [--tier ...]` —
+   don't hand-copy the notation anywhere yourself, `save` captures the notes
+   plus BPM/scale/source context automatically.
+2. Placing: `awh lib list`/`grep library/clips/INDEX.md` to find the slug,
+   then `awh lib place <slug> <target>` — `<target>` is a session slot path,
+   an arrangement clip path, or a track path with `--at-bar`. If the target
+   is EMPTY, it creates a new clip at the entry's saved length. If the
+   target already holds a clip (e.g. a pre-blocked empty placeholder), it
+   FILLS that clip instead — tiling/truncating the entry's notes to match
+   the existing clip's length. Either way, one command; don't hand-read the
+   entry's notation and `clip write`/tile it yourself.
+3. If the request doesn't specify where ("place my garage hats"), don't
+   guess a target silently — pick an empty session slot (or an obviously
+   matching placeholder clip) on a sensibly-named track, or ask the owner
+   where they want it.
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not
