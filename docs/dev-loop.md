@@ -370,3 +370,171 @@ Library round-trip (SDK-free, validated clip ops underneath):
       whose only pad looked like a mislabeled leftover rather than guessing.
       Independently verified: kick-only four-on-the-floor (16 notes, no
       snare) and off-beat 8th-note hats, both humanized.
+
+## M6 (analysis engine) setup + verification checklist
+
+One-time setup (dev machine):
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install numpy scipy soundfile pyloudnorm pytest
+cd analysis && ../.venv/bin/pytest -q && cd ..   # engine self-test
+```
+
+M4L capture tap: follow `m4l/README.md` (Max Audio Effect on the master,
+paste/build the patch, save). Suite includes Max.
+
+- [x] `awh mix report <any exported wav/aiff> --bpm <tempo>` → LUFS/dBTP/PSR
+      match a trusted meter (Live's own LUFS meter, Youlean, etc.) within
+      ~0.5 LU / 0.3 dB; findings read sensibly and quote real numbers.
+      Confirmed against a real render (Kick & Snare bounce, MF Gabhru
+      project) — owner-checked against Live's own meter, within tolerance.
+- [x] `awh mix target <2-3 reference tracks> --save house` →
+      `library/targets/house.json` appears; `report --target house` adds
+      per-band deltas that match what your ears/eyes say about the balance.
+      Confirmed mechanically (one reference track; genre-tag naming caught
+      and corrected — see note below). Per-band deltas made intuitive sense:
+      an isolated drum stem showed large low/high-end deviations vs. a full
+      mixed master reference, exactly as expected for a non-full-mix source.
+      **Naming gotcha**: saved the reference under `--save house`, but the
+      actual reference track was trap, not house, and the project itself is
+      trap — renamed `library/targets/house.json` → `trap.json` to match.
+      Worth remembering: `--save <name>` doesn't validate the name against
+      the reference's actual genre, so it's easy to mislabel.
+- [x] Capture tap: device loads with no Max errors; `awh mix capture
+      --from-bar X --bars 4 -o /tmp/cap.wav` loops the right span, records,
+      stops; the file plays back as the mixdown. Confirmed — built the
+      device by drag/paste per `m4l/README.md` (File→Open didn't appear in
+      the menu for the owner; Cmd+O and drag-and-drop both worked as
+      fallbacks), verified it captures whatever's actually playing
+      (solo-state and all), and used it successfully for the rest of this
+      checklist once built.
+- [x] `awh mix ab <before> <after>` on a deliberate change (e.g. +3 dB shelf)
+      → the band deltas show the change and ONLY the change (loudness match
+      working: overall LUFS delta ≈ 0). Took two corrections to test cleanly:
+      (1) first attempt targeted an EQ8 band configured as a Low Pass filter,
+      where Gain does nothing — picked an actual High Shelf band instead;
+      (2) even then, a +3dB change on ONE track was too diluted across 40+
+      simultaneous tracks in the full mix to show a clear delta — soloed the
+      target track for an isolated A/B. Once isolated: confirmed exactly as
+      specified — `lufs_integrated` delta ≈ 0.00, and the ONLY flagged
+      finding was `band_change_15849hz: +3.0 dB`, precisely the boosted
+      shelf frequency. Also incidentally discovered a master-bus clipper
+      (GClip) sitting before the capture tap that can absorb small gain
+      changes — bypassed it for a clean test, restored after.
+- [x] Pump: on a sidechained loop, report `--bpm` shows depth/alignment;
+      break the sidechain → report reflects it. **Found a real limitation,
+      not a simple bug**: on genuine sidechained content (BASS/SAMPLES ducked
+      by a MIDI-triggered compressor), `pump_misalign_full/low` fired at
+      ~228ms offset from the beat grid. Disabling the actual sidechain
+      device and re-capturing the identical span still showed ~218ms — a
+      negligible 10ms difference, when the finding should have changed
+      meaningfully or disappeared. Root cause (read in
+      `analysis/awh_analysis/dynamics.py`): the detector measures RMS-
+      envelope periodicity folded over the beat period, which can't
+      distinguish genuine sidechain ducking from a bass/sample note's own
+      natural decay — both produce a rhythmic RMS trough near the end of
+      each beat cycle on rhythmic material. Needs a real algorithmic rework
+      (e.g. comparing against a bypassed/reference capture, or detecting a
+      compressor-specific release-curve signature) — not attempted this
+      pass; flagging for follow-up rather than a rushed fix.
+- [x] Skill: "how's my low end vs my references?" → Claude captures/asks for
+      a render, runs report --target, quotes numbers, suggests concrete
+      moves. **Passed, with good judgment shown**: a fresh agent correctly
+      declined to fabricate a comparison — it found the (at-the-time)
+      mislabeled `house.json` target on its own and correctly reasoned a
+      house profile would be an unfair yardstick for this trap/dhol/tumbi
+      project, checked for real reference audio, found none it was
+      confident about, and asked rather than guessed — exactly the "never
+      invent a number" principle from `docs/design/analysis-engine.md`.
+      Completed the loop manually afterward with the correctly-labeled
+      `trap.json`: real per-band findings (25/32/40/50Hz all well above
+      target, PSR below the clean-loudness guideline) with concrete
+      EQ Eight moves suggested.
+
+## M6 follow-up: `awh mix duck` toolchain (fit/setup/calibrate/measure)
+
+Built in response to the pump-detection lessons above (see
+`docs/lessons-learned.md`, `knowledge/setup/sidechain-template.md`) — a
+trigger-aligned envelope fitter plus a closed-loop stock-Compressor
+calibrator, verified live on a purpose-built kick/snare/hat/bassline project:
+
+- [x] `duck fit <kick render> --triggers <beats>` → real, sensible envelope
+      (depth/hold/release + exact Volume Shaper draw points) from an actual
+      16-hit kick pattern. `--bass <file>` masking-based depth confirmed too
+      (correctly clamped to the 3 dB floor on this material).
+- [x] `duck setup <track>` → inserts + presets a Compressor (Attack min,
+      Ratio max). **Found and fixed a real bug**: every `device.param` call
+      across `setup`/`calibrate` (5 call sites) passed `{ path, name, value }`
+      — the op actually expects `{ path, param, value }` — so every one of
+      them failed with `"param" must be a non-empty string`. TypeScript
+      didn't catch it because `op()`'s args are typed `unknown`. Fixed all 5.
+- [x] Manual touches (Sidechain On + Audio From, Release — SDK has no
+      routing/automation API): found live that "Sidechain On" is actually a
+      normal automatable param despite being one of the documented "manual
+      touches" — `duck setup` could set it directly instead of asking the
+      owner to toggle it by hand. "Audio From" genuinely isn't exposed.
+- [x] `duck calibrate` → closed-loop bisection converged in ONE iteration
+      (baseline 0.62 dB natural modulation → probes at 0.25/0.75 raw showed
+      16.93/0.00 dB → bisected to raw 0.500 → 3.71 dB against a 3.0 dB
+      target, within tolerance). Independently re-verified: read the
+      Threshold param back (0.5, correct), captured fresh, and re-measured
+      (4.34 dB — same ballpark, real run-to-run variance).
+- [x] Cross-check against the redesigned `pump()` shape classifier
+      (see the M6 entry above): on this SAME confirmed-genuine-ducking
+      capture, `mix report` labeled it `shape: decay-like` — a real
+      remaining accuracy gap (the kick/trigger's own presence dominates the
+      low band on a full-mix capture, biasing the shape heuristic). BUT the
+      finding severity is `[INFO]` (not a warning) and its text explicitly
+      says "a single file cannot prove a sidechain is engaged" and points to
+      `mix ab` on/off — so the honest-scope framing prevents this from
+      misleading anyone, even though the label itself is wrong here. The
+      purpose-built `duck measure`/`duck calibrate` (trigger-aligned, not
+      beat-grid-folded) are the reliable path for this template; treat
+      `pump_shape_*` as a rough single-file heads-up, not a verdict.
+
+## Troubleshooting
+
+- **Restarted Live? Restart `extensions-cli` too.** A stale extension-host
+  connection keeps answering `awh ping` successfully while every real
+  operation hangs or fails with generic SDK errors. If ops hang after a
+  Live restart, kill and rerun `extensions-cli run` before debugging
+  anything else.
+- Small A/B gain changes not showing up in `awh mix ab`? Check for clip/
+  limiter utilities (GClip etc.) sitting before the capture tap — bypass
+  them or move the tap after.
+
+## Definition of done (see docs/lessons-learned.md)
+
+A new `awh` command is NOT done until: (1) SKILL.md's Typical Flows names it
+for its natural request; (2) a negative-control test inverts its detection
+claim against synthetic fixtures; (3) its behavior for occupied-but-empty
+targets is decided and tested; (4) gateway ops it calls from more than one
+site go through typed wrappers (op() args are unknown — wrong field names
+only fail at runtime in Live); (5) its zero-item path still runs cleanup/
+sync side effects.
+
+## Duck toolkit (`awh mix duck`) verification checklist
+
+- [ ] Capture the Drums bus over 4-8 bars starting on the Trigger pattern's
+      boundary; `awh mix duck fit <capture> --trigger-clip <Trigger clip>` →
+      body/tail times look plausible against the waveform
+- [ ] Draw the printed points in Volume Shaper (depth/hold/exponential
+      release) → bass audibly locks to the kick without pumping artifacts
+- [ ] `--bass <bass capture>` → masking-based depth differs sensibly from
+      the default 12 dB
+- [ ] Proof loop: capture sidechain bus with the drawn envelope on vs
+      Device On -> 0, `awh mix ab` → depth delta ≈ the drawn depth
+
+Automatic (compressor) strategy:
+
+- [ ] `awh mix duck setup <Sidechain track>` → Compressor appears, Attack
+      fastest / Ratio max set; do the two printed manual touches
+- [ ] Tap on the Sidechain bus: `awh mix duck calibrate <devicePath>
+      --target-depth <fit depth> --trigger-clip <Trigger> --from-bar X
+      --bars 4` → baseline + probes + iterations print sensibly; final
+      achieved depth within tolerance; Threshold left at the calibrated raw
+- [ ] `awh mix duck measure <fresh Sidechain capture>` ≈ the calibrated
+      depth; A/B by ear vs the ShaperBox curve on the same material
+- [ ] Record the Compressor's raw<->display mappings seen during this pass
+      (Threshold/Ratio/Attack/Release) into knowledge/ for future sessions

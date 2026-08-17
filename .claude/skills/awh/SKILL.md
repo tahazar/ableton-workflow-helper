@@ -147,6 +147,30 @@ awh drums vary <clipPath> [-n 4] [--amount 0..1]   # role-aware variations
 - density/style requests map naturally: "busier" → higher --density,
   "darker/minimal" → techno at lower density, "half-time/trap" → trap.
 
+## Mix analysis (`awh mix`) — measurements, never vibes
+
+```sh
+awh mix capture -o <file> --from-bar N --bars N   # record post-FX via the M4L tap
+awh mix report <file> [--bpm N] [--target name] [--delivery club|streaming|apple]
+awh mix ab <fileA> <fileB> [--bpm N]              # loudness-matched A/B diff
+awh mix target <refFiles...> --save <name>        # measure refs -> genre target
+```
+
+- **Quote the numbers; never invent one.** The report's findings each carry
+  value/threshold/suggestion — relay them, prioritize alerts, and explain in
+  plain producer language. If a measurement isn't in the output, say so.
+- Typical loop: capture (or ask the user for an export) → report → discuss →
+  user tweaks (or asks you to, e.g. EQ Eight via device ops) → capture again
+  → `awh mix ab` old vs new. AB is loudness-matched — tell the user this
+  kills the louder-sounds-better illusion.
+- Always pass `--bpm` (from `awh status`) so sidechain pump gets verified.
+- Targets are the USER'S own measured references (`awh mix target`), stored
+  in `library/targets/` — offer to build one from their reference tracks
+  before comparing; never compare against a vibe.
+- capture requires the AWH Capture Tap M4L device (m4l/README.md) on the
+  master; if it fails, fall back to asking the user to export the span and
+  run report on that file.
+
 ## Library (`awh save` / `awh lib`) — the owner's clip memory
 
 Git-versioned clips under `library/clips/<category>/<slug>.md` (markdown +
@@ -261,6 +285,61 @@ garage hats", "use my saved bassline"):
    guess a target silently — pick an empty session slot (or an obviously
    matching placeholder clip) on a sensibly-named track, or ask the owner
    where they want it.
+
+**Generate or rework a drum pattern** ("give me a house groove", "make this
+beat trap", "humanize my drums", "variations of my drum loop"):
+1. `awh status --json` → find the drum-rack track (drum tracks list
+   drumPads). Don't hand-compose drum notation — the drum tools are
+   pad-aware and idiomatic.
+2. New pattern → `awh drums gen <trackPath> --style house|techno|trap`
+   (`--variant` for a specific named kick cell). Rework existing →
+   `awh drums vary` (variations), `awh drums fill` (last-bar fill),
+   `awh drums humanize` (groove) — NOT plain `vary`/hand edits.
+3. Audition loop as with vary: name the slots, let the owner listen, sweep.
+
+**Mix feedback / "how does my mix measure?"** ("check my low end", "is this
+loud enough for clubs", "did that EQ change help"):
+1. Get audio: `awh mix capture` (tap on the master, see m4l/README.md) or
+   ask the owner for an export. Get the tempo from `awh status`.
+2. `awh mix report <file> --bpm <tempo> [--target <name>] [--delivery club]`
+   — quote the findings' numbers verbatim; never state a measurement the
+   report didn't print. Offer `--save` so the measurement becomes a
+   retrievable record (`awh mix records`).
+3. Comparisons: `awh mix ab <before> <after>` (loudness-matched). This is
+   also THE way to verify a sidechain: capture with the compressor on and
+   bypassed, ab the pair — single-file pump shape alone can't prove it.
+4. No target yet? Offer `awh mix target <owner's reference tracks> --save
+   <genre>` first — comparisons run against THEIR references, not folklore.
+
+**Sidechain ducking** ("tune my sidechain", "duck the bass to my kick",
+"set up sidechaining"). Read knowledge/setup/sidechain-template.md first —
+the owner's template routes BASS/SAMPLES through a Sidechain bus with a
+MIDI "Trigger" track. Always start from the fit, then pick a strategy:
+1. FIT (both strategies): capture the DRUMS bus over a span starting on the
+   Trigger pattern's boundary, then
+   `awh mix duck fit <drumsCapture> --trigger-clip <Trigger clip>`
+   (`--bass <bassCapture>` → masking-based depth) → measured kick body/tail
+   + depth/hold/release + points.
+2. AUTOMATIC strategy (default when the owner says "automatic" or has no
+   ShaperBox on the track): `awh mix duck setup <Sidechain track>` inserts
+   a preset stock Compressor and prints the TWO manual touches (enable
+   Sidechain + Audio From = trigger source; Release dial) — the SDK cannot
+   set routing, don't pretend otherwise. Then with the tap on the ducked
+   bus: `awh mix duck calibrate <devicePath> --target-depth <fit depth>
+   --trigger-clip ... --from-bar N --bars 4` — it captures/measures/adjusts
+   Threshold in a closed loop and reports the achieved depth.
+3. SHAPERBOX strategy (owner's classic template): read the fit numbers as
+   drawing instructions. Mechanics (docs/research/shaperbox-preset-format
+   .md): LFO Length in ms = the printed gap, MIDI Trigger "On",
+   sharp-corner points for dip/hold, smooth for release; Favorites /
+   LFO copy-paste for reuse. Preset FILES cannot be generated — never
+   offer to write one.
+4. VERIFY (either): `awh mix duck measure <SidechainBusCapture>
+   --trigger-clip ...` (achieved depth) or an on/off `awh mix ab` pair.
+   If the measured kick tail forces a groove-killing duck, suggest
+   tightening the kick's own decay.
+Volume-automation ducking is NOT possible via the gateway (no automation
+API) — say so if asked; don't improvise workarounds into real projects.
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not
