@@ -9,7 +9,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import ab, report, targets
+from . import ab, duck, report, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -137,6 +137,59 @@ def _cmd_target(args: argparse.Namespace) -> int:
     return 0
 
 
+
+
+def _cmd_duck(args: argparse.Namespace) -> int:
+    from . import audio
+
+    triggers = [float(t) for t in args.triggers.split(",") if t.strip()]
+    x, sr = audio.load(args.file)
+    if args.cycle:
+        duration_s = x.shape[0] / sr
+        tiled = []
+        k = 0
+        while k * args.cycle < duration_s:
+            tiled.extend(t + k * args.cycle for t in triggers)
+            k += 1
+        triggers = [t for t in tiled if t < duration_s]
+    bass_x = bass_sr = None
+    if args.bass:
+        bass_x, bass_sr = audio.load(args.bass)
+    result = duck.fit_duck_envelope(
+        x, sr, triggers, bass=bass_x, bass_sr=bass_sr, depth_db=args.depth
+    )
+    if args.json:
+        _print_json(result)
+    else:
+        rec = result["recommendation"]
+        k = result["kick"]
+        lines = [
+            f"Trigger-aligned duck fit ({result['used_triggers']} triggers, "
+            f"window {result['window_ms']:.0f} ms)",
+            "",
+            f"Drums low band (<{k['low_band_hz']:.0f} Hz): peak at "
+            f"{k['peak_time_ms']:.0f} ms, {k['peak_over_floor_db']:.1f} dB over the "
+            f"between-hit floor; body ends {k['body_end_ms']:.0f} ms; "
+            f"tail gone by {k['decay_done_ms']:.0f} ms",
+            "",
+            f"Recommended Volume Shaper envelope (per trigger):",
+            f"  depth    {rec['depth_db']:.1f} dB   ({rec['depth_source']})",
+            f"  attack   0 ms (instant — trigger-locked)",
+            f"  hold     {rec['hold_ms']:.0f} ms at full depth",
+            f"  release  {rec['release_ms']:.0f} ms, {rec['release_curve']} — fully "
+            f"recovered by {rec['fully_recovered_by_ms']:.0f} ms "
+            f"({100 * rec['fully_recovered_by_ms'] / result['window_ms']:.0f}% of the gap)",
+            "",
+            "Points to draw (time | % of trigger gap | gain):",
+        ]
+        for pt in rec["points"]:
+            lines.append(
+                f"  {pt['ms']:7.1f} ms  {100 * pt['frac']:5.1f}%  {pt['gain_db']:+6.2f} dB"
+            )
+        print("\n".join(lines))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -161,6 +214,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_ab.add_argument("--bpm", type=float, default=None)
     p_ab.add_argument("--json", action="store_true")
     p_ab.set_defaults(func=_cmd_ab)
+
+    p_duck = sub.add_parser("duck", help="Fit a sidechain duck envelope to the drums")
+    p_duck.add_argument("file", help="drums (kick-dominant) audio capture")
+    p_duck.add_argument("--triggers", type=str, required=True,
+                        help="comma-separated trigger times in SECONDS (one cycle if --cycle)")
+    p_duck.add_argument("--cycle", type=float, default=None,
+                        help="trigger pattern cycle length in seconds — tiles the trigger "
+                             "list across the whole file (capture must start on a cycle boundary)")
+    p_duck.add_argument("--bass", type=str, default=None,
+                        help="bass capture (same session/levels) for masking-based depth")
+    p_duck.add_argument("--depth", type=float, default=None,
+                        help="force duck depth in dB (skips the computed recommendation)")
+    p_duck.add_argument("--json", action="store_true")
+    p_duck.set_defaults(func=_cmd_duck)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")

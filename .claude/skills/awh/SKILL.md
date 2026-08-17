@@ -311,6 +311,21 @@ loud enough for clubs", "did that EQ change help"):
 4. No target yet? Offer `awh mix target <owner's reference tracks> --save
    <genre>` first — comparisons run against THEIR references, not folklore.
 
+**Sculpt the sidechain duck envelope** ("tune my sidechain", "fix my
+ShaperBox curve", "duck the bass to my kick"). The owner's template
+(knowledge/setup/sidechain-template.md — read it) uses Volume Shaper on a
+Sidechain bus, MIDI-triggered by a "Trigger" track:
+1. Capture the DRUMS bus over a representative span (`awh mix capture` with
+   the tap on that bus, or ask for a solo render), starting exactly where
+   the Trigger clip's pattern starts.
+2. `awh mix duck <drumsCapture> --trigger-clip <Trigger clip path>`
+   (`--bass <bassCapture>` for a masking-based depth instead of the default)
+   → prints measured kick body/tail times and the exact points to draw:
+   depth, hold, exponential release, always recovered before the next hit.
+3. Read the numbers to the owner as drawing instructions (ms AND % of the
+   trigger gap). They draw it in Volume Shaper; then verify with an on/off
+   `awh mix ab` capture pair if they want proof it behaves.
+
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not
 assumed units), then `device.param`. For mixer moves use `track.mixer`

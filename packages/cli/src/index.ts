@@ -1547,6 +1547,64 @@ mix
   });
 
 mix
+  .command("duck <drumsFile>")
+  .description(
+    "Fit the sidechain duck envelope to YOUR drums: measures the trigger-aligned " +
+      "low-band decay and prints the exact Volume Shaper points to draw",
+  )
+  .option(
+    "--trigger-clip <clipPath>",
+    "the Trigger MIDI clip (note starts become trigger times; capture must start " +
+      "on the clip's loop boundary)",
+  )
+  .option("--triggers <beats>", "manual comma-separated trigger positions in BEATS")
+  .option("--bass <file>", "bass capture at session levels — enables masking-based depth")
+  .option("--depth <db>", "force duck depth in dB")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .action(
+    async (
+      drumsFile: string,
+      cmdOpts: {
+        triggerClip?: string;
+        triggers?: string;
+        bass?: string;
+        depth?: string;
+        sig: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      if (!cmdOpts.triggerClip && !cmdOpts.triggers) {
+        throw new Error("pass --trigger-clip <path> (the Trigger MIDI clip) or --triggers <beats>");
+      }
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const secPerBeat = 60 / summary.tempo;
+
+      let triggerSeconds: number[];
+      let cycleSeconds: number | undefined;
+      if (cmdOpts.triggerClip) {
+        const detail = (await op(opts, "clip.get", { path: cmdOpts.triggerClip })) as ClipDetail;
+        if (detail.kind !== "midi" || !detail.notes?.length) {
+          throw new Error(`${cmdOpts.triggerClip} is not a MIDI clip with notes`);
+        }
+        const starts = [...new Set(detail.notes.map((n) => n.start))].sort((a, b) => a - b);
+        triggerSeconds = starts.map((b) => b * secPerBeat);
+        cycleSeconds = detail.duration * secPerBeat;
+      } else {
+        triggerSeconds = cmdOpts
+          .triggers!.split(",")
+          .map((b) => Number(b.trim()) * secPerBeat);
+      }
+
+      const args = ["duck", drumsFile, "--triggers", triggerSeconds.map((t) => t.toFixed(6)).join(",")];
+      if (cycleSeconds !== undefined) args.push("--cycle", cycleSeconds.toFixed(6));
+      if (cmdOpts.bass) args.push("--bass", cmdOpts.bass);
+      if (cmdOpts.depth) args.push("--depth", cmdOpts.depth);
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+mix
   .command("capture")
   .description(
     "Record post-FX audio via the M4L capture tap (m4l/): loops the arrangement " +
