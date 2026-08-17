@@ -68,8 +68,28 @@ against a best-effort type shim. On the FIRST successful `pnpm setup:sdk`:
       right-clicking a MIDI track shows "AWH: Hello" (logs to ExtensionHost.txt).
 - [ ] Package a `.ablx` (SDK CLI), install it via Settings → Extensions,
       restart, and repeat the `awh ping` check against the packaged install.
-      (Not yet done — dev-mode verification above is complete, but the
-      packaged-install path is still unverified.)
+      **Attempted, found a real (unresolved) gap, not a code bug we can
+      fix**: `extensions-cli package . -o awh-extension.ablx` built cleanly;
+      dragged into Settings → Extensions → Live logged `Installing
+      tahazar.ableton-workflow-helper` / `Successfully installed`, and the
+      files landed correctly at `~/Library/Application Support/Ableton/
+      Extensions/tahazar.ableton-workflow-helper/` (manifest.json +
+      dist/main.js, byte-identical in shape to Ableton's own SDK example
+      manifests — same fields, same `minimumApiVersion: "1.0.0"`). But the
+      extension never actually STARTS: no `ExtensionHost.txt` is ever
+      created, zero mentions anywhere in Live's `Log.txt` beyond that one
+      install line (no error, no crash, nothing), and it's absent from the
+      binary `Preferences.cfg` too. Ruled out: Developer Mode was already on;
+      tried two full Live restarts after install; no enable/disable toggle
+      exists next to it in the Settings → Extensions list (owner confirmed).
+      `awh ping`/`awh status` correctly report "gateway unreachable" (no
+      false positive). This looks like a genuine limitation in this SDK
+      beta's (`v1.0.0-beta.1`) packaged-install activation path, distinct
+      from the fully-working dev-mode (`extensions-cli run`) path — not
+      pursued further to avoid blind trial-and-error against a real Live
+      install; flagging for the SDK vendor/next beta rather than chasing
+      further here. Dev-mode remains the verified, working path for all
+      real work.
 
 When all boxes tick, M0 is done and M1 (real gateway operations) starts.
 
