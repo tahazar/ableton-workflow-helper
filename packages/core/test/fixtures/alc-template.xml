@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Ableton MajorVersion="5" MinorVersion="12.0_12049" SchemaChangeCount="3" Creator="AWH Test Fixture (not Live)" Revision="">
+	<LiveSet>
+		<NextPointeeId Value="22182" />
+		<OverwriteProtectionNumber Value="3072" />
+		<Tracks>
+			<MidiTrack Id="12">
+				<LomId Value="0" />
+				<DeviceChain>
+					<MainSequencer>
+						<ClipSlotList>
+							<ClipSlot Id="0">
+								<LomId Value="0" />
+								<ClipSlot>
+									<Value>
+										<MidiClip Id="0" Time="0">
+											<LomId Value="0" />
+											<CurrentStart Value="0" />
+											<CurrentEnd Value="8" />
+											<Loop>
+												<LoopStart Value="0" />
+												<LoopEnd Value="8" />
+												<StartRelative Value="0" />
+												<LoopOn Value="true" />
+												<OutMarker Value="8" />
+												<HiddenLoopStart Value="0" />
+												<HiddenLoopEnd Value="8" />
+											</Loop>
+											<Name Value="Template Clip" />
+											<TimeSignature>
+												<TimeSignatures>
+													<RemoteableTimeSignature Id="0">
+														<Numerator Value="4" />
+														<Denominator Value="4" />
+														<Time Value="0" />
+													</RemoteableTimeSignature>
+												</TimeSignatures>
+											</TimeSignature>
+											<Notes>
+												<KeyTracks>
+													<KeyTrack Id="0">
+														<Notes>
+															<MidiNoteEvent Time="0" Duration="1" Velocity="100" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="1" />
+															<MidiNoteEvent Time="2" Duration="0.5" Velocity="90" VelocityDeviation="0" OffVelocity="64" Probability="1" IsEnabled="true" NoteId="2" />
+														</Notes>
+														<MidiKey Value="60" />
+													</KeyTrack>
+												</KeyTracks>
+												<PerNoteEventStore>
+													<EventLists />
+												</PerNoteEventStore>
+												<NoteProbabilityGroups />
+												<ProbabilityGroupIdGenerator>
+													<NextId Value="1" />
+												</ProbabilityGroupIdGenerator>
+												<NoteIdGenerator>
+													<NextId Value="3" />
+												</NoteIdGenerator>
+											</Notes>
+											<NextNoteId Value="3" />
+										</MidiClip>
+									</Value>
+								</ClipSlot>
+								<HasStop Value="true" />
+								<NeedRefreeze Value="true" />
+							</ClipSlot>
+						</ClipSlotList>
+					</MainSequencer>
+				</DeviceChain>
+			</MidiTrack>
+		</Tracks>
+	</LiveSet>
+</Ableton>

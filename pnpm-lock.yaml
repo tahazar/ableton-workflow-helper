@@ -28,6 +28,10 @@ importers:
         version: 5.9.3
 
   packages/core:
+    dependencies:
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.0
     devDependencies:
       '@types/node':
         specifier: ^22.20.1

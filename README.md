@@ -12,13 +12,15 @@ real work outside.
 
 ## Status
 
-**M0–M3 done (validated in Live) · M4 built (awaiting in-Live pass)** —
+**M0–M3 done (validated in Live) · M4 + B3 (clip library + Live-browser
+mirror) + M5 (drums) built (awaiting in-Live pass)** —
 the gateway serves 23 ops; the `awh` CLI speaks bar|beat notation; the `awh`
-Claude skill drives the Set conversationally; and `awh vary` generates seeded,
-reproducible variations through a 17-transform pipeline vocabulary (8
-variations of an 8-bar motif in ~0.2 s); `awh sections` builds a 4-minute,
-seeded arrangement skeleton from source loops via editable YAML plans in one
-command. Next: B3 (clip library) or M5 (drums) — owner choice.
+Claude skill drives the Set conversationally; `awh vary` generates seeded,
+reproducible variations through a 17-transform pipeline vocabulary; `awh
+sections` builds a 4-minute seeded arrangement skeleton from source loops via
+editable YAML plans; `awh save`/`awh lib` grow a git-versioned clip library
+that mirrors into Live's own browser as a tagged Pack of .alc Live Clips; and
+`awh drums` generates/reworks pad-aware drum patterns (house/techno/trap).
 Backlog candidates B1 (audio-to-MIDI) and B2 (Operator sound design) are
 researched and queued — see `docs/spec.md`.
 See [`docs/spec.md`](docs/spec.md) for requirements + milestones,
