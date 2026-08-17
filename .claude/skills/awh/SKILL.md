@@ -171,6 +171,28 @@ awh mix target <refFiles...> --save <name>        # measure refs -> genre target
   master; if it fails, fall back to asking the user to export the span and
   run report on that file.
 
+## References (`awh ref`) — deconstruct, mark, correct
+
+```sh
+awh ref analyze <audio> [--save name]     # BPM/grid + bar energy arc +
+                                          # rule-based intro/build/drop/breakdown
+awh ref sections apply <analysis.json|audio>  # draft map -> named empty clips
+                                          # on a "Sections" track
+awh ref sections read <trackPath> [-o f]  # owner's corrections -> JSON
+```
+
+- The map is a DRAFT: always tell the owner the confidence values and that
+  they should drag/rename the marker clips to correct it — then `read` the
+  corrections back. Never treat low-confidence sections as fact.
+- Half/double-time ambiguity (trap!) is surfaced in `bpm_runner_up` and
+  notes — mention it when present, don't silently pick.
+- `--save` makes the reference a knowledge citizen (library/references/);
+  its embedded measurement profile feeds `mix target` comparisons.
+- apply refuses a non-empty Sections track without --clear (usual rule).
+- Building an arrangement against a reference: analyze -> apply -> owner
+  corrects -> read -> use the corrected bars to shape an `awh sections`
+  plan (bars per section come straight from the reference map).
+
 ## Knowledge base (`awh kb` / `awh distill`) — read before you reason
 
 `knowledge/<topic>/<slug>.md`: tiered (verified/sourced/draft), executable-

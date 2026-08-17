@@ -149,5 +149,6 @@ export {
   KnowledgeStore,
   type KnowledgeFilter,
   type MeasurementRecordSummary,
+  type ReferenceRecordSummary,
   type StoredKnowledgeEntry,
 } from "./knowledge/store.js";
