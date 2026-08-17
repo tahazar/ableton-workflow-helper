@@ -77,3 +77,57 @@ export {
 } from "./sections/types.js";
 export { renderSections, type RenderOptions, type SourceClip } from "./sections/render.js";
 export { listForms, planFromForm } from "./sections/presets.js";
+export {
+  parseClipEntry,
+  serializeClipEntry,
+  slugify,
+  validateClipEntry,
+  type ClipEntry,
+  type EntrySource,
+  type EntryTier,
+} from "./library/entry.js";
+export {
+  LibraryStore,
+  findLibraryRoot,
+  type ClipFilter,
+  type StoredClipEntry,
+} from "./library/store.js";
+export {
+  gzipAlc,
+  inspectAlcTemplate,
+  renderAlcClip,
+  ungzipAlc,
+  type AlcTemplateInfo,
+  type RenderClipSpec,
+} from "./alc/template.js";
+export { parseAlcClip, type ParsedAlcClip } from "./alc/parse.js";
+export {
+  FOLDER_INFO_DIR,
+  PACK_XMP_FILE,
+  PROPERTIES_FILE,
+  packPropertiesCfg,
+  packXmp,
+  writePack,
+  type PackItem,
+  type PackProperties,
+} from "./alc/pack.js";
+export { type DrumContext, type DrumKit, type DrumRole } from "./drums/types.js";
+export { GM_DRUM_KIT, mapPadRoles, roleOfNote } from "./drums/roles.js";
+export {
+  TRAP_KICK_CELLS,
+  generateDrumPattern,
+  generateDrumPatternDetailed,
+  listDrumStyles,
+  listDrumVariants,
+  type GeneratePatternOptions,
+  type GeneratedPattern,
+  type TrapKickCell,
+} from "./drums/grammars.js";
+export {
+  drumFill,
+  humanizeDrums,
+  varyDrums,
+  type FillOptions,
+  type HumanizeDrumsOptions,
+  type VaryDrumsOptions,
+} from "./drums/fills.js";

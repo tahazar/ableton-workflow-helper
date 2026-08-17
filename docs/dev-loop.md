@@ -264,3 +264,109 @@ SDK-free (renders through validated clip ops); this is a musical + safety pass:
       with the tool's own naming convention (`intro-drums`, `drop1-drums`,
       …) — independently verified against the live Set (positions, note
       density, in-scale pitches all correct).
+
+## B3 (library) + B3d (.alc mirror) verification checklist
+
+Library round-trip (SDK-free, validated clip ops underneath):
+
+- [x] `awh save <a real clip> --category hats --tags <...>` → markdown entry
+      appears under `library/clips/hats/`, INDEX.md regenerated, bpm/scale
+      context captured from the Set. Confirmed (including catching a false
+      alarm: the captured scale looked wrong against stale memory of an
+      earlier session — it was correct, the Set's active scale had genuinely
+      changed since then).
+- [x] `awh lib list` / `awh lib show <slug>` → entry reads sensibly. Confirmed.
+- [x] `awh lib place <slug> <empty slot or --at-bar>` → clip lands in Live and
+      sounds identical to the saved source. Confirmed byte-identical.
+- [x] Skill: "save that hat loop for later" then, in a NEW Set, "place my
+      garage hats" → Claude captures/places via the library, citing slug+tier.
+      Save half passed cleanly first try. Place half found a real gap: two
+      independent fresh agents, asked to place into a Set full of pre-blocked
+      empty placeholder clips, both hand-tiled the entry into an existing
+      placeholder via `clip write` instead of `lib place` — because `lib
+      place` genuinely couldn't do that (traced in code: it only ever called
+      `clip.create-midi`, so targeting an occupied slot/position would have
+      errored or duplicated). Extended `lib place` to fill an existing clip
+      at the target (tile/truncate to its length) when one is there, reusing
+      the already-tested `tileNotes` from the M4 sections renderer. A third
+      fresh agent then correctly used `lib place` directly — independently
+      verified against the live Set.
+
+.alc mirror (THE Live-facing new ground — take it slowly):
+
+- [x] Golden template: in Live 12, put one MIDI clip (a few notes) on a
+      device-free track, drag it into the User Library, then
+      `awh lib capture-template "<User Library>/Clips/<name>.alc"` →
+      reports Live's real Creator string + note schema. Confirmed: "Ableton
+      Live 12.4.5b11", schema Time/Duration/Velocity/OffVelocity/NoteId.
+- [x] `awh lib export-alc` → `live-mirror/AWH Library/` appears with
+      `<category>/<slug>.alc` files + `Ableton Folder Info/`. Confirmed.
+- [x] Drag the `AWH Library` folder into Live's Places → clips browse, PREVIEW
+      (double-click), and drag into a track; notes/length/name all correct.
+      Confirmed — note the browser PREVIEW plays Live's generic default
+      sound, not the owner's instrument (by design: the golden template is
+      captured device-free specifically so no instrument rides along in
+      every export); dragged onto the real Drum Rack track it sounds correct.
+- [x] Tags: browser Filter view shows an `AWH` group with your categories
+      (+ `AWH Tags`) after Live indexes the pack. Confirmed.
+- [x] Re-export after editing an entry (`--overwrite` save or hand-edit) →
+      WITHOUT re-dragging, Live picks up the change (PackRevision bump; may
+      need a moment or a browser rescan — note which). **Content edits: auto-
+      updates with no rescan needed** (confirmed — added a bar to a saved
+      clip, re-exported, Live showed the new version immediately). **Full
+      removal is different**: found and fixed a real bug where `export-alc`
+      threw "No MIDI library clips to export" and returned before calling
+      `writePack` when the library (or a `--category` slice of it) went back
+      to empty — silently leaving stale `.alc` files in Live's browser
+      instead of syncing. Fixed: it now proceeds with 0 items, and
+      `writePack`'s existing wipe-stale-content logic correctly clears the
+      pack (verified on disk). **Live's browser still showed the stale clip
+      after the fix, even after a manual rescan** — this is a genuine Live-
+      side caching limitation (the exported files are correctly gone on
+      disk), not a bug in our code; deletions apparently need something
+      stronger than a folder rescan to clear from Live's browser cache
+      (possibly a full library rebuild — not chased further this pass).
+- [x] Reverse: drag a NEW clip from a Set into the User Library by hand, then
+      `awh lib import-alc <that file> --category <c>` → entry matches the
+      clip. Confirmed (3 notes, matching the golden-template capture step's
+      own note count for the same file).
+- [x] Safety spot-check: `live-mirror/` is gitignored; nothing outside it was
+      touched; `library/mirror.json` revision incremented. Confirmed.
+
+## M5 (drums) in-Live verification checklist
+
+- [x] `awh drums gen <drum-rack track> --style house --bars 4` into an empty
+      slot → pads mapped to sensible roles (kick/clap/hats), pattern grooves.
+      Confirmed: kick (pad note 0) four-on-the-floor, snare (pad note 1) on
+      the backbeat — textbook house, correctly mapped from the real pad names.
+- [x] `--style techno` and `--style trap` → idiomatic (trap: beat-3 snare,
+      hat rolls); different `--seed` → different ghost placement. Techno:
+      driving kick plus low-velocity/low-probability ghost kicks (classic
+      rolling feel). Trap: snare locked to beat 3 every bar as expected;
+      `--variant` forces a named kick cell (reports which it picked, e.g.
+      "kickCell: rolling · hatBase: straight-8ths"); without a forced
+      variant, different seeds pick different cells/hat bases (sparse,
+      double-tap, etc.) — genuinely different grooves, not just ghost jitter.
+- [x] Track WITHOUT a drum rack → GM fallback notes, warning printed.
+      Confirmed: correct GM note numbers (36 kick, 38 snare, 39 clap, 42/46
+      closed/open hi-hat), warning text printed as documented.
+- [x] `awh drums fill <clip>` → last bar gets a fill, crescendos into the loop.
+      Confirmed: bars 1-3 untouched, bar 4 becomes a 16th-note roll with a
+      clean velocity crescendo (60→115) into the loop restart.
+- [x] `awh drums humanize <clip>` → kick stays tight, hats loosen; still
+      grooves. Confirmed quantitatively on a kick+snare rack (no separate
+      hats pad): snare timing deviation averaged ~2x the kick's (0.0054 vs
+      0.0030 beats) — role-aware behavior generalizes correctly even without
+      a dedicated hats role.
+- [x] `awh drums vary <clip>` → recognizably the same pattern, reworked.
+      Confirmed: all 16 kick-hit positions identical across the source and
+      4 variations (kick anchor fully preserved); note counts shifted
+      slightly (24→26/26/25/25) as the non-kick elements were reworked.
+- [x] Skill: "give me a darker techno groove on my drum rack" → gen + audition
+      loop works end to end. **Passed.** A fresh agent correctly ran
+      `drums gen --style techno --density 0.35` (interpreting "darker" as
+      sparse/no-snare) followed by `drums humanize`, across both active
+      drum-rack tracks — and explicitly declined to touch a third track
+      whose only pad looked like a mislabeled leftover rather than guessing.
+      Independently verified: kick-only four-on-the-floor (16 notes, no
+      snare) and off-beat 8th-note hats, both humanized.

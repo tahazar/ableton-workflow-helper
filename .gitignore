@@ -8,6 +8,10 @@ ableton-extensions-*.tgz
 @ableton-extensions/
 *.tgz
 
+# --- Ableton's own documentation (copyrighted — NEVER commit) ---
+# e.g. the Live 12 manual PDF; keep local-only for reference.
+docs/Live 12 Manual/
+
 # --- Node / TypeScript ---
 node_modules/
 dist/
@@ -24,6 +28,9 @@ build/
 .venv/
 __pycache__/
 *.pyc
+
+# --- Generated Live-browser mirror (regenerate with `awh lib export-alc`) ---
+live-mirror/
 
 # --- Local environment / secrets ---
 .env

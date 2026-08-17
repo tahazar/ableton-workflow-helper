@@ -6,7 +6,9 @@
  * extension running inside Live, or `awh serve-fake` for offline dev).
  * The same commands are what a Claude Code skill drives — no AI-only paths.
  */
-import { readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { Command } from "commander";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
@@ -17,17 +19,39 @@ import {
   type SourceClip,
   DEFAULT_GATEWAY_PORT,
   FakeLiveBridge,
+  LibraryStore,
   applyPipeline,
   createGatewayServer,
+  findLibraryRoot,
+  gzipAlc,
+  inspectAlcTemplate,
   listTransforms,
   makeRng,
+  parseAlcClip,
   parseNotation,
   parsePipeline,
   parseScale,
+  renderAlcClip,
   serializeNotation,
+  slugify,
+  tileNotes,
+  ungzipAlc,
   variantSeed,
+  writePack,
+  GM_DRUM_KIT,
+  drumFill,
+  generateDrumPatternDetailed,
+  humanizeDrums,
+  listDrumStyles,
+  listDrumVariants,
+  mapPadRoles,
+  varyDrums,
   type ClipDetail,
+  type ClipEntry,
+  type DrumContext,
+  type DrumKit,
   type NoteSpec,
+  type PackItem,
   type SetSummary,
   type TransformContext,
 } from "@awh/core";
@@ -623,6 +647,691 @@ sections
           ...plan.sections.map((s) => `  ${s.name}`),
           `press play — and re-run with the same --seed to reproduce exactly`,
         ].join("\n"),
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Drums (M5): pad-aware pattern generation and drum-specialized rework.
+// ---------------------------------------------------------------------------
+
+/** Find the drum-rack pads on a track (first device that has any). */
+function trackDrumKit(summary: SetSummary, trackPath: string): {
+  kit: DrumKit;
+  usedRack: boolean;
+} {
+  const track = [...summary.tracks, ...summary.returnTracks].find(
+    (t) => t.path === trackPath,
+  );
+  if (!track) throw new Error(`track not found: ${trackPath}`);
+  const pads = track.devices.find((d) => d.drumPads?.length)?.drumPads;
+  if (pads?.length) return { kit: mapPadRoles(pads), usedRack: true };
+  return { kit: GM_DRUM_KIT, usedRack: false };
+}
+
+function drumContext(cmdOpts: {
+  bars?: string;
+  density?: string;
+  seed?: string;
+  sig?: string;
+}, seedOffset = 0): DrumContext {
+  return {
+    bars: Number(cmdOpts.bars ?? 4),
+    beatsPerBar: Number(cmdOpts.sig ?? 4),
+    density: Number(cmdOpts.density ?? 0.5),
+    rng: makeRng(variantSeed(Number(cmdOpts.seed ?? 1), seedOffset)),
+  };
+}
+
+const drums = program
+  .command("drums")
+  .description("Pad-map-aware drum pattern tools (generate, fill, humanize, vary)");
+
+drums
+  .command("gen <trackPath>")
+  .description(
+    "Generate a genre drum pattern for a track's drum rack (GM fallback) into " +
+      "an empty session slot, --slot, or --at-bar on the arrangement",
+  )
+  .requiredOption("--style <style>", `one of: ${listDrumStyles().join(", ")}`)
+  .option("--bars <bars>", "pattern length in bars", "4")
+  .option("--density <density>", "0..1 — busyness of the top end", "0.5")
+  .option("--seed <seed>", "random seed (same seed = same pattern)", "1")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--slot <slotPath>", "explicit session slot target")
+  .option("--at-bar <bar>", "arrangement position (1-based bar)")
+  .option("--name <name>", "clip name (default: <style>-drums)")
+  .option(
+    "--variant <variant>",
+    "force a named groove variant (e.g. trap kick cell: hold, double-tap, " +
+      "late-lean, rolling, sparse, syncopated) or its index",
+  )
+  .action(
+    async (
+      trackPath: string,
+      cmdOpts: {
+        style: string;
+        bars: string;
+        density: string;
+        seed: string;
+        sig: string;
+        slot?: string;
+        atBar?: string;
+        name?: string;
+        variant?: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const { kit, usedRack } = trackDrumKit(summary, trackPath);
+      const ctx = drumContext(cmdOpts);
+
+      let variant: number | undefined;
+      if (cmdOpts.variant !== undefined) {
+        const names = listDrumVariants(cmdOpts.style);
+        if (names.length === 0) {
+          throw new Error(`style "${cmdOpts.style}" has no named variants (seed-only)`);
+        }
+        variant = /^\d+$/.test(cmdOpts.variant)
+          ? Number(cmdOpts.variant)
+          : names.indexOf(cmdOpts.variant);
+        if (variant < 0) {
+          throw new Error(
+            `unknown variant "${cmdOpts.variant}" (available: ${names.join(", ")})`,
+          );
+        }
+      }
+
+      const { notes, meta } = generateDrumPatternDetailed(cmdOpts.style, kit, ctx, {
+        ...(variant !== undefined ? { variant } : {}),
+      });
+      const lengthBeats = ctx.bars * ctx.beatsPerBar;
+
+      let target: unknown;
+      let where: string;
+      if (cmdOpts.atBar !== undefined) {
+        const startBeat = (Number(cmdOpts.atBar) - 1) * ctx.beatsPerBar;
+        target = { type: "arrangement", trackPath, startBeat };
+        where = `${trackPath} @ bar ${cmdOpts.atBar}`;
+      } else if (cmdOpts.slot) {
+        target = { type: "session", slotPath: cmdOpts.slot };
+        where = cmdOpts.slot;
+      } else {
+        const track = summary.tracks.find((t) => t.path === trackPath)!;
+        const occupied = new Set(
+          track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+        );
+        const free = Array.from({ length: track.slotCount }, (_, i) => i).find(
+          (i) => !occupied.has(i),
+        );
+        if (free === undefined) {
+          throw new Error(`no empty session slot on ${trackPath} — pass --slot or --at-bar`);
+        }
+        const slotPath = `${trackPath}/slot:${free}`;
+        target = { type: "session", slotPath };
+        where = slotPath;
+      }
+
+      const name = cmdOpts.name ?? `${cmdOpts.style}-drums`;
+      const result = (await op(opts, "clip.create-midi", {
+        target,
+        lengthBeats,
+        notes,
+        name,
+      })) as { path: string };
+      const metaLine = Object.entries(meta)
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(" · ");
+      output(opts, { path: result.path, notes: notes.length, usedRack, meta }, () =>
+        [
+          `${cmdOpts.style} pattern -> ${where} (${notes.length} hits, ${ctx.bars} bars, seed ${cmdOpts.seed})`,
+          ...(metaLine ? [metaLine] : []),
+          usedRack
+            ? `pad roles mapped from the track's drum rack`
+            : `NOTE: no drum rack on ${trackPath} — used General MIDI note numbers`,
+        ].join("\n"),
+      );
+    },
+  );
+
+/** Shared read-transform-write for in-place drum rework commands. */
+async function reworkDrumClip(
+  clipPath: string,
+  cmdOpts: { density?: string; seed?: string; sig?: string },
+  rework: (notes: NoteSpec[], kit: DrumKit, ctx: DrumContext) => NoteSpec[],
+): Promise<{ before: number; after: number; usedRack: boolean }> {
+  const opts = program.opts<GlobalOpts>();
+  const detail = (await op(opts, "clip.get", { path: clipPath })) as ClipDetail;
+  if (detail.kind !== "midi" || !detail.notes) {
+    throw new Error(`${clipPath} is not a MIDI clip`);
+  }
+  const summary = (await op(opts, "set.summary")) as SetSummary;
+  const trackPath = clipPath.replace(/\/(slot|arr):\d+$/, "");
+  const { kit, usedRack } = trackDrumKit(summary, trackPath);
+  const beatsPerBar = Number(cmdOpts.sig ?? 4);
+  const ctx: DrumContext = {
+    bars: Math.max(1, Math.round(detail.duration / beatsPerBar)),
+    beatsPerBar,
+    density: Number(cmdOpts.density ?? 0.5),
+    rng: makeRng(variantSeed(Number(cmdOpts.seed ?? 1), 0)),
+  };
+  const notes = rework(detail.notes, kit, ctx);
+  await op(opts, "clip.notes", { path: clipPath, notes });
+  return { before: detail.notes.length, after: notes.length, usedRack };
+}
+
+drums
+  .command("fill <clipPath>")
+  .description("Replace the clip's last-bar tail with a fill (in place; one undo)")
+  .option("--style <style>", "fill flavour (house/techno/trap)", "house")
+  .option("--density <density>", "0..1 — 0.7+ replaces the whole last bar", "0.5")
+  .option("--seed <seed>", "random seed", "1")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .action(async (clipPath: string, cmdOpts: { style: string; density: string; seed: string; sig: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const r = await reworkDrumClip(clipPath, cmdOpts, (notes, kit, ctx) =>
+      drumFill(notes, kit, ctx, { style: cmdOpts.style }),
+    );
+    output(opts, r, () =>
+      `fill written into ${clipPath} (${r.before} -> ${r.after} notes) — one undo reverts`,
+    );
+  });
+
+drums
+  .command("humanize <clipPath>")
+  .description("Role-aware groove: kick stays tight, hats loosen (in place)")
+  .option("--timing <beats>", "max timing jitter in beats", "0.02")
+  .option("--velocity <amount>", "max velocity jitter", "8")
+  .option("--seed <seed>", "random seed", "1")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .action(
+    async (
+      clipPath: string,
+      cmdOpts: { timing: string; velocity: string; seed: string; sig: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const r = await reworkDrumClip(clipPath, cmdOpts, (notes, kit, ctx) =>
+        humanizeDrums(notes, kit, ctx, {
+          timing: Number(cmdOpts.timing),
+          velocity: Number(cmdOpts.velocity),
+        }),
+      );
+      output(opts, r, () => `humanized ${clipPath} (${r.after} notes) — one undo reverts`);
+    },
+  );
+
+drums
+  .command("vary <clipPath>")
+  .description(
+    "N drum-specialized variations into empty session slots (kick anchors kept, " +
+      "hats re-rolled, ghost snares) — like awh vary but role-aware",
+  )
+  .option("-n, --count <n>", "number of variations", "4")
+  .option("--amount <amount>", "0..1 — how far to stray", "0.5")
+  .option("--seed <seed>", "base random seed", "1")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--prefix <prefix>", "variation name prefix (default: clip name or 'drums')")
+  .action(
+    async (
+      clipPath: string,
+      cmdOpts: { count: string; amount: string; seed: string; sig: string; prefix?: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const count = Number(cmdOpts.count);
+      const detail = (await op(opts, "clip.get", { path: clipPath })) as ClipDetail;
+      if (detail.kind !== "midi" || !detail.notes) {
+        throw new Error(`${clipPath} is not a MIDI clip`);
+      }
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const trackPath = clipPath.replace(/\/(slot|arr):\d+$/, "");
+      const { kit, usedRack } = trackDrumKit(summary, trackPath);
+      const track = summary.tracks.find((t) => t.path === trackPath)!;
+      const occupied = new Set(
+        track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+      );
+      const free = Array.from({ length: track.slotCount }, (_, i) => i).filter(
+        (i) => !occupied.has(i),
+      );
+      if (free.length < count) {
+        throw new Error(
+          `need ${count} empty session slots on ${trackPath}, found ${free.length} — ` +
+            "add scenes or sweep old auditions",
+        );
+      }
+      const beatsPerBar = Number(cmdOpts.sig);
+      const prefix = cmdOpts.prefix ?? (detail.name || "drums");
+      const created: { path: string; name: string }[] = [];
+      for (let i = 0; i < count; i++) {
+        const ctx: DrumContext = {
+          bars: Math.max(1, Math.round(detail.duration / beatsPerBar)),
+          beatsPerBar,
+          density: 0.5,
+          rng: makeRng(variantSeed(Number(cmdOpts.seed), i + 1)),
+        };
+        const notes = varyDrums(detail.notes, kit, ctx, { amount: Number(cmdOpts.amount) });
+        const name = `${prefix}-v${i + 1}`;
+        const slotPath = `${trackPath}/slot:${free[i]}`;
+        await op(opts, "clip.create-midi", {
+          target: { type: "session", slotPath },
+          lengthBeats: detail.duration,
+          notes,
+          name,
+        });
+        created.push({ path: slotPath, name });
+      }
+      output(opts, { created, usedRack }, () =>
+        [
+          `${count} drum variations of ${clipPath} (seed ${cmdOpts.seed}):`,
+          ...created.map((c) => `  ${c.path.padEnd(22)} ${c.name}`),
+          `audition, keep favourites, then: awh sweep ${trackPath} --prefix ${prefix}-v`,
+        ].join("\n"),
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Library (B3): save clips from the Set, browse, place back, mirror to Live.
+// ---------------------------------------------------------------------------
+
+const PITCH_CLASSES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+async function op(opts: GlobalOpts, name: string, args?: unknown): Promise<unknown> {
+  const body = (await callGateway(opts, `/api/ops/${name}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: args === undefined ? undefined : JSON.stringify(args),
+  })) as { result: unknown };
+  return body.result;
+}
+
+function libraryStore(cmdOpts: { library?: string }): LibraryStore {
+  return new LibraryStore(cmdOpts.library ?? findLibraryRoot());
+}
+
+function splitTags(tags: string | undefined): string[] {
+  return (tags ?? "")
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean);
+}
+
+program
+  .command("save <clipPath>")
+  .description("Save a MIDI clip from the open Set into the library (notes + context)")
+  .requiredOption("--category <category>", "library category, e.g. hats, kicks, bass")
+  .option("--as <slug>", "slug (default: derived from the clip name)")
+  .option("--tags <tags>", "comma-separated tags")
+  .option("--tier <tier>", "verified | sourced | draft", "draft")
+  .option("--title <title>", "entry title (default: clip name or slug)")
+  .option("--project <name>", "source project name for provenance")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--overwrite", "replace an existing entry with the same slug")
+  .option("--library <dir>", "library root (default: ./library, walking up)")
+  .action(
+    async (
+      clipPath: string,
+      cmdOpts: {
+        category: string;
+        as?: string;
+        tags?: string;
+        tier: string;
+        title?: string;
+        project?: string;
+        sig: string;
+        overwrite?: boolean;
+        library?: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const detail = (await op(opts, "clip.get", { path: clipPath })) as ClipDetail;
+      if (detail.kind !== "midi" || !detail.notes || detail.notes.length === 0) {
+        throw new Error(`${clipPath} is not a MIDI clip with notes`);
+      }
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const beatsPerBar = Number(cmdOpts.sig);
+      const slug = cmdOpts.as ?? slugify(detail.name || "clip");
+      const entry: ClipEntry = {
+        slug,
+        kind: "midi",
+        category: cmdOpts.category,
+        tags: splitTags(cmdOpts.tags),
+        bpm: summary.tempo,
+        scale: summary.scale.active
+          ? `${PITCH_CLASSES[summary.scale.rootNote % 12]} ${summary.scale.name}`
+          : null,
+        lengthBeats: detail.duration,
+        ...(beatsPerBar !== 4 ? { beatsPerBar } : {}),
+        source: {
+          project: cmdOpts.project ?? null,
+          path: clipPath,
+          saved: new Date().toISOString().slice(0, 10),
+        },
+        tier: cmdOpts.tier as ClipEntry["tier"],
+        title: cmdOpts.title ?? (detail.name || slug),
+        notation: serializeNotation(detail.notes, { beatsPerBar }),
+      };
+      const store = libraryStore(cmdOpts);
+      const file = await store.saveClip(entry, { overwrite: cmdOpts.overwrite });
+      await store.buildIndex();
+      output(opts, { file, slug }, () =>
+        `saved ${clipPath} -> ${file}\nplace it later with: awh lib place ${slug} <target>`,
+      );
+    },
+  );
+
+const lib = program
+  .command("lib")
+  .description("Browse the clip library and mirror it into Live's browser");
+
+lib
+  .command("list")
+  .description("List library clips")
+  .option("--category <category>", "filter by category")
+  .option("--tag <tag>", "filter by tag")
+  .option("--library <dir>", "library root")
+  .action(async (cmdOpts: { category?: string; tag?: string; library?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const entries = await libraryStore(cmdOpts).listClips({
+      ...(cmdOpts.category ? { category: cmdOpts.category } : {}),
+      ...(cmdOpts.tag ? { tag: cmdOpts.tag } : {}),
+    });
+    output(opts, entries, () =>
+      entries.length === 0
+        ? "no matching library clips"
+        : entries
+            .map(
+              (e) =>
+                `${e.slug.padEnd(28)} ${e.category.padEnd(10)} ${String(e.lengthBeats).padStart(3)} beats  ` +
+                `${(e.bpm ? `${e.bpm} bpm` : "").padEnd(8)} [${e.tier}] ${e.tags.join(",")}`,
+            )
+            .join("\n"),
+    );
+  });
+
+lib
+  .command("show <slug>")
+  .description("Print a library entry (full markdown)")
+  .option("--library <dir>", "library root")
+  .action(async (slug: string, cmdOpts: { library?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const store = libraryStore(cmdOpts);
+    const entry = await store.loadClip(slug);
+    const file = join(store.root, entry.relPath);
+    output(opts, entry, () => readFileSync(file, "utf8").trimEnd());
+  });
+
+lib
+  .command("place <slug> <target>")
+  .description(
+    "Write a library clip into the Set. Target: slot path, arr clip path, or " +
+      "track path with --at-bar. An EXISTING clip at the target is filled " +
+      "(notes tiled/truncated to its length) rather than skipped or duplicated.",
+  )
+  .option("--at-bar <bar>", "arrangement position (1-based bar) for track targets")
+  .option("--name <name>", "clip name (default: the slug)")
+  .option("--library <dir>", "library root")
+  .action(
+    async (
+      slug: string,
+      target: string,
+      cmdOpts: { atBar?: string; name?: string; library?: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const entry = await libraryStore(cmdOpts).loadClip(slug);
+      if (!entry.notation) throw new Error(`${slug} has no notation block to place`);
+      const beatsPerBar = entry.beatsPerBar ?? 4;
+      const { notes: sourceNotes } = parseNotation(entry.notation, { beatsPerBar });
+      const isSlotPath = /\/slot:\d+$/.test(target);
+      const isArrPath = /\/arr:\d+$/.test(target);
+
+      let existing: { path: string; lengthBeats: number } | undefined;
+      if (isSlotPath || isArrPath) {
+        try {
+          const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
+          existing = { path: target, lengthBeats: detail.duration };
+        } catch {
+          // no clip there yet — fall through to create (slot paths only; an
+          // arr path with nothing at it isn't a valid create target).
+          if (isArrPath) {
+            throw new Error(
+              `no clip at ${target} — arr paths must point at an existing clip to fill`,
+            );
+          }
+        }
+      } else if (cmdOpts.atBar !== undefined) {
+        const summary = (await op(opts, "set.summary")) as SetSummary;
+        const track = [...summary.tracks, ...summary.returnTracks].find(
+          (t) => t.path === target,
+        );
+        if (!track) throw new Error(`track not found: ${target}`);
+        const startBeat = (Number(cmdOpts.atBar) - 1) * beatsPerBar;
+        const endBeat = startBeat + entry.lengthBeats;
+        const overlap = track.arrangementClips.find(
+          (c) => startBeat < (c.endTime ?? 0) && endBeat > (c.startTime ?? 0),
+        );
+        if (overlap) existing = { path: overlap.path, lengthBeats: overlap.duration };
+      } else {
+        throw new Error(
+          "Track targets need --at-bar <bar> (or pass a slot/arr clip path).",
+        );
+      }
+
+      let result: { path: string };
+      let placedNotes = sourceNotes;
+      if (existing) {
+        placedNotes = tileNotes(sourceNotes, entry.lengthBeats, existing.lengthBeats);
+        await op(opts, "clip.notes", { path: existing.path, notes: placedNotes });
+        await op(opts, "clip.update", {
+          path: existing.path,
+          name: cmdOpts.name ?? entry.slug,
+        });
+        result = { path: existing.path };
+      } else {
+        result = (await op(opts, "clip.create-midi", {
+          target: isSlotPath
+            ? { type: "session", slotPath: target }
+            : {
+                type: "arrangement",
+                trackPath: target,
+                startBeat: (Number(cmdOpts.atBar) - 1) * beatsPerBar,
+              },
+          lengthBeats: entry.lengthBeats,
+          notes: sourceNotes,
+          name: cmdOpts.name ?? entry.slug,
+        })) as { path: string };
+      }
+      output(opts, result, () =>
+        `placed ${slug} [${entry.tier}] -> ${result.path} ` +
+          `(${placedNotes.length} notes, ${existing ? existing.lengthBeats : entry.lengthBeats} beats` +
+          `${existing ? ", filled existing clip" : ""})`,
+      );
+    },
+  );
+
+lib
+  .command("index")
+  .description("Regenerate library INDEX.md files")
+  .option("--library <dir>", "library root")
+  .action(async (cmdOpts: { library?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const store = libraryStore(cmdOpts);
+    const content = await store.buildIndex();
+    output(opts, { root: store.root }, () => content.trimEnd());
+  });
+
+// --- B3d: Live browser mirror ------------------------------------------
+
+const TEMPLATE_REL = join("templates", "midi-clip.xml");
+
+interface MirrorConfig {
+  uniqueId: string;
+  name: string;
+  vendor: string;
+  revision: number;
+}
+
+async function loadMirrorConfig(store: LibraryStore): Promise<MirrorConfig> {
+  const file = join(store.root, "mirror.json");
+  try {
+    return JSON.parse(await readFile(file, "utf8")) as MirrorConfig;
+  } catch {
+    return { uniqueId: "org.awh.user-library", name: "AWH Library", vendor: "awh", revision: 0 };
+  }
+}
+
+async function saveMirrorConfig(store: LibraryStore, config: MirrorConfig): Promise<void> {
+  await writeFile(join(store.root, "mirror.json"), `${JSON.stringify(config, null, 2)}\n`, "utf8");
+}
+
+lib
+  .command("capture-template <alcFile>")
+  .description(
+    "Store a Live-saved .alc as the golden template for export-alc. Capture it by " +
+      "dragging ONE MIDI clip (with notes, from a device-free track) into the User Library",
+  )
+  .option("--library <dir>", "library root")
+  .action(async (alcFile: string, cmdOpts: { library?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const store = libraryStore(cmdOpts);
+    const xml = ungzipAlc(await readFile(alcFile));
+    const info = inspectAlcTemplate(xml);
+    const dest = join(store.root, TEMPLATE_REL);
+    await mkdir(dirname(dest), { recursive: true });
+    await writeFile(dest, xml, "utf8");
+    output(opts, { dest, ...info }, () =>
+      [
+        `template captured -> ${dest}`,
+        `  from: ${info.creator}`,
+        `  clip "${info.clipName}", ${info.noteCount} notes`,
+        `  note schema: ${info.noteAttrs.join(", ")}`,
+      ].join("\n"),
+    );
+  });
+
+lib
+  .command("export-alc")
+  .description(
+    "Mirror the library into a Live 12 browser Pack of .alc clips (drag the pack " +
+      "folder into Live's Places once; later exports re-index automatically)",
+  )
+  .option("--dest <dir>", "pack directory (default: <repo>/live-mirror/AWH Library)")
+  .option("--category <category>", "export only one category")
+  .option("--library <dir>", "library root")
+  .action(async (cmdOpts: { dest?: string; category?: string; library?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const store = libraryStore(cmdOpts);
+    const templateFile = join(store.root, TEMPLATE_REL);
+    let template: string;
+    try {
+      template = await readFile(templateFile, "utf8");
+    } catch {
+      throw new Error(
+        `No golden template at ${templateFile}.\n` +
+          "In Live 12: put ONE MIDI clip (with notes) on a track with no devices, drag it " +
+          "into the User Library, then run: awh lib capture-template <path-to-that.alc>",
+      );
+    }
+    const entries = (await store.listClips(
+      cmdOpts.category ? { category: cmdOpts.category } : {},
+    )).filter((e) => e.kind === "midi" && e.notation);
+    // Proceed even with 0 entries: writePack wipes stale content from a
+    // pack it owns, so this is what keeps the mirror in sync if the
+    // library (or the --category slice of it) goes back to empty —
+    // erroring out here would silently leave old clips in Live's browser.
+
+    const config = await loadMirrorConfig(store);
+    config.revision += 1;
+
+    const items: PackItem[] = entries.map((e) => {
+      const beatsPerBar = e.beatsPerBar ?? 4;
+      const { notes } = parseNotation(e.notation!, { beatsPerBar });
+      const xml = renderAlcClip(template, {
+        name: e.title,
+        notes,
+        lengthBeats: e.lengthBeats,
+        ...(Number.isInteger(beatsPerBar)
+          ? { sigNumerator: beatsPerBar, sigDenominator: 4 }
+          : {}),
+      });
+      return {
+        relPath: `${e.category}/${e.slug}.alc`,
+        content: gzipAlc(xml),
+        keywords: [["AWH", e.category], ...e.tags.map((t) => ["AWH Tags", t])],
+      };
+    });
+
+    const dest = cmdOpts.dest ?? join(store.root, "..", "live-mirror", config.name);
+    await writePack(dest, {
+      uniqueId: config.uniqueId,
+      name: config.name,
+      vendor: config.vendor,
+      revision: config.revision,
+    }, items);
+    await saveMirrorConfig(store, config);
+    output(opts, { dest, revision: config.revision, clips: items.map((i) => i.relPath) }, () =>
+      [
+        `exported ${items.length} clips -> ${dest} (pack revision ${config.revision})`,
+        ...items.map((i) => `  ${i.relPath}`),
+        `first time only: drag "${dest}" into Live's browser sidebar (Places) — `,
+        `after that, re-exports show up on their own via the revision bump`,
+      ].join("\n"),
+    );
+  });
+
+lib
+  .command("import-alc <alcFile>")
+  .description("Import a Live Clip (.alc) into the library (reverse flow)")
+  .requiredOption("--category <category>", "library category")
+  .option("--as <slug>", "slug (default: derived from the clip name)")
+  .option("--tags <tags>", "comma-separated tags")
+  .option("--tier <tier>", "verified | sourced | draft", "draft")
+  .option("--bpm <bpm>", "tempo context, if known")
+  .option("--overwrite", "replace an existing entry with the same slug")
+  .option("--library <dir>", "library root")
+  .action(
+    async (
+      alcFile: string,
+      cmdOpts: {
+        category: string;
+        as?: string;
+        tags?: string;
+        tier: string;
+        bpm?: string;
+        overwrite?: boolean;
+        library?: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const parsed = parseAlcClip(ungzipAlc(await readFile(alcFile)));
+      if (parsed.notes.length === 0) throw new Error(`${alcFile} contains no notes`);
+      const beatsPerBar =
+        parsed.sigNumerator && parsed.sigDenominator
+          ? (parsed.sigNumerator * 4) / parsed.sigDenominator
+          : 4;
+      const slug = cmdOpts.as ?? slugify(parsed.name || "imported-clip");
+      const entry: ClipEntry = {
+        slug,
+        kind: "midi",
+        category: cmdOpts.category,
+        tags: splitTags(cmdOpts.tags),
+        bpm: cmdOpts.bpm ? Number(cmdOpts.bpm) : null,
+        scale: null,
+        lengthBeats: parsed.lengthBeats,
+        ...(beatsPerBar !== 4 ? { beatsPerBar } : {}),
+        source: {
+          project: null,
+          path: alcFile,
+          saved: new Date().toISOString().slice(0, 10),
+        },
+        tier: cmdOpts.tier as ClipEntry["tier"],
+        title: parsed.name || slug,
+        notation: serializeNotation(parsed.notes, { beatsPerBar }),
+      };
+      const store = libraryStore(cmdOpts);
+      const file = await store.saveClip(entry, { overwrite: cmdOpts.overwrite });
+      await store.buildIndex();
+      output(opts, { file, slug }, () =>
+        `imported ${alcFile} -> ${file} (${parsed.notes.length} notes, ${parsed.lengthBeats} beats)`,
       );
     },
   );

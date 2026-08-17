@@ -122,6 +122,60 @@ awh sections apply plan.yaml --seed 42 [--at-bar N] [--clear] [--dry-run]
 - Flow: plan -> user reviews/edits YAML (or asks you to adjust it) -> dry-run
   -> apply -> user auditions -> iterate on the YAML, not the clips.
 
+## Drums (`awh drums`) — pad-aware patterns
+
+```sh
+awh drums gen <trackPath> --style house|techno|trap [--bars 4] [--density 0..1]
+    [--seed N] [--slot s | --at-bar N]     # CO-WRITE: new pattern from grammar
+awh drums fill <clipPath> [--style s]      # TRANSFORM: fill into the last bar
+awh drums humanize <clipPath> [--timing 0.02] [--velocity 8]   # role-aware groove
+awh drums vary <clipPath> [-n 4] [--amount 0..1]   # role-aware variations
+```
+
+- `gen` maps the track's drum-rack pads to roles (kick/snare/clap/hats/...)
+  by pad name, GM notes as fallback — it warns when no rack was found; check
+  the track has a drum rack first via `awh status`.
+- Grooves are CELL-based: the kick figure is a seeded pick from curated
+  common variations, held for the whole loop (only velocities/ghosts/rolls
+  breathe per bar; every 4th bar is a turnaround with a fill gesture). Trap
+  cells are nameable — `--variant hold|double-tap|late-lean|rolling|sparse|
+  syncopated` — so "try the other common kick feel" = re-run with a
+  different variant, not a different seed. gen prints which cell it chose.
+- Use `drums vary` (not plain `vary`) for drum clips: it keeps kick anchors
+  and backbeats while re-rolling hats and ghosts. `fill`/`humanize` edit IN
+  PLACE — one undo reverts; re-read to show the user what changed.
+- density/style requests map naturally: "busier" → higher --density,
+  "darker/minimal" → techno at lower density, "half-time/trap" → trap.
+
+## Library (`awh save` / `awh lib`) — the owner's clip memory
+
+Git-versioned clips under `library/clips/<category>/<slug>.md` (markdown +
+frontmatter + executable notation). USE IT: before composing drums/bass/hats
+from scratch, check `awh lib list` (or grep `library/clips/INDEX.md`) — placing
+the owner's own proven material beats re-inventing it. Cite slug + tier when
+you use an entry ("placing rolling-garage-hats-1 [verified]").
+
+```sh
+awh save <clipPath> --category hats [--as slug] [--tags garage,shuffle]
+    [--tier draft|sourced|verified] [--project name]   # capture from the Set
+awh lib list [--category c] [--tag t]     # browse
+awh lib show <slug>                       # full entry incl. notation + notes
+awh lib place <slug> <target> [--at-bar N]   # write it into the Set —
+    # FILLS an existing clip at the target (tiled/truncated to its length)
+    # rather than erroring or duplicating; creates fresh only if empty
+awh lib index                             # regenerate INDEX.md
+```
+
+- Save liberally when the owner likes something ("save that hat loop"); default
+  tier is `draft` — the owner promotes to `verified` after real use.
+- Slugs are unique across the whole library; `--overwrite` updates an entry.
+- Live-browser mirror: `awh lib export-alc` renders every clip to a generated
+  Pack of .alc Live Clips (drag into Places once; re-exports auto-re-index).
+  Requires a one-time golden template — if it errors about the template, walk
+  the owner through: one MIDI clip, no devices on the track, drag to User
+  Library, `awh lib capture-template <file>.alc`. Reverse: `awh lib import-alc`
+  pulls a .alc into the library.
+
 Raw ops cover everything else (see `awh ops` for the full list + args):
 tracks (`track.create/update/delete/duplicate/clear-range/mixer`), scenes,
 devices (`device.insert/get/param/delete` — stock Live devices only),
@@ -189,6 +243,24 @@ song structure"):
    It refuses to overwrite existing arrangement material without `--clear`;
    don't fight that by hand-placing clips instead — use `--at-bar` past the
    song's end, or ask the user before `--clear`ing real content.
+
+**Save/place a library clip** ("save that hat loop for later", "place my
+garage hats", "use my saved bassline"):
+1. Saving: `awh save <clipPath> --category <c> [--tags ...] [--tier ...]` —
+   don't hand-copy the notation anywhere yourself, `save` captures the notes
+   plus BPM/scale/source context automatically.
+2. Placing: `awh lib list`/`grep library/clips/INDEX.md` to find the slug,
+   then `awh lib place <slug> <target>` — `<target>` is a session slot path,
+   an arrangement clip path, or a track path with `--at-bar`. If the target
+   is EMPTY, it creates a new clip at the entry's saved length. If the
+   target already holds a clip (e.g. a pre-blocked empty placeholder), it
+   FILLS that clip instead — tiling/truncating the entry's notes to match
+   the existing clip's length. Either way, one command; don't hand-read the
+   entry's notation and `clip write`/tile it yourself.
+3. If the request doesn't specify where ("place my garage hats"), don't
+   guess a target silently — pick an empty session slot (or an obviously
+   matching placeholder clip) on a sensibly-named track, or ask the owner
+   where they want it.
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not
