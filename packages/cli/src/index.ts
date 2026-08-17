@@ -37,8 +37,17 @@ import {
   ungzipAlc,
   variantSeed,
   writePack,
+  GM_DRUM_KIT,
+  drumFill,
+  generateDrumPattern,
+  humanizeDrums,
+  listDrumStyles,
+  mapPadRoles,
+  varyDrums,
   type ClipDetail,
   type ClipEntry,
+  type DrumContext,
+  type DrumKit,
   type NoteSpec,
   type PackItem,
   type SetSummary,
@@ -635,6 +644,255 @@ sections
           `${plan.name}: ${rendered.totalBars} bars, ${rendered.clips.length} clips written from bar ${atBar}`,
           ...plan.sections.map((s) => `  ${s.name}`),
           `press play — and re-run with the same --seed to reproduce exactly`,
+        ].join("\n"),
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Drums (M5): pad-aware pattern generation and drum-specialized rework.
+// ---------------------------------------------------------------------------
+
+/** Find the drum-rack pads on a track (first device that has any). */
+function trackDrumKit(summary: SetSummary, trackPath: string): {
+  kit: DrumKit;
+  usedRack: boolean;
+} {
+  const track = [...summary.tracks, ...summary.returnTracks].find(
+    (t) => t.path === trackPath,
+  );
+  if (!track) throw new Error(`track not found: ${trackPath}`);
+  const pads = track.devices.find((d) => d.drumPads?.length)?.drumPads;
+  if (pads?.length) return { kit: mapPadRoles(pads), usedRack: true };
+  return { kit: GM_DRUM_KIT, usedRack: false };
+}
+
+function drumContext(cmdOpts: {
+  bars?: string;
+  density?: string;
+  seed?: string;
+  sig?: string;
+}, seedOffset = 0): DrumContext {
+  return {
+    bars: Number(cmdOpts.bars ?? 4),
+    beatsPerBar: Number(cmdOpts.sig ?? 4),
+    density: Number(cmdOpts.density ?? 0.5),
+    rng: makeRng(variantSeed(Number(cmdOpts.seed ?? 1), seedOffset)),
+  };
+}
+
+const drums = program
+  .command("drums")
+  .description("Pad-map-aware drum pattern tools (generate, fill, humanize, vary)");
+
+drums
+  .command("gen <trackPath>")
+  .description(
+    "Generate a genre drum pattern for a track's drum rack (GM fallback) into " +
+      "an empty session slot, --slot, or --at-bar on the arrangement",
+  )
+  .requiredOption("--style <style>", `one of: ${listDrumStyles().join(", ")}`)
+  .option("--bars <bars>", "pattern length in bars", "4")
+  .option("--density <density>", "0..1 — busyness of the top end", "0.5")
+  .option("--seed <seed>", "random seed (same seed = same pattern)", "1")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--slot <slotPath>", "explicit session slot target")
+  .option("--at-bar <bar>", "arrangement position (1-based bar)")
+  .option("--name <name>", "clip name (default: <style>-drums)")
+  .action(
+    async (
+      trackPath: string,
+      cmdOpts: {
+        style: string;
+        bars: string;
+        density: string;
+        seed: string;
+        sig: string;
+        slot?: string;
+        atBar?: string;
+        name?: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const { kit, usedRack } = trackDrumKit(summary, trackPath);
+      const ctx = drumContext(cmdOpts);
+      const notes = generateDrumPattern(cmdOpts.style, kit, ctx);
+      const lengthBeats = ctx.bars * ctx.beatsPerBar;
+
+      let target: unknown;
+      let where: string;
+      if (cmdOpts.atBar !== undefined) {
+        const startBeat = (Number(cmdOpts.atBar) - 1) * ctx.beatsPerBar;
+        target = { type: "arrangement", trackPath, startBeat };
+        where = `${trackPath} @ bar ${cmdOpts.atBar}`;
+      } else if (cmdOpts.slot) {
+        target = { type: "session", slotPath: cmdOpts.slot };
+        where = cmdOpts.slot;
+      } else {
+        const track = summary.tracks.find((t) => t.path === trackPath)!;
+        const occupied = new Set(
+          track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+        );
+        const free = Array.from({ length: track.slotCount }, (_, i) => i).find(
+          (i) => !occupied.has(i),
+        );
+        if (free === undefined) {
+          throw new Error(`no empty session slot on ${trackPath} — pass --slot or --at-bar`);
+        }
+        const slotPath = `${trackPath}/slot:${free}`;
+        target = { type: "session", slotPath };
+        where = slotPath;
+      }
+
+      const name = cmdOpts.name ?? `${cmdOpts.style}-drums`;
+      const result = (await op(opts, "clip.create-midi", {
+        target,
+        lengthBeats,
+        notes,
+        name,
+      })) as { path: string };
+      output(opts, { path: result.path, notes: notes.length, usedRack }, () =>
+        [
+          `${cmdOpts.style} pattern -> ${where} (${notes.length} hits, ${ctx.bars} bars, seed ${cmdOpts.seed})`,
+          usedRack
+            ? `pad roles mapped from the track's drum rack`
+            : `NOTE: no drum rack on ${trackPath} — used General MIDI note numbers`,
+        ].join("\n"),
+      );
+    },
+  );
+
+/** Shared read-transform-write for in-place drum rework commands. */
+async function reworkDrumClip(
+  clipPath: string,
+  cmdOpts: { density?: string; seed?: string; sig?: string },
+  rework: (notes: NoteSpec[], kit: DrumKit, ctx: DrumContext) => NoteSpec[],
+): Promise<{ before: number; after: number; usedRack: boolean }> {
+  const opts = program.opts<GlobalOpts>();
+  const detail = (await op(opts, "clip.get", { path: clipPath })) as ClipDetail;
+  if (detail.kind !== "midi" || !detail.notes) {
+    throw new Error(`${clipPath} is not a MIDI clip`);
+  }
+  const summary = (await op(opts, "set.summary")) as SetSummary;
+  const trackPath = clipPath.replace(/\/(slot|arr):\d+$/, "");
+  const { kit, usedRack } = trackDrumKit(summary, trackPath);
+  const beatsPerBar = Number(cmdOpts.sig ?? 4);
+  const ctx: DrumContext = {
+    bars: Math.max(1, Math.round(detail.duration / beatsPerBar)),
+    beatsPerBar,
+    density: Number(cmdOpts.density ?? 0.5),
+    rng: makeRng(variantSeed(Number(cmdOpts.seed ?? 1), 0)),
+  };
+  const notes = rework(detail.notes, kit, ctx);
+  await op(opts, "clip.notes", { path: clipPath, notes });
+  return { before: detail.notes.length, after: notes.length, usedRack };
+}
+
+drums
+  .command("fill <clipPath>")
+  .description("Replace the clip's last-bar tail with a fill (in place; one undo)")
+  .option("--style <style>", "fill flavour (house/techno/trap)", "house")
+  .option("--density <density>", "0..1 — 0.7+ replaces the whole last bar", "0.5")
+  .option("--seed <seed>", "random seed", "1")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .action(async (clipPath: string, cmdOpts: { style: string; density: string; seed: string; sig: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const r = await reworkDrumClip(clipPath, cmdOpts, (notes, kit, ctx) =>
+      drumFill(notes, kit, ctx, { style: cmdOpts.style }),
+    );
+    output(opts, r, () =>
+      `fill written into ${clipPath} (${r.before} -> ${r.after} notes) — one undo reverts`,
+    );
+  });
+
+drums
+  .command("humanize <clipPath>")
+  .description("Role-aware groove: kick stays tight, hats loosen (in place)")
+  .option("--timing <beats>", "max timing jitter in beats", "0.02")
+  .option("--velocity <amount>", "max velocity jitter", "8")
+  .option("--seed <seed>", "random seed", "1")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .action(
+    async (
+      clipPath: string,
+      cmdOpts: { timing: string; velocity: string; seed: string; sig: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const r = await reworkDrumClip(clipPath, cmdOpts, (notes, kit, ctx) =>
+        humanizeDrums(notes, kit, ctx, {
+          timing: Number(cmdOpts.timing),
+          velocity: Number(cmdOpts.velocity),
+        }),
+      );
+      output(opts, r, () => `humanized ${clipPath} (${r.after} notes) — one undo reverts`);
+    },
+  );
+
+drums
+  .command("vary <clipPath>")
+  .description(
+    "N drum-specialized variations into empty session slots (kick anchors kept, " +
+      "hats re-rolled, ghost snares) — like awh vary but role-aware",
+  )
+  .option("-n, --count <n>", "number of variations", "4")
+  .option("--amount <amount>", "0..1 — how far to stray", "0.5")
+  .option("--seed <seed>", "base random seed", "1")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--prefix <prefix>", "variation name prefix (default: clip name or 'drums')")
+  .action(
+    async (
+      clipPath: string,
+      cmdOpts: { count: string; amount: string; seed: string; sig: string; prefix?: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const count = Number(cmdOpts.count);
+      const detail = (await op(opts, "clip.get", { path: clipPath })) as ClipDetail;
+      if (detail.kind !== "midi" || !detail.notes) {
+        throw new Error(`${clipPath} is not a MIDI clip`);
+      }
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const trackPath = clipPath.replace(/\/(slot|arr):\d+$/, "");
+      const { kit, usedRack } = trackDrumKit(summary, trackPath);
+      const track = summary.tracks.find((t) => t.path === trackPath)!;
+      const occupied = new Set(
+        track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+      );
+      const free = Array.from({ length: track.slotCount }, (_, i) => i).filter(
+        (i) => !occupied.has(i),
+      );
+      if (free.length < count) {
+        throw new Error(
+          `need ${count} empty session slots on ${trackPath}, found ${free.length} — ` +
+            "add scenes or sweep old auditions",
+        );
+      }
+      const beatsPerBar = Number(cmdOpts.sig);
+      const prefix = cmdOpts.prefix ?? (detail.name || "drums");
+      const created: { path: string; name: string }[] = [];
+      for (let i = 0; i < count; i++) {
+        const ctx: DrumContext = {
+          bars: Math.max(1, Math.round(detail.duration / beatsPerBar)),
+          beatsPerBar,
+          density: 0.5,
+          rng: makeRng(variantSeed(Number(cmdOpts.seed), i + 1)),
+        };
+        const notes = varyDrums(detail.notes, kit, ctx, { amount: Number(cmdOpts.amount) });
+        const name = `${prefix}-v${i + 1}`;
+        const slotPath = `${trackPath}/slot:${free[i]}`;
+        await op(opts, "clip.create-midi", {
+          target: { type: "session", slotPath },
+          lengthBeats: detail.duration,
+          notes,
+          name,
+        });
+        created.push({ path: slotPath, name });
+      }
+      output(opts, { created, usedRack }, () =>
+        [
+          `${count} drum variations of ${clipPath} (seed ${cmdOpts.seed}):`,
+          ...created.map((c) => `  ${c.path.padEnd(22)} ${c.name}`),
+          `audition, keep favourites, then: awh sweep ${trackPath} --prefix ${prefix}-v`,
         ].join("\n"),
       );
     },
