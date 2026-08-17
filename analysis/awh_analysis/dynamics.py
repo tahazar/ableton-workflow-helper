@@ -191,19 +191,49 @@ def _pump_band(sig: np.ndarray, sr: int, bpm: float) -> dict:
             recovery_time_s = float(step * (period_s / n_bins))
             break
 
+    # --- shape features: ducking vs natural decay ------------------------
+    # A beat-synced RMS trough alone CANNOT prove a sidechain compressor is
+    # engaged (a retriggered note's own decay folds to the same periodicity
+    # — found in live verification). What does differ is the SHAPE:
+    # genuine ducking dips early in the cycle and RECOVERS before the next
+    # beat; natural decay keeps falling until the cycle wraps.
+    trough_position = trough_time / period_s  # 0..1 fraction into the cycle
+    tail_bins = max(1, n_bins // 10)  # last ~10% of the cycle
+    tail_db = folded_db[-tail_bins:]
+    tail_level = float(np.nanmean(tail_db)) if np.isfinite(tail_db).any() else trough_db
+    recovery_fraction = (
+        float(np.clip((tail_level - trough_db) / depth_db, 0.0, 1.0))
+        if depth_db > 1e-9
+        else 0.0
+    )
+    if recovery_fraction >= 0.5 and trough_position <= 0.6:
+        shape = "ducking-like"
+    elif trough_position > 0.75 and recovery_fraction < 0.3:
+        shape = "decay-like"
+    else:
+        shape = "ambiguous"
+
     return {
         "depth_db": float(depth_db),
         "recovery_time_s": recovery_time_s,
         "trough_offset_ms": float(trough_offset_ms),
         "trough_time_s": trough_time,
+        "trough_position": float(trough_position),
+        "recovery_fraction": recovery_fraction,
+        "shape": shape,
     }
 
 
 def pump(x: np.ndarray, sr: int, bpm: float) -> dict:
-    """Sidechain pump analysis: RMS envelope folded modulo the beat period.
+    """Beat-synchronous level-modulation analysis (RMS envelope folded
+    modulo the beat period), full band and <120 Hz.
 
-    Requires `bpm`. Reports full-band and <120 Hz-band pump depth, recovery
-    time to 90%, and trough offset (ms) from the beat grid.
+    HONEST SCOPE: this measures how much the level pumps with the beat and
+    what SHAPE the pump has (ducking-like / decay-like / ambiguous) — it
+    cannot, from one file, prove a sidechain compressor is engaged, because
+    a retriggered note's natural decay is also beat-synced. Definitive
+    sidechain verification is an A/B: capture with the compressor on and
+    bypassed, then `ab_compare` — the depth delta is the evidence.
     """
     if not bpm or bpm <= 0:
         raise ValueError("pump() requires a positive bpm")

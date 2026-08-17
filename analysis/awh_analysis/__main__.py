@@ -81,7 +81,11 @@ def _cmd_report(args: argparse.Namespace) -> int:
         end_s=args.to,
     )
     finding_list = report.findings(measurements, delivery=args.delivery)
-    if args.json:
+    if args.save_record:
+        report.save_record(args.save_record, args.file, measurements, finding_list)
+    if args.quiet:
+        pass
+    elif args.json:
         _print_json({"measurements": measurements, "findings": finding_list})
     else:
         print(_render_report_text(measurements, finding_list))
@@ -113,6 +117,17 @@ def _cmd_ab(args: argparse.Namespace) -> int:
 def _cmd_target(args: argparse.Namespace) -> int:
     target = targets.build_target(args.files)
     targets.save_target(target, args.save)
+    if args.records_dir:
+        import os
+
+        from . import report as report_mod
+
+        os.makedirs(args.records_dir, exist_ok=True)
+        for path in args.files:
+            m = report_mod.analyze(path)
+            f = report_mod.findings(m)
+            name = report_mod.record_slug(path)
+            report_mod.save_record(os.path.join(args.records_dir, f"{name}.json"), path, m, f)
     if args.json:
         _print_json(target)
     else:
@@ -134,6 +149,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_report.add_argument("--from", dest="from_", type=float, default=None)
     p_report.add_argument("--to", dest="to", type=float, default=None)
     p_report.add_argument("--json", action="store_true")
+    p_report.add_argument("--save-record", type=str, default=None,
+                          help="also write a measurement record JSON to this path")
+    p_report.add_argument("--quiet", action="store_true",
+                          help="suppress stdout (for record-only runs)")
     p_report.set_defaults(func=_cmd_report)
 
     p_ab = sub.add_parser("ab", help="Loudness-matched A/B comparison")
@@ -146,6 +165,8 @@ def build_parser() -> argparse.ArgumentParser:
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")
     p_target.add_argument("--save", type=str, required=True)
+    p_target.add_argument("--records-dir", type=str, default=None,
+                          help="also write a per-source measurement record into this directory")
     p_target.add_argument("--json", action="store_true")
     p_target.set_defaults(func=_cmd_target)
 

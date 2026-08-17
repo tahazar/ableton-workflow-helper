@@ -46,7 +46,7 @@ true-peak oversampling.
 | **Phase correlation** | Pearson r of L,R: full band and low band (<120 Hz, 4th-order Butterworth). Flag low-band r < 0.8 (mono-compatibility / kick-bass phase) |
 | **Waveform asymmetry** | Per channel: 20·log10(max(pos peak)/max(|neg peak|)) dB (99.9th percentiles to resist single-sample spikes) + sample skewness |
 | **Phase-rotation headroom** | Sweep cascades of 2/4/6 first-order all-passes at f0 ∈ {100, 150, 200, 300, 400} Hz; for each, true peak at unchanged RMS; report best (peak reduction dB, f0, poles). Report-only (the move is made in Live/plugin) |
-| **Sidechain pump** | Requires `--bpm`: RMS envelope (10 ms window, 5 ms hop) folded modulo the beat period; pump depth = max−min of the beat-averaged envelope dB; recovery time = time from trough to 90% recovery; verify trough aligns with grid (offset ms). Report per-band (full, <120 Hz) |
+| **Beat-synced pump** | Requires `--bpm`: RMS envelope (10 ms window, 5 ms hop) folded modulo the beat period; depth = max−min of the beat-averaged envelope dB; recovery time to 90%; trough offset from grid (ms); SHAPE classification — `ducking-like` (trough ≤60% into the cycle AND ≥50% recovered by cycle end), `decay-like` (trough >75%, <30% recovered), else `ambiguous`. **Honest limit (found in live verification): one file cannot prove a sidechain is engaged** — a retriggered note's own decay folds to the same periodicity. Misalignment warnings fire only on ducking-like shapes; definitive verification = capture with the compressor on vs bypassed and `awh mix ab` the pair (depth delta is the evidence). Report per-band (full, <120 Hz) |
 | **Delivery check** | Targets: `club` −8..−6 LUFS-I, `streaming` −14, `apple` −16; all ≤ −1 dBTP. Pass/fail + delta |
 
 ### Genre targets (measured, not folklore)
@@ -97,6 +97,27 @@ Source of the device is committed as `m4l/AWH Capture Tap.maxpat` (JSON) —
 built/frozen to `.amxd` in Max on the owner's machine (Suite includes Max);
 `m4l/README.md` documents the freeze + a manual patching fallback if the
 generated patch fights Max's validator.
+
+## Pump v2 — trigger-locked detection (designed, not yet built)
+
+The owner's template (`knowledge/setup/sidechain-template.md` — read it)
+uses ShaperBox Volume Shaper on a Sidechain bus, retriggered by a MIDI
+"Trigger" track that mirrors the Kick & Snare pattern. Consequences for v2:
+
+1. `awh mix pump-check` flow: read the Trigger clip's note starts via the
+   gateway → capture the Sidechain track post-FX → measure the RMS trough
+   **per trigger note** (align + average windows at each trigger, not a
+   beat-period fold — kick/snare patterns aren't 1-per-beat).
+2. Fit the fixed, user-drawn dip (attack/hold/release + depth) from the
+   trigger-aligned average envelope and report the fitted shape — Volume
+   Shaper applies the same programmed envelope every hit, so a fit is the
+   honest model, not statistics.
+3. Verification stays A/B: toggle ShaperBox Device On (one `device.param`
+   call) → capture both → `mix ab`. The v1 single-file shape heuristic
+   (ducking-like/decay-like) remains a hint only.
+4. Python side gains `pump(x, sr, trigger_beats=[...])` alongside the
+   beat-fold; the trigger-aligned path is preferred whenever a Trigger clip
+   exists.
 
 ## Non-goals (honest scope, per research)
 

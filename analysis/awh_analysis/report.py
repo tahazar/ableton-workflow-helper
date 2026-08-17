@@ -312,7 +312,17 @@ def findings(measurements: dict, delivery: str | None = None) -> list[dict]:
         for band_key, label in (("full", "full band"), ("low", "<120 Hz")):
             band = pump_result.get(band_key, {})
             offset = band.get("trough_offset_ms")
-            if offset is not None and np.isfinite(offset) and abs(offset) > PUMP_MISALIGN_WARN_MS:
+            shape = band.get("shape")
+            depth = band.get("depth_db")
+            # Misalignment is only meaningful when the modulation actually
+            # looks like ducking — a decay-like trough sits late in the
+            # cycle by nature, not because a compressor is mis-synced.
+            if (
+                shape == "ducking-like"
+                and offset is not None
+                and np.isfinite(offset)
+                and abs(offset) > PUMP_MISALIGN_WARN_MS
+            ):
                 out.append(
                     _finding(
                         f"pump_misalign_{band_key}",
@@ -320,12 +330,74 @@ def findings(measurements: dict, delivery: str | None = None) -> list[dict]:
                         f"pump.{band_key}.trough_offset_ms",
                         offset,
                         PUMP_MISALIGN_WARN_MS,
-                        f"Sidechain pump trough ({label}) is offset {offset:+.1f} ms from "
-                        f"the beat grid — the ducking isn't locked to the tempo.",
+                        f"Ducking-shaped pump trough ({label}) is offset {offset:+.1f} ms "
+                        f"from the beat grid — the ducking isn't locked to the tempo.",
                         "Check the sidechain compressor/LFO device's sync/grid setting "
                         "and any trigger-source latency (routing delay, look-ahead).",
+                    )
+                )
+            if depth is not None and np.isfinite(depth) and depth >= 3.0:
+                out.append(
+                    _finding(
+                        f"pump_shape_{band_key}",
+                        "info",
+                        f"pump.{band_key}.depth_db",
+                        depth,
+                        3.0,
+                        f"Beat-synced level modulation ({label}): {depth:.1f} dB deep, "
+                        f"shape '{shape}' (recovery fraction "
+                        f"{band.get('recovery_fraction', 0):.2f}). A single file cannot "
+                        f"prove a sidechain is engaged — decay-shaped material pumps too.",
+                        "To verify a sidechain definitively: capture the span with the "
+                        "compressor on and bypassed, then `awh mix ab` the two — the "
+                        "depth delta is the evidence.",
                     )
                 )
 
     out.sort(key=lambda f: _SEVERITY_RANK.get(f["severity"], 3))
     return out
+
+
+# ---------------------------------------------------------------------------
+# Measurement records: a git-versioned "db" of analyzed files (owner request,
+# M6 follow-up). One JSON per analyzed file under library/measurements/ —
+# retrievable by grep/Claude without re-running the DSP.
+# ---------------------------------------------------------------------------
+
+
+def record_slug(path: str) -> str:
+    """Filesystem-safe record name from an audio file's basename."""
+    import os
+    import re
+
+    stem = os.path.splitext(os.path.basename(path))[0].lower()
+    slug = re.sub(r"[^a-z0-9]+", "-", stem).strip("-")
+    return slug or "record"
+
+
+def save_record(
+    record_path: str, source_path: str, measurements: dict, finding_list: list[dict]
+) -> None:
+    """Write a self-contained measurement record. Overwrites an existing
+    record for the same name (re-measuring updates it); the sha256 ties the
+    numbers to the exact audio bytes they came from.
+    """
+    import datetime
+    import hashlib
+    import json
+    import os
+
+    with open(source_path, "rb") as f:
+        sha = hashlib.sha256(f.read()).hexdigest()
+    record = {
+        "schema": 1,
+        "saved": datetime.date.today().isoformat(),
+        "file": os.path.abspath(source_path),
+        "sha256": sha,
+        "measurements": measurements,
+        "findings": finding_list,
+    }
+    os.makedirs(os.path.dirname(os.path.abspath(record_path)), exist_ok=True)
+    with open(record_path, "w", encoding="utf-8") as f:
+        json.dump(record, f, indent=2, allow_nan=True)
+        f.write("\n")

@@ -286,6 +286,31 @@ garage hats", "use my saved bassline"):
    matching placeholder clip) on a sensibly-named track, or ask the owner
    where they want it.
 
+**Generate or rework a drum pattern** ("give me a house groove", "make this
+beat trap", "humanize my drums", "variations of my drum loop"):
+1. `awh status --json` → find the drum-rack track (drum tracks list
+   drumPads). Don't hand-compose drum notation — the drum tools are
+   pad-aware and idiomatic.
+2. New pattern → `awh drums gen <trackPath> --style house|techno|trap`
+   (`--variant` for a specific named kick cell). Rework existing →
+   `awh drums vary` (variations), `awh drums fill` (last-bar fill),
+   `awh drums humanize` (groove) — NOT plain `vary`/hand edits.
+3. Audition loop as with vary: name the slots, let the owner listen, sweep.
+
+**Mix feedback / "how does my mix measure?"** ("check my low end", "is this
+loud enough for clubs", "did that EQ change help"):
+1. Get audio: `awh mix capture` (tap on the master, see m4l/README.md) or
+   ask the owner for an export. Get the tempo from `awh status`.
+2. `awh mix report <file> --bpm <tempo> [--target <name>] [--delivery club]`
+   — quote the findings' numbers verbatim; never state a measurement the
+   report didn't print. Offer `--save` so the measurement becomes a
+   retrievable record (`awh mix records`).
+3. Comparisons: `awh mix ab <before> <after>` (loudness-matched). This is
+   also THE way to verify a sidechain: capture with the compressor on and
+   bypassed, ab the pair — single-file pump shape alone can't prove it.
+4. No target yet? Offer `awh mix target <owner's reference tracks> --save
+   <genre>` first — comparisons run against THEIR references, not folklore.
+
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not
 assumed units), then `device.param`. For mixer moves use `track.mixer`
