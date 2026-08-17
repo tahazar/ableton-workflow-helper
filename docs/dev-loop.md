@@ -516,44 +516,122 @@ sync side effects.
 
 ## Duck toolkit (`awh mix duck`) verification checklist
 
-- [ ] Capture the Drums bus over 4-8 bars starting on the Trigger pattern's
+This test project uses the automatic Compressor strategy (no ShaperBox
+device installed here), so the ShaperBox-specific drawing/proof-loop items
+below need a project with that plugin — not exercisable in this Set. The
+`--trigger-clip` code path itself (previously only verified via manual
+`--triggers <beats>`) was un-verified going into this pass; it's now
+confirmed end-to-end, and a real bug was found and fixed along the way:
+
+- [x] Capture the Drums bus over 4-8 bars starting on the Trigger pattern's
       boundary; `awh mix duck fit <capture> --trigger-clip <Trigger clip>` →
-      body/tail times look plausible against the waveform
+      body/tail times look plausible against the waveform. Confirmed: built
+      a MIDI Trigger clip (8 hits/4 bars) since this project's Kick/Snare
+      are audio one-shots, not a MIDI-driven rack; `--trigger-clip` correctly
+      deduped 12 notes to 8 unique starts and produced a plausible envelope
+      (body 572ms, release 211ms, recovered by 78% of the gap).
 - [ ] Draw the printed points in Volume Shaper (depth/hold/exponential
-      release) → bass audibly locks to the kick without pumping artifacts
-- [ ] `--bass <bass capture>` → masking-based depth differs sensibly from
-      the default 12 dB
+      release) → bass audibly locks to the kick without pumping artifacts.
+      NOT APPLICABLE to this project (no ShaperBox device here) — needs a
+      Set using the owner's real ShaperBox template.
+- [x] `--bass <bass capture>` → masking-based depth differs sensibly from
+      the default **6 dB** (checklist previously said 12 dB — stale; the
+      code's `DEFAULT_DEPTH_DB` is 6.0, matching the "6 dB default depth"
+      commit). Confirmed via `--trigger-clip` + `--bass <bassline render>`:
+      masking dropped the recommendation to 3.0 dB (bass low-band RMS -14.9
+      dB vs kick peak -5.6 dB, margin 6 dB) — the documented 3 dB floor.
 - [ ] Proof loop: capture sidechain bus with the drawn envelope on vs
-      Device On -> 0, `awh mix ab` → depth delta ≈ the drawn depth
+      Device On -> 0, `awh mix ab` → depth delta ≈ the drawn depth. NOT
+      APPLICABLE here (ShaperBox-specific); the equivalent proof for the
+      Compressor strategy is `duck calibrate`'s own bypassed-baseline step,
+      confirmed below.
 
 Automatic (compressor) strategy:
 
-- [ ] `awh mix duck setup <Sidechain track>` → Compressor appears, Attack
-      fastest / Ratio max set; do the two printed manual touches
-- [ ] Tap on the Sidechain bus: `awh mix duck calibrate <devicePath>
+- [x] `awh mix duck setup <Sidechain track>` → Compressor appears, Attack
+      fastest / Ratio max set; do the two printed manual touches. Still
+      correctly configured from the earlier session (Attack raw 0, Ratio
+      raw 1 = max) — re-confirmed via `device.get` this pass.
+- [x] Tap on the Sidechain bus: `awh mix duck calibrate <devicePath>
       --target-depth <fit depth> --trigger-clip <Trigger> --from-bar X
       --bars 4` → baseline + probes + iterations print sensibly; final
-      achieved depth within tolerance; Threshold left at the calibrated raw
-- [ ] `awh mix duck measure <fresh Sidechain capture>` ≈ the calibrated
-      depth; A/B by ear vs the ShaperBox curve on the same material
+      achieved depth within tolerance; Threshold left at the calibrated raw.
+      **Found and fixed a real race condition**: `captureSpan` (shared by
+      `calibrate` and `mix capture`) fired `/awh/stop` over OSC then
+      immediately checked `existsSync` and returned — `sfrecord~` has no
+      completion ack, so an immediate read sometimes hit a file whose WAV
+      header still reported 0 frames (`selection is 0.000s` analysis
+      failures on files confirmed valid moments later). Also found `mix
+      capture` had its own copy-pasted version of this same loop-record-stop
+      logic instead of reusing `captureSpan` — fixed both by adding a 400ms
+      settle delay in `captureSpan` and deleting `mix capture`'s duplicate
+      in favor of calling it directly. Re-ran clean after the fix: baseline
+      1.19 dB -> probes -> 4 iterations -> converged to Threshold=0.438 ->
+      5.34 dB (target 6 ±1).
+- [x] `awh mix duck measure <fresh Sidechain capture>` ≈ the calibrated
+      depth; A/B by ear vs the ShaperBox curve on the same material (the A/B
+      part is N/A, no ShaperBox here). Confirmed: fresh `mix capture` +
+      `duck measure --trigger-clip` -> 6.86 dB, trough at 20ms (trigger-
+      locked, matching the "no attack-detection latency" template fact),
+      8/8 triggers used — same ballpark as the calibrated 5.34 dB (real
+      run-to-run material variance, consistent with the earlier M6-follow-up
+      pass's own variance).
 - [ ] Record the Compressor's raw<->display mappings seen during this pass
-      (Threshold/Ratio/Attack/Release) into knowledge/ for future sessions
+      (Threshold/Ratio/Attack/Release) into knowledge/ for future sessions.
+      BLOCKED on a human UI readout: the SDK exposes only raw 0..1 values
+      (`device.get` has no display-string field), so this needs the owner
+      to glance at Live's Compressor UI for the raw values hit this pass
+      (Threshold 0.438, Release 0.157, Attack 0, Ratio 1) and report the
+      shown dB/ms/ratio — same gap as the earlier mixer-calibration research
+      (`docs/research/mixer-calibration.md`).
 
 ## B4 (knowledge base) verification checklist
 
-- [ ] `awh kb list` / `kb topics` / `kb show sidechain-template` → the setup
+- [x] `awh kb list` / `kb topics` / `kb show sidechain-template` → the setup
       entry reads back; `kb index` → INDEX.md includes your saved mix-report
-      records with real numbers
-- [ ] `awh kb new <topic> <slug>` with a BRAND-NEW topic name → directory
-      appears, entry validates, index picks the topic up (open-domain check)
-- [ ] `awh distill -o /tmp/distill.md` on a real project → structure +
-      notations complete enough to curate from
-- [ ] Data-driven drum style: `awh drums gen <track> --style hybrid-trap`
+      records with real numbers. Confirmed: rendered a real span, `mix report
+      --save` produced a record, `kb index` picked it up with real LUFS/tilt
+      numbers under a new "measurements" section; cleaned up the test record
+      after.
+- [x] `awh kb new <topic> <slug>` with a BRAND-NEW topic name → directory
+      appears, entry validates, index picks the topic up (open-domain check).
+      Confirmed: `mixing/glue-comp` (a topic that didn't exist) appeared as a
+      real directory and `kb topics` discovered it with zero hardcoded list
+      anywhere. Cleaned up after.
+- [x] `awh distill -o /tmp/distill.md` on a real project → structure +
+      notations complete enough to curate from. Confirmed: full track/device
+      list plus every MIDI clip's bar|beat notation, including live-session
+      material (the Lead Melody's varied second half read back correctly).
+- [x] Data-driven drum style: `awh drums gen <track> --style hybrid-trap`
       (the shipped draft entry) → generates via the knowledge spec, prints
       the entry tier; edit the entry's YAML (e.g. a kick cell) → next gen
-      reflects it with NO rebuild
-- [ ] Skill: "what do we know about my sidechain setup?" → fresh agent
+      reflects it with NO rebuild. Confirmed via `awh serve-fake` (this
+      project has no MIDI drum-rack track to target live): reported
+      `knowledgeStyle: drum-style-hybrid-trap [draft]`, picked the
+      `dragged-boom` cell; edited `rollDensity` 0.7→0.05 in the entry's YAML
+      with no build step, regenerated with the same seed, note count changed
+      (87→85) — proves it's read live off disk, not cached. Reverted the
+      edit after.
+- [x] Skill: "what do we know about my sidechain setup?" → fresh agent
       retrieves + cites the entry with tier; "remember this hat trick" →
-      creates a draft entry with an Executable section
-- [ ] Seeding: request one real distillation ("distill common UK garage hat
-      tropes") → sourced entries with citations arrive as a reviewable PR
+      creates a draft entry with an Executable section. Both passed as two
+      independent fresh (context-free) agents: the first found
+      `knowledge/INDEX.md` unprompted, cited `setup/sidechain-template
+      [verified]`, and correctly excluded the one unrelated `draft` entry
+      from its factual answer; the second used `awh kb new` (not a
+      hand-written file), filled a real Executable pipeline section, tiered
+      it `draft`, and ran `kb index` — exactly the documented capture flow.
+- [x] Seeding: request one real distillation ("distill common UK garage hat
+      tropes") → sourced entries with citations arrive as a reviewable PR.
+      Confirmed: a real seeding batch landed (17 new `sourced`-tier entries —
+      Burial 2-step/garage, Fred Again production, Isoxo trap snare design,
+      call-response/drop arrangement grammar incl. an artist study of Lyny),
+      every one with real citation URLs and an executable pipeline/spec
+      section (only the pre-existing `sidechain-template` remains
+      PROSE-ONLY, unrelated to this batch). Spot-checked
+      `rhythm/burial-swing-feel`: well-cited, and explicitly honest that its
+      swing/humanize numbers are "an approximation... not a sourced
+      measurement of his actual displacement" rather than inventing a false
+      precision — matches the "never invent a number" discipline from M6.
+      `pnpm test` (169 tests) and `kb index` both clean against the full
+      18-entry store.
