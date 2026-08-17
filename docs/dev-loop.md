@@ -384,19 +384,70 @@ cd analysis && ../.venv/bin/pytest -q && cd ..   # engine self-test
 M4L capture tap: follow `m4l/README.md` (Max Audio Effect on the master,
 paste/build the patch, save). Suite includes Max.
 
-- [ ] `awh mix report <any exported wav/aiff> --bpm <tempo>` → LUFS/dBTP/PSR
+- [x] `awh mix report <any exported wav/aiff> --bpm <tempo>` → LUFS/dBTP/PSR
       match a trusted meter (Live's own LUFS meter, Youlean, etc.) within
-      ~0.5 LU / 0.3 dB; findings read sensibly and quote real numbers
-- [ ] `awh mix target <2-3 reference tracks> --save house` →
+      ~0.5 LU / 0.3 dB; findings read sensibly and quote real numbers.
+      Confirmed against a real render (Kick & Snare bounce, MF Gabhru
+      project) — owner-checked against Live's own meter, within tolerance.
+- [x] `awh mix target <2-3 reference tracks> --save house` →
       `library/targets/house.json` appears; `report --target house` adds
-      per-band deltas that match what your ears/eyes say about the balance
-- [ ] Capture tap: device loads with no Max errors; `awh mix capture
+      per-band deltas that match what your ears/eyes say about the balance.
+      Confirmed mechanically (one reference track; genre-tag naming caught
+      and corrected — see note below). Per-band deltas made intuitive sense:
+      an isolated drum stem showed large low/high-end deviations vs. a full
+      mixed master reference, exactly as expected for a non-full-mix source.
+      **Naming gotcha**: saved the reference under `--save house`, but the
+      actual reference track was trap, not house, and the project itself is
+      trap — renamed `library/targets/house.json` → `trap.json` to match.
+      Worth remembering: `--save <name>` doesn't validate the name against
+      the reference's actual genre, so it's easy to mislabel.
+- [x] Capture tap: device loads with no Max errors; `awh mix capture
       --from-bar X --bars 4 -o /tmp/cap.wav` loops the right span, records,
-      stops; the file plays back as the mixdown
-- [ ] `awh mix ab <before> <after>` on a deliberate change (e.g. +3 dB shelf)
+      stops; the file plays back as the mixdown. Confirmed — built the
+      device by drag/paste per `m4l/README.md` (File→Open didn't appear in
+      the menu for the owner; Cmd+O and drag-and-drop both worked as
+      fallbacks), verified it captures whatever's actually playing
+      (solo-state and all), and used it successfully for the rest of this
+      checklist once built.
+- [x] `awh mix ab <before> <after>` on a deliberate change (e.g. +3 dB shelf)
       → the band deltas show the change and ONLY the change (loudness match
-      working: overall LUFS delta ≈ 0)
-- [ ] Pump: on a sidechained loop, report `--bpm` shows depth/alignment;
-      break the sidechain → report reflects it
-- [ ] Skill: "how's my low end vs my references?" → Claude captures/asks for
-      a render, runs report --target, quotes numbers, suggests concrete moves
+      working: overall LUFS delta ≈ 0). Took two corrections to test cleanly:
+      (1) first attempt targeted an EQ8 band configured as a Low Pass filter,
+      where Gain does nothing — picked an actual High Shelf band instead;
+      (2) even then, a +3dB change on ONE track was too diluted across 40+
+      simultaneous tracks in the full mix to show a clear delta — soloed the
+      target track for an isolated A/B. Once isolated: confirmed exactly as
+      specified — `lufs_integrated` delta ≈ 0.00, and the ONLY flagged
+      finding was `band_change_15849hz: +3.0 dB`, precisely the boosted
+      shelf frequency. Also incidentally discovered a master-bus clipper
+      (GClip) sitting before the capture tap that can absorb small gain
+      changes — bypassed it for a clean test, restored after.
+- [x] Pump: on a sidechained loop, report `--bpm` shows depth/alignment;
+      break the sidechain → report reflects it. **Found a real limitation,
+      not a simple bug**: on genuine sidechained content (BASS/SAMPLES ducked
+      by a MIDI-triggered compressor), `pump_misalign_full/low` fired at
+      ~228ms offset from the beat grid. Disabling the actual sidechain
+      device and re-capturing the identical span still showed ~218ms — a
+      negligible 10ms difference, when the finding should have changed
+      meaningfully or disappeared. Root cause (read in
+      `analysis/awh_analysis/dynamics.py`): the detector measures RMS-
+      envelope periodicity folded over the beat period, which can't
+      distinguish genuine sidechain ducking from a bass/sample note's own
+      natural decay — both produce a rhythmic RMS trough near the end of
+      each beat cycle on rhythmic material. Needs a real algorithmic rework
+      (e.g. comparing against a bypassed/reference capture, or detecting a
+      compressor-specific release-curve signature) — not attempted this
+      pass; flagging for follow-up rather than a rushed fix.
+- [x] Skill: "how's my low end vs my references?" → Claude captures/asks for
+      a render, runs report --target, quotes numbers, suggests concrete
+      moves. **Passed, with good judgment shown**: a fresh agent correctly
+      declined to fabricate a comparison — it found the (at-the-time)
+      mislabeled `house.json` target on its own and correctly reasoned a
+      house profile would be an unfair yardstick for this trap/dhol/tumbi
+      project, checked for real reference audio, found none it was
+      confident about, and asked rather than guessed — exactly the "never
+      invent a number" principle from `docs/design/analysis-engine.md`.
+      Completed the loop manually afterward with the correctly-labeled
+      `trap.json`: real per-band findings (25/32/40/50Hz all well above
+      target, PSR below the clean-loudness guideline) with concrete
+      EQ Eight moves suggested.
