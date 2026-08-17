@@ -393,7 +393,12 @@ the owner's template routes BASS/SAMPLES through a Sidechain bus with a
 MIDI "Trigger" track. Always start from the fit, then pick a strategy:
 1. FIT (both strategies): capture the DRUMS bus over a span starting on the
    Trigger pattern's boundary, then
-   `awh mix duck fit <drumsCapture> --trigger-clip <Trigger clip>`
+   `awh mix duck fit <drumsCapture> --trigger-clip <Trigger clip>`.
+   No MIDI Trigger clip (audio one-shot kits)? Derive real positions first:
+   `awh drums detect-onsets <drumsCapture> [--make-clip <target>]` — NEVER
+   guess trigger beats; fit now warns when triggers don't match real hits
+   (peak far from window start / absurd peak-over-floor) — treat those
+   warnings as a stop, not noise.
    (`--bass <bassCapture>` → masking-based depth) → measured kick body/tail
    + depth/hold/release + points.
 2. AUTOMATIC strategy (default when the owner says "automatic" or has no
@@ -416,6 +421,18 @@ MIDI "Trigger" track. Always start from the fit, then pick a strategy:
    tightening the kick's own decay.
 Volume-automation ducking is NOT possible via the gateway (no automation
 API) — say so if asked; don't improvise workarounds into real projects.
+
+**Answer from / add to the knowledge base** ("what do we know about X",
+"how does <artist> do Y", "remember this", "save what we learned today"):
+1. Retrieval: `awh kb list --topic <t>` or grep `knowledge/INDEX.md` FIRST —
+   if an entry covers it, `awh kb show <slug>`, apply its Executable
+   section, and cite `slug [tier]`. Only reason from scratch when the KB is
+   genuinely silent (and say so).
+2. Capture: `awh kb new <topic> <slug>` (topics are open-ended — invent a
+   directory if none fits), fill in Executable + rule; your entries are
+   `draft` (or `sourced` with citations), never `verified`.
+3. End-of-session: `awh distill -o /tmp/distill.md` dumps the project;
+   curate the notable clips into `awh save` and the lessons into entries.
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not

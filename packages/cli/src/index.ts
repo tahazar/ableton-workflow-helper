@@ -852,6 +852,78 @@ drums
     },
   );
 
+drums
+  .command("detect-onsets <audio>")
+  .description(
+    "Detect real drum-hit positions in an audio capture (for audio one-shot " +
+      "kits with no MIDI Trigger clip) — prints trigger BEATS at the Set " +
+      "tempo; --make-clip writes them as a MIDI Trigger clip",
+  )
+  .option("--min-gap-ms <ms>", "minimum gap between onsets", "80")
+  .option("--quantize <grid>", "snap beats to a grid (e.g. 0.25 = 16ths; 'off' to keep raw)", "0.25")
+  .option("--make-clip <target>", "create a Trigger MIDI clip (slot path, or track path + --at-bar)")
+  .option("--at-bar <bar>", "arrangement position for --make-clip track targets")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .action(
+    async (
+      audio: string,
+      cmdOpts: {
+        minGapMs: string;
+        quantize: string;
+        makeClip?: string;
+        atBar?: string;
+        sig: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const result = (await runAnalysisJson([
+        "onsets",
+        audio,
+        "--min-gap-ms",
+        cmdOpts.minGapMs,
+      ])) as unknown as { onsets_s: number[] };
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const beatsPerSec = summary.tempo / 60;
+      let beats = result.onsets_s.map((s) => s * beatsPerSec);
+      if (cmdOpts.quantize !== "off") {
+        const grid = Number(cmdOpts.quantize);
+        beats = [...new Set(beats.map((b) => Math.round(b / grid) * grid))];
+      }
+      const beatsPerBar = Number(cmdOpts.sig);
+      const pretty = () =>
+        [
+          `${beats.length} onsets at ${summary.tempo} BPM (capture assumed to start on the beat):`,
+          `  beats: ${beats.map((b) => b.toFixed(2)).join(",")}`,
+          `use with: awh mix duck fit <drums> --triggers "${beats.map((b) => b.toFixed(3)).join(",")}"`,
+        ].join("\n");
+
+      if (!cmdOpts.makeClip) {
+        output(opts, { beats, tempo: summary.tempo }, pretty);
+        return;
+      }
+      const lengthBeats = Math.ceil(Math.max(...beats) / beatsPerBar + 0.001) * beatsPerBar;
+      const isSlot = /\/slot:\d+$/.test(cmdOpts.makeClip);
+      if (!isSlot && cmdOpts.atBar === undefined) {
+        throw new Error("--make-clip with a track path needs --at-bar");
+      }
+      const created = (await op(opts, "clip.create-midi", {
+        target: isSlot
+          ? { type: "session", slotPath: cmdOpts.makeClip }
+          : {
+              type: "arrangement",
+              trackPath: cmdOpts.makeClip,
+              startBeat: (Number(cmdOpts.atBar) - 1) * beatsPerBar,
+            },
+        lengthBeats,
+        notes: beats.map((b) => ({ pitch: 36, start: b, duration: 0.25, velocity: 100 })),
+        name: "Trigger (detected)",
+      })) as { path: string };
+      output(opts, { beats, clip: created.path }, () =>
+        `${pretty()}\nTrigger clip -> ${created.path} (${beats.length} notes, C1)`,
+      );
+    },
+  );
+
 /** Shared read-transform-write for in-place drum rework commands. */
 async function reworkDrumClip(
   clipPath: string,
@@ -1912,14 +1984,23 @@ duckCmd
       await setDeviceParam(opts, inserted.path, name, value);
       return `  ok ${name} -> ${value} (raw range ${p.min}..${p.max})`;
     };
+    // "Sidechain On" is a normal automatable param (live-verified) — only
+    // the Audio From ROUTING is genuinely outside the SDK. Live's exact
+    // param name varies, so match candidates.
+    const scOn = ["S/C On", "Sidechain On", "SideChain On", "SC On"]
+      .map((n) => byName.get(n))
+      .find((q) => q !== undefined);
     const lines = [
       `Compressor inserted at ${inserted.path}`,
       await setRaw("Attack", byName.get("Attack")?.min ?? 0),
       await setRaw("Ratio", byName.get("Ratio")?.max ?? 0),
+      scOn
+        ? await setRaw(scOn.name, scOn.max)
+        : '  !  no sidechain-enable param found (looked for S/C On variants) — enable it by hand',
       "",
-      "Manual touches (SDK cannot set routing or ms-displays):",
-      "  1. Unfold the Compressor's sidechain section -> enable Sidechain,",
-      "     Audio From = your trigger source (Kick / Trigger-audio track)",
+      "Manual touches (the SDK cannot set routing or ms-displays):",
+      "  1. Audio From = your trigger source (Kick / Trigger-audio track)" +
+        (scOn ? "" : " + enable Sidechain"),
       `  2. Release -> ${cmdOpts.releaseMs ? `${cmdOpts.releaseMs} ms` : "the release_ms from `awh mix duck fit`"}`,
       "",
       "Then calibrate the depth automatically:",

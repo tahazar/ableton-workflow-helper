@@ -112,3 +112,30 @@ def test_measure_duck_depth_ducked_vs_flat():
     assert d["depth_db"] == pytest.approx(8.0, abs=1.5)
     assert f["depth_db"] < 1.0
     assert d["depth_db"] - f["depth_db"] > 6.0
+
+
+def test_duck_fit_flags_misaligned_triggers():
+    """Live finding: guessed trigger times produced a plausible-looking but
+    nonsensical envelope with no flag. Misalignment must warn."""
+    x = _kick_drums(SR, TRIGGERS, 4.5)
+    aligned = duck.fit_duck_envelope(x, SR, TRIGGERS)
+    assert aligned["warnings"] == []
+
+    # triggers offset by 40% of the gap: hits land mid-window
+    shifted = [t + 0.2 for t in TRIGGERS]
+    result = duck.fit_duck_envelope(x, SR, shifted)
+    assert any("do NOT match" in w for w in result["warnings"])
+
+    # sparse clicks over digital silence (the live pathology read 174 dB
+    # peak-over-floor): absurd floor distance must warn even when aligned
+    quiet = _kick_drums(SR, TRIGGERS, 4.5, decay_tau_s=0.02, floor_amp=1e-7)
+    sparse = duck.fit_duck_envelope(quiet, SR, TRIGGERS)
+    assert any("digital silence" in w for w in sparse["warnings"])
+
+
+def test_detect_onsets_finds_real_hit_positions():
+    x = _kick_drums(SR, TRIGGERS, 4.5, decay_tau_s=0.05)
+    onsets = duck.detect_onsets(x, SR)
+    assert len(onsets) == len(TRIGGERS)
+    for detected, true in zip(onsets, TRIGGERS):
+        assert abs(detected - true) < 0.03  # within 30 ms

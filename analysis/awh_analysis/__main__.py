@@ -167,7 +167,12 @@ def _cmd_duck(args: argparse.Namespace) -> int:
     else:
         rec = result["recommendation"]
         k = result["kick"]
-        lines = [
+        lines = []
+        for w in result.get("warnings", []):
+            lines.append(f"!! WARNING: {w}")
+        if result.get("warnings"):
+            lines.append("")
+        lines += [
             f"Trigger-aligned duck fit ({result['used_triggers']} triggers, "
             f"window {result['window_ms']:.0f} ms)",
             "",
@@ -264,6 +269,21 @@ def _cmd_ref(args: argparse.Namespace) -> int:
     return 0
 
 
+
+
+def _cmd_onsets(args: argparse.Namespace) -> int:
+    from . import audio
+
+    x, sr = audio.load(args.file)
+    onsets = duck.detect_onsets(x, sr, min_gap_s=args.min_gap_ms / 1000.0)
+    if args.json:
+        _print_json({"file": args.file, "count": len(onsets), "onsets_s": onsets})
+    else:
+        print(f"{len(onsets)} onsets detected:")
+        print(",".join(f"{t:.3f}" for t in onsets))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -318,6 +338,12 @@ def build_parser() -> argparse.ArgumentParser:
                        help="also write a reference-analysis record JSON to this path")
     p_ref.add_argument("--json", action="store_true")
     p_ref.set_defaults(func=_cmd_ref)
+
+    p_on = sub.add_parser("onsets", help="Detect drum onset times in an audio capture")
+    p_on.add_argument("file")
+    p_on.add_argument("--min-gap-ms", type=float, default=80.0)
+    p_on.add_argument("--json", action="store_true")
+    p_on.set_defaults(func=_cmd_onsets)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")

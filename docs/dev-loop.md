@@ -734,3 +734,17 @@ convention) plus the owner's own unreleased material for the ambiguity case:
       myself once corrections were in: `sections plan --from-ref` produced
       an 8-section plan whose bars (12+4+16+16+12+4+32+8 = 104) sum exactly
       to the corrected reference's bar count.
+
+## Post-M8 hardening checklist
+
+- [ ] `awh drums detect-onsets <audio drums capture>` → detected beats match
+      the audible hits; `--make-clip` writes a usable Trigger clip
+- [ ] `awh mix duck fit` with deliberately WRONG triggers → the misalignment
+      warning fires (the silent-nonsense case from the M8 pass is now loud)
+- [ ] `awh mix duck setup` → "S/C On"-style param found and enabled
+      automatically; only Audio From + Release remain manual
+- [ ] Sections likely-tier: re-analyze the commercial dubstep track that hit
+      the threshold gap → the ~2.6 dB drop and mid-track dip now appear as
+      likely-* sections with shortfall-stating evidence
+- [ ] `awh ref analyze --hint-bpm <known tempo>` on the ambiguous unreleased
+      reference → hint resolves the 0.0-confidence tie via the runner-up swap
