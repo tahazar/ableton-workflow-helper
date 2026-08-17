@@ -25,6 +25,9 @@ build/
 __pycache__/
 *.pyc
 
+# --- Generated Live-browser mirror (regenerate with `awh lib export-alc`) ---
+live-mirror/
+
 # --- Local environment / secrets ---
 .env
 .env.*
