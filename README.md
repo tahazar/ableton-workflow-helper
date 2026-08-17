@@ -21,6 +21,10 @@ sections` builds a 4-minute seeded arrangement skeleton from source loops via
 editable YAML plans; `awh save`/`awh lib` grow a git-versioned clip library
 that mirrors into Live's own browser as a tagged Pack of .alc Live Clips; and
 `awh drums` generates/reworks pad-aware drum patterns (house/techno/trap).
+M6 (in build): `awh mix` — a Python measurement engine (LUFS/dBTP/PSR,
+third-octave spectrum vs measured genre targets, stereo/phase, pump
+verification) + an M4L capture tap for post-FX renders and loudness-matched
+A/B (`docs/design/analysis-engine.md`).
 Backlog candidates B1 (audio-to-MIDI) and B2 (Operator sound design) are
 researched and queued — see `docs/spec.md`.
 See [`docs/spec.md`](docs/spec.md) for requirements + milestones,
@@ -34,6 +38,9 @@ See [`docs/spec.md`](docs/spec.md) for requirements + milestones,
 | `packages/core` | SDK-free heart: `LiveBridge` interface, gateway server, op registry, (soon) notation + transforms. Fully testable without Live |
 | `packages/extension` | The ONLY SDK import site; thin shell wiring activation → gateway server; builds to `.ablx` |
 | `packages/cli` | `awh` — ping/status/ops/call/serve-fake (grows per milestone) |
+| `analysis/` | Python measurement engine (`awh_analysis`) behind `awh mix` — BS.1770 loudness, spectrum, phase, dynamics |
+| `m4l/` | AWH Capture Tap: M4L device for post-FX capture + transport, OSC-driven |
+| `library/` | Git-versioned clip library (+ measured mix targets); mirrors into Live's browser |
 | `scripts/setup-sdk.mjs` | Extracts the (never-committed) SDK from `vendor/ableton-sdk/` |
 | `docs/dev-loop.md` | Setup + everyday development loop + M0 verification checklist |
 

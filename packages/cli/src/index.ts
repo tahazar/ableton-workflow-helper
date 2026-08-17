@@ -7,9 +7,11 @@
  * The same commands are what a Claude Code skill drives — no AI-only paths.
  */
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { dirname, join, resolve } from "node:path";
 import { Command } from "commander";
+import { TAP_PORT, sendToTap } from "./osc.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   listForms,
@@ -1332,6 +1334,160 @@ lib
       await store.buildIndex();
       output(opts, { file, slug }, () =>
         `imported ${alcFile} -> ${file} (${parsed.notes.length} notes, ${parsed.lengthBeats} beats)`,
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Mix analysis (M6): measurement engine (Python) + M4L capture tap driver.
+// ---------------------------------------------------------------------------
+
+function repoRoot(): string {
+  // library root is <repo>/library (findLibraryRoot walks up) — its parent.
+  return dirname(findLibraryRoot());
+}
+
+function analysisPython(): { python: string; cwd: string } {
+  const root = repoRoot();
+  const venv = join(root, ".venv", "bin", "python");
+  const python = process.env.AWH_PYTHON ?? (existsSync(venv) ? venv : "python3");
+  return { python, cwd: join(root, "analysis") };
+}
+
+/** Run `python -m awh_analysis <args>` streaming stdio through. */
+async function runAnalysis(args: string[]): Promise<void> {
+  const { python, cwd } = analysisPython();
+  if (!existsSync(cwd)) {
+    throw new Error(`analysis engine not found at ${cwd} — is the repo checkout complete?`);
+  }
+  const child = spawn(python, ["-m", "awh_analysis", ...args], {
+    cwd,
+    stdio: "inherit",
+  });
+  const code = await new Promise<number>((resolve, reject) => {
+    child.on("error", (err) =>
+      reject(
+        new Error(
+          `could not run ${python} (${err.message}) — create the venv per docs/dev-loop.md ` +
+            "or set AWH_PYTHON",
+        ),
+      ),
+    );
+    child.on("close", (c) => resolve(c ?? 1));
+  });
+  if (code !== 0) process.exitCode = code;
+}
+
+/** Resolve --target: an existing file path, or a name in library/targets/. */
+function resolveTarget(target: string): string {
+  if (existsSync(target)) return target;
+  const named = join(findLibraryRoot(), "targets", `${target}.json`);
+  if (existsSync(named)) return named;
+  throw new Error(`target "${target}" is neither a file nor library/targets/${target}.json`);
+}
+
+const mix = program
+  .command("mix")
+  .description("Measurement-based mix feedback (LUFS/PSR/spectrum/phase/pump)");
+
+mix
+  .command("report <file>")
+  .description("Measure a rendered/captured audio file and report prioritized findings")
+  .option("--bpm <bpm>", "Set tempo — enables sidechain-pump verification")
+  .option("--target <nameOrPath>", "genre target (library/targets/<name>.json)")
+  .option("--delivery <preset>", "delivery check: club | streaming | apple")
+  .option("--from <seconds>", "analyze from this time")
+  .option("--to <seconds>", "analyze up to this time")
+  .action(
+    async (
+      file: string,
+      cmdOpts: { bpm?: string; target?: string; delivery?: string; from?: string; to?: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const args = ["report", file];
+      if (cmdOpts.bpm) args.push("--bpm", cmdOpts.bpm);
+      if (cmdOpts.target) args.push("--target", resolveTarget(cmdOpts.target));
+      if (cmdOpts.delivery) args.push("--delivery", cmdOpts.delivery);
+      if (cmdOpts.from) args.push("--from", cmdOpts.from);
+      if (cmdOpts.to) args.push("--to", cmdOpts.to);
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+mix
+  .command("ab <fileA> <fileB>")
+  .description("Loudness-matched A/B comparison of two renders (counters louder=better)")
+  .option("--bpm <bpm>", "Set tempo — includes pump comparison")
+  .action(async (fileA: string, fileB: string, cmdOpts: { bpm?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const args = ["ab", fileA, fileB];
+    if (cmdOpts.bpm) args.push("--bpm", cmdOpts.bpm);
+    if (opts.json) args.push("--json");
+    await runAnalysis(args);
+  });
+
+mix
+  .command("target <files...>")
+  .description("Measure YOUR reference tracks into a genre target profile")
+  .requiredOption("--save <name>", "target name (stored in library/targets/<name>.json)")
+  .action(async (files: string[], cmdOpts: { save: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const dest = join(findLibraryRoot(), "targets", `${cmdOpts.save}.json`);
+    await mkdir(dirname(dest), { recursive: true });
+    const args = ["target", ...files, "--save", dest];
+    if (opts.json) args.push("--json");
+    await runAnalysis(args);
+  });
+
+mix
+  .command("capture")
+  .description(
+    "Record post-FX audio via the M4L capture tap (m4l/): loops the arrangement " +
+      "over a bar span, records to a file, and stops",
+  )
+  .requiredOption("-o, --out <file>", "output file (absolute path recommended)")
+  .requiredOption("--from-bar <bar>", "1-based arrangement bar to loop from")
+  .requiredOption("--bars <bars>", "loop length in bars")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--tap-port <port>", "capture tap OSC port", String(TAP_PORT))
+  .option("--tail <seconds>", "extra record time after the loop", "0.5")
+  .action(
+    async (cmdOpts: {
+      out: string;
+      fromBar: string;
+      bars: string;
+      sig: string;
+      tapPort: string;
+      tail: string;
+    }) => {
+      const opts = program.opts<GlobalOpts>();
+      const beatsPerBar = Number(cmdOpts.sig);
+      const startBeat = (Number(cmdOpts.fromBar) - 1) * beatsPerBar;
+      const lengthBeats = Number(cmdOpts.bars) * beatsPerBar;
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const seconds = (lengthBeats / summary.tempo) * 60 + Number(cmdOpts.tail);
+      const port = Number(cmdOpts.tapPort);
+      const outPath = resolve(cmdOpts.out);
+
+      await sendToTap("/awh/loop", [startBeat, lengthBeats], port);
+      await sendToTap("/awh/record", [outPath], port);
+      await sendToTap("/awh/play", [1], port);
+      process.stderr.write(
+        `recording ${cmdOpts.bars} bars (~${seconds.toFixed(1)}s) at ${summary.tempo} BPM…\n`,
+      );
+      await new Promise((r) => setTimeout(r, seconds * 1000));
+      await sendToTap("/awh/play", [0], port);
+      await sendToTap("/awh/stop", [], port);
+
+      if (!existsSync(outPath)) {
+        throw new Error(
+          `${outPath} was not created — is the AWH Capture Tap device loaded (m4l/README.md) ` +
+            "and listening on the right port? The tap writes wherever the device sits.",
+        );
+      }
+      output(opts, { file: outPath, seconds }, () =>
+        `captured -> ${outPath}\nanalyze with: awh mix report ${outPath} --bpm ${summary.tempo}`,
       );
     },
   );

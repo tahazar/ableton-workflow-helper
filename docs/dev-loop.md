@@ -370,3 +370,33 @@ Library round-trip (SDK-free, validated clip ops underneath):
       whose only pad looked like a mislabeled leftover rather than guessing.
       Independently verified: kick-only four-on-the-floor (16 notes, no
       snare) and off-beat 8th-note hats, both humanized.
+
+## M6 (analysis engine) setup + verification checklist
+
+One-time setup (dev machine):
+
+```sh
+python3 -m venv .venv
+.venv/bin/pip install numpy scipy soundfile pyloudnorm pytest
+cd analysis && ../.venv/bin/pytest -q && cd ..   # engine self-test
+```
+
+M4L capture tap: follow `m4l/README.md` (Max Audio Effect on the master,
+paste/build the patch, save). Suite includes Max.
+
+- [ ] `awh mix report <any exported wav/aiff> --bpm <tempo>` → LUFS/dBTP/PSR
+      match a trusted meter (Live's own LUFS meter, Youlean, etc.) within
+      ~0.5 LU / 0.3 dB; findings read sensibly and quote real numbers
+- [ ] `awh mix target <2-3 reference tracks> --save house` →
+      `library/targets/house.json` appears; `report --target house` adds
+      per-band deltas that match what your ears/eyes say about the balance
+- [ ] Capture tap: device loads with no Max errors; `awh mix capture
+      --from-bar X --bars 4 -o /tmp/cap.wav` loops the right span, records,
+      stops; the file plays back as the mixdown
+- [ ] `awh mix ab <before> <after>` on a deliberate change (e.g. +3 dB shelf)
+      → the band deltas show the change and ONLY the change (loudness match
+      working: overall LUFS delta ≈ 0)
+- [ ] Pump: on a sidechained loop, report `--bpm` shows depth/alignment;
+      break the sidechain → report reflects it
+- [ ] Skill: "how's my low end vs my references?" → Claude captures/asks for
+      a render, runs report --target, quotes numbers, suggests concrete moves
