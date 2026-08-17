@@ -332,3 +332,195 @@ def test_bar_arc_bars_are_one_based_and_relative_to_own_max():
 
 def test_detect_sections_empty_arc_returns_empty():
     assert ref.detect_sections([], phrase_bars=4) == []
+
+
+# ---------------------------------------------------------------------------
+# "likely-*" relaxed second pass on unlabeled section gaps
+# ---------------------------------------------------------------------------
+
+
+def _make_arc(full_vals: list[float], sub_vals: list[float]) -> list[dict]:
+    """A directly-controlled bar-synced energy arc (bypassing bar_arc's
+    real RMS computation) so drop/breakdown/build deltas land at exact,
+    known values -- the arc IS the reference format detect_sections
+    consumes, so this is a legitimate synthetic construction of it, just
+    built by hand instead of derived from audio."""
+    return [
+        {"bar": i + 1, "full_db": f, "sub_db": s, "high_db": 0.0} for i, (f, s) in enumerate(zip(full_vals, sub_vals))
+    ]
+
+
+def test_detect_sections_likely_drop_below_confirmed_threshold():
+    # 8 flat baseline bars at -3.0 dB, then a jump to ~-0.5 dB that keeps
+    # climbing by 0.9 dB/bar -- the "previous 4-bar mean" comparison this
+    # produces holds steady at +2.25 dB (worked out bar-by-bar: 2.5, 2.775,
+    # 2.825, 2.65, then a constant 2.5*0.9=2.25 dB once the trailing window
+    # is fully past the transition), i.e. always inside (2.1, 3.0) --
+    # clears the RELAXED drop-jump threshold, never the confirmed one.
+    baseline_bars = 8
+    jump, slope = 2.5, 0.9
+    full = [-3.0] * baseline_bars
+    for k in range(8):
+        full.append(-3.0 + jump + slope * k)
+    full += [full[-1]] * 4  # a few flat trailing bars
+    sub = [0.0] * len(full)  # always within the (unchanged) 6 dB sub-near-max gate
+
+    sections = ref.detect_sections(_make_arc(full, sub), phrase_bars=4)
+
+    names = [s["name"] for s in sections]
+    assert "drop" not in names, f"a confirmed drop should not fire on a sub-threshold jump: {sections}"
+    likely = [s for s in sections if s["name"] == "likely-drop"]
+    assert len(likely) == 1, f"expected exactly one likely-drop: {sections}"
+    ev = likely[0]
+    assert ev["confidence"] <= 0.5
+    assert ev["confidence"] > 0.0
+    assert "below" in ev["evidence"] and "3.0" in ev["evidence"], ev["evidence"]
+    assert "relaxed-pass" in ev["evidence"]
+    # A number close to the actual measured jump is quoted.
+    assert any(tok in ev["evidence"] for tok in ("+2.4", "+2.5", "+2.6", "+2.7")), ev["evidence"]
+    # Nothing else in the result is itself a confirmed drop/breakdown/build
+    # -- the only non-"section" entries are the leading quiet run (a
+    # legitimate "intro", untouched by this change) and the one likely-drop.
+    for s in sections:
+        assert s["name"] in ("section", "likely-drop", "intro"), sections
+
+
+def test_detect_sections_strong_drop_stays_confirmed_and_unaffected():
+    # A drop with a large enough jump (+ steady climb) to sustain past the
+    # CONFIRMED 3 dB threshold for the full DROP_MIN_SUSTAIN_BARS window --
+    # regression: the relaxed second pass must not change confirmed
+    # boundaries, confidence, or name.
+    baseline_bars = 8
+    base, jump, slope = -1.0, 6.0, 2.0
+    full = [base] * baseline_bars
+    for k in range(8):
+        full.append(base + jump + slope * k)
+    full += [full[-1]] * 8
+    sub = [0.0] * len(full)
+
+    sections = ref.detect_sections(_make_arc(full, sub), phrase_bars=4)
+
+    assert not any(s["name"].startswith("likely-") for s in sections), sections
+    drops = [s for s in sections if s["name"] == "drop"]
+    assert len(drops) == 1, sections
+    drop = drops[0]
+    # Same boundaries a manual walk of the (unchanged) primary rule gives:
+    # phrase-snapped start at bar 9 (0-based bar 8, the first bar clearing
+    # the jump+sustain rule), extended to the track end since nothing
+    # follows it.
+    assert drop["start_bar"] == 9
+    assert drop["end_bar"] == len(full)
+    assert drop["confidence"] > 0.5
+
+
+def test_analyze_reference_appends_likely_sections_note(tmp_path, monkeypatch):
+    # The likely-* -> note wiring lives in analyze_reference, downstream of
+    # detect_sections' actual output -- exercise the real code path by
+    # substituting a canned detect_sections result on a minimal, otherwise
+    # fully real analysis, rather than requiring audio precise enough to
+    # land a jump in the relaxed band (covered exactly by the unit test
+    # above).
+    beat = 60.0 / 128.0
+    n_beats = 32
+    n = int(np.ceil((n_beats * beat + 1.0) * SR))
+    sig = np.zeros(n)
+    for b in range(n_beats):
+        _add(sig, b * beat, SR, _kick(int(0.3 * SR), SR))
+        for sub in (0.0, 0.5):
+            _add(sig, b * beat + sub * beat, SR, _hat(int(0.03 * SR), SR))
+    sig = sig / (np.max(np.abs(sig)) + 1e-9) * 0.9
+    path = tmp_path / "likely_note.wav"
+    write_wav(path, to_stereo(sig), SR)
+
+    canned_sections = [
+        {"name": "likely-drop", "start_bar": 1, "end_bar": 4, "confidence": 0.4, "evidence": "full +2.5 dB..."},
+        {"name": "section", "start_bar": 5, "end_bar": 8, "confidence": 0.3, "evidence": "no rule matched"},
+    ]
+    monkeypatch.setattr(ref, "detect_sections", lambda arc, phrase_bars: canned_sections)
+
+    result = ref.analyze_reference(str(path))
+
+    assert result["sections"] == canned_sections
+    assert any("likely-*" in note and "confirm by ear" in note for note in result["notes"]), result["notes"]
+
+
+def test_analyze_reference_no_likely_note_when_no_likely_sections(tmp_path, monkeypatch):
+    beat = 60.0 / 128.0
+    n_beats = 32
+    n = int(np.ceil((n_beats * beat + 1.0) * SR))
+    sig = np.zeros(n)
+    for b in range(n_beats):
+        _add(sig, b * beat, SR, _kick(int(0.3 * SR), SR))
+        for sub in (0.0, 0.5):
+            _add(sig, b * beat + sub * beat, SR, _hat(int(0.03 * SR), SR))
+    sig = sig / (np.max(np.abs(sig)) + 1e-9) * 0.9
+    path = tmp_path / "no_likely_note.wav"
+    write_wav(path, to_stereo(sig), SR)
+
+    monkeypatch.setattr(
+        ref, "detect_sections", lambda arc, phrase_bars: [{"name": "section", "start_bar": 1, "end_bar": 8,
+                                                             "confidence": 0.3, "evidence": "no rule matched"}]
+    )
+    result = ref.analyze_reference(str(path))
+    assert not any("likely-*" in note for note in result["notes"]), result["notes"]
+
+
+# ---------------------------------------------------------------------------
+# BPM hint
+# ---------------------------------------------------------------------------
+
+
+def test_bpm_hint_swaps_to_matching_runner_up(tmp_path):
+    sig = _build_trap_track()
+    path = tmp_path / "trap_hint.wav"
+    write_wav(path, to_stereo(sig), SR)
+
+    baseline = ref.analyze_reference(str(path))
+    runner_up = baseline["bpm_runner_up"]
+    assert runner_up is not None
+
+    hinted = ref.analyze_reference(str(path), hint_bpm=runner_up)
+
+    assert hinted["bpm"] == pytest.approx(runner_up, abs=0.1)
+    assert hinted["bpm_runner_up"] == pytest.approx(baseline["bpm"], abs=0.1)
+    assert any("hint" in note.lower() and "swap" in note.lower() for note in hinted["notes"]), hinted["notes"]
+
+
+def test_bpm_hint_ignored_when_it_matches_neither_candidate(tmp_path):
+    sig = _build_trap_track()
+    path = tmp_path / "trap_hint_ignored.wav"
+    write_wav(path, to_stereo(sig), SR)
+
+    baseline = ref.analyze_reference(str(path))
+    hinted = ref.analyze_reference(str(path), hint_bpm=100.0)
+
+    assert hinted["bpm"] == pytest.approx(baseline["bpm"], abs=0.01)
+    assert hinted["bpm_runner_up"] == pytest.approx(baseline["bpm_runner_up"], abs=0.01)
+    assert any(
+        "hint" in note.lower() and ("neither" in note.lower() or "ignored" in note.lower())
+        for note in hinted["notes"]
+    ), hinted["notes"]
+
+
+def test_bpm_hint_none_is_a_noop(tmp_path):
+    sig = _build_trap_track()
+    path = tmp_path / "trap_hint_none.wav"
+    write_wav(path, to_stereo(sig), SR)
+
+    r1 = ref.analyze_reference(str(path))
+    r2 = ref.analyze_reference(str(path), hint_bpm=None)
+    assert r1 == r2
+
+
+def test_apply_bpm_hint_never_invents_a_tempo():
+    tempo = {"bpm": 128.0, "confidence": 0.0, "runner_up": 64.0, "runner_up_ratio": 0.95}
+    notes = ref._apply_bpm_hint(tempo, 200.0)
+    assert tempo["bpm"] == 128.0
+    assert tempo["runner_up"] == 64.0
+    assert any("neither" in n.lower() or "ignored" in n.lower() for n in notes)
+
+    tempo2 = {"bpm": 128.0, "confidence": 0.0, "runner_up": 64.0, "runner_up_ratio": 0.95}
+    notes2 = ref._apply_bpm_hint(tempo2, 64.0)
+    assert tempo2["bpm"] == 64.0
+    assert tempo2["runner_up"] == 128.0
+    assert any("swap" in n.lower() for n in notes2)
