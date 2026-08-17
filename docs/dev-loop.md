@@ -470,3 +470,15 @@ for its natural request; (2) a negative-control test inverts its detection
 claim against synthetic fixtures; (3) its behavior for occupied-but-empty
 targets is decided and tested; (4) its zero-item path still runs cleanup/
 sync side effects.
+
+## Duck-fit (`awh mix duck`) verification checklist
+
+- [ ] Capture the Drums bus over 4-8 bars starting on the Trigger pattern's
+      boundary; `awh mix duck <capture> --trigger-clip <Trigger clip>` →
+      body/tail times look plausible against the waveform
+- [ ] Draw the printed points in Volume Shaper (depth/hold/exponential
+      release) → bass audibly locks to the kick without pumping artifacts
+- [ ] `--bass <bass capture>` → masking-based depth differs sensibly from
+      the default 12 dB
+- [ ] Proof loop: capture sidechain bus with the drawn envelope on vs
+      Device On -> 0, `awh mix ab` → depth delta ≈ the drawn depth
