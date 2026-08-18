@@ -860,3 +860,27 @@ convention) plus the owner's own unreleased material for the ambiguity case:
       advised). Confirmed on the negative-control signal (quiet floor
       between hits): correctly fired "peak-to-tail span is 38.8 dB (> 20 dB)
       ... isolated ducked bus ... is the reliable capture point."
+
+## House-family StyleSpec verification checklist
+
+Shipped without a checklist section — added retroactively after review.
+
+- [x] Refactor claim ("byte-identical output for the built-ins"): NOT just
+      trusted from the frozen-copy regression tests — independently
+      verified via an isolated git worktree at the pre-refactor commit.
+      Generated house + techno patterns across 4 seeds × 3 densities (24
+      patterns total) with the old code and the new code and diffed byte-
+      for-byte: all 24 identical. The refactor genuinely preserved
+      behavior.
+- [x] `awh drums gen --style dusty-garage` (the shipped first house-family
+      data style) → generates via the knowledge spec, reports the entry
+      tier. Confirmed via `awh serve-fake`: correct
+      `knowledgeStyle: drum-style-dusty-garage [draft]`, correct pad roles
+      (four-floor kick, clap-only backbeat, shaker ghosts).
+- [x] Hat-grid density flip (the spec's own stated "character change" at
+      density 0.55): confirmed — density 0.4 reports `hatBase:
+      offbeat-8ths` (45 hits); density 0.7 reports `hatBase: 16ths` (136
+      hits), matching the spec's threshold exactly.
+- [x] Live-edit-no-rebuild: edited `ghostChance` 0.7→0.05 in the entry's
+      YAML with no build step, regenerated with the same seed — shaker
+      ghost count dropped from several to exactly 0. Reverted after.
