@@ -238,7 +238,11 @@ generated directory Pack with Live 12 XMP tags (`PackRevision` bump =
 re-index). Research done, design firm — `docs/research/alc-live-library.md`.
 
 **B4 — Knowledge base (deterministic production wiki).**
-Design: `docs/design/library-kb.md`. `knowledge/<topic>/<slug>.md`, tiered
+Design: `docs/design/library-kb.md`. Domains are OPEN-ENDED (new topic =
+new directory, discovered from the tree, never hardcoded) and measurement
+records (`library/measurements/` mix reports) are first-class knowledge
+citizens — indexed and retrievable alongside entries, citable as evidence.
+`knowledge/<topic>/<slug>.md`, tiered
 (`verified`/`sourced`/`draft`) with a mandatory **Executable section**
 (notation patterns, transform pipeline specs, device recipes) wherever the
 knowledge can be expressed as one — prose-only is a last resort; Claude cites

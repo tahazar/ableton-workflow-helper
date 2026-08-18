@@ -16,8 +16,10 @@ import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   listForms,
   planFromForm,
+  planFromReferenceSections,
   renderSections,
   validateSectionsPlan,
+  type SectionsPlan,
   type SourceClip,
   DEFAULT_GATEWAY_PORT,
   FakeLiveBridge,
@@ -41,13 +43,17 @@ import {
   variantSeed,
   writePack,
   GM_DRUM_KIT,
+  KnowledgeStore,
   drumFill,
+  extractFencedBlock,
   generateDrumPatternDetailed,
   humanizeDrums,
   listDrumStyles,
   listDrumVariants,
   mapPadRoles,
+  parseDrumStyleSpec,
   varyDrums,
+  type TrapFamilyStyleSpec,
   type ClipDetail,
   type ClipEntry,
   type DrumContext,
@@ -505,8 +511,17 @@ const sections = program
 
 sections
   .command("plan")
-  .description("Emit an editable YAML sections plan from a genre form preset")
-  .requiredOption("--form <form>", `genre form: ${listForms().join(" | ")}`)
+  .description(
+    "Emit an editable YAML sections plan from a genre form preset, or " +
+      "--from-ref a corrected reference map (bars sourced from the reference " +
+      "instead of a preset — every layer verbatim, no genre ops guessed)",
+  )
+  .option("--form <form>", `genre form: ${listForms().join(" | ")}`)
+  .option(
+    "--from-ref <file>",
+    "a `ref sections read -o <file>` JSON (or a saved library/references/*.json) " +
+      "— mutually exclusive with --form",
+  )
   .requiredOption(
     "--role <role=clipPath...>",
     "role bindings, repeatable: --role drums=track:1/slot:0 --role bass=track:2/slot:0",
@@ -514,7 +529,10 @@ sections
     [] as string[],
   )
   .option("-o, --out <file>", "write the plan to a file (default: stdout)")
-  .action(async (cmdOpts: { form: string; role: string[]; out?: string }) => {
+  .action(async (cmdOpts: { form?: string; fromRef?: string; role: string[]; out?: string }) => {
+    if (!cmdOpts.form === !cmdOpts.fromRef) {
+      throw new Error("pass exactly one of --form <house|trap> or --from-ref <file>");
+    }
     const roles: Record<string, { trackPath: string; source: string }> = {};
     for (const binding of cmdOpts.role) {
       const [role, source] = binding.split("=", 2);
@@ -523,7 +541,18 @@ sections
       if (trackPath === source) throw new Error(`--role ${role}: "${source}" is not a clip path`);
       roles[role] = { trackPath, source };
     }
-    const plan = planFromForm(cmdOpts.form, roles);
+    let plan: SectionsPlan;
+    if (cmdOpts.form) {
+      plan = planFromForm(cmdOpts.form, roles);
+    } else {
+      const parsed = JSON.parse(await readFile(cmdOpts.fromRef!, "utf8")) as {
+        sections?: { name: string; start_bar: number; end_bar: number }[];
+        reference?: { sections: { name: string; start_bar: number; end_bar: number }[] };
+      };
+      const refSections = parsed.reference?.sections ?? parsed.sections;
+      if (!refSections) throw new Error(`${cmdOpts.fromRef} has no sections`);
+      plan = planFromReferenceSections(refSections, roles);
+    }
     const text = stringifyYaml(plan);
     if (cmdOpts.out) {
       await writeFile(cmdOpts.out, text, "utf8");
@@ -728,9 +757,34 @@ drums
       const { kit, usedRack } = trackDrumKit(summary, trackPath);
       const ctx = drumContext(cmdOpts);
 
+      // built-in style, or a data-driven one from the knowledge base:
+      // a `drum-style-<name>` entry with an ```awh-style-spec``` block
+      let styleSpec: TrapFamilyStyleSpec | undefined;
+      let styleTier: string | undefined;
+      if (!listDrumStyles().includes(cmdOpts.style)) {
+        let entry;
+        try {
+          entry = await knowledgeStore().loadEntry(`drum-style-${cmdOpts.style}`);
+        } catch {
+          throw new Error(
+            `unknown drum style "${cmdOpts.style}" — built-ins: ${listDrumStyles().join(", ")}; ` +
+              `data styles need a knowledge entry with slug drum-style-${cmdOpts.style} ` +
+              "(see knowledge/README.md)",
+          );
+        }
+        const specText = extractFencedBlock(entry.body, "awh-style-spec");
+        if (!specText) {
+          throw new Error(
+            `knowledge entry ${entry.relPath} has no \`\`\`awh-style-spec block`,
+          );
+        }
+        styleSpec = parseDrumStyleSpec(specText);
+        styleTier = entry.tier;
+      }
+
       let variant: number | undefined;
       if (cmdOpts.variant !== undefined) {
-        const names = listDrumVariants(cmdOpts.style);
+        const names = listDrumVariants(cmdOpts.style, styleSpec);
         if (names.length === 0) {
           throw new Error(`style "${cmdOpts.style}" has no named variants (seed-only)`);
         }
@@ -746,7 +800,9 @@ drums
 
       const { notes, meta } = generateDrumPatternDetailed(cmdOpts.style, kit, ctx, {
         ...(variant !== undefined ? { variant } : {}),
+        ...(styleSpec ? { styleSpec } : {}),
       });
+      if (styleTier) meta.knowledgeStyle = `drum-style-${cmdOpts.style} [${styleTier}]`;
       const lengthBeats = ctx.bars * ctx.beatsPerBar;
 
       let target: unknown;
@@ -792,6 +848,78 @@ drums
             ? `pad roles mapped from the track's drum rack`
             : `NOTE: no drum rack on ${trackPath} — used General MIDI note numbers`,
         ].join("\n"),
+      );
+    },
+  );
+
+drums
+  .command("detect-onsets <audio>")
+  .description(
+    "Detect real drum-hit positions in an audio capture (for audio one-shot " +
+      "kits with no MIDI Trigger clip) — prints trigger BEATS at the Set " +
+      "tempo; --make-clip writes them as a MIDI Trigger clip",
+  )
+  .option("--min-gap-ms <ms>", "minimum gap between onsets", "80")
+  .option("--quantize <grid>", "snap beats to a grid (e.g. 0.25 = 16ths; 'off' to keep raw)", "0.25")
+  .option("--make-clip <target>", "create a Trigger MIDI clip (slot path, or track path + --at-bar)")
+  .option("--at-bar <bar>", "arrangement position for --make-clip track targets")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .action(
+    async (
+      audio: string,
+      cmdOpts: {
+        minGapMs: string;
+        quantize: string;
+        makeClip?: string;
+        atBar?: string;
+        sig: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const result = (await runAnalysisJson([
+        "onsets",
+        audio,
+        "--min-gap-ms",
+        cmdOpts.minGapMs,
+      ])) as unknown as { onsets_s: number[] };
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const beatsPerSec = summary.tempo / 60;
+      let beats = result.onsets_s.map((s) => s * beatsPerSec);
+      if (cmdOpts.quantize !== "off") {
+        const grid = Number(cmdOpts.quantize);
+        beats = [...new Set(beats.map((b) => Math.round(b / grid) * grid))];
+      }
+      const beatsPerBar = Number(cmdOpts.sig);
+      const pretty = () =>
+        [
+          `${beats.length} onsets at ${summary.tempo} BPM (capture assumed to start on the beat):`,
+          `  beats: ${beats.map((b) => b.toFixed(2)).join(",")}`,
+          `use with: awh mix duck fit <drums> --triggers "${beats.map((b) => b.toFixed(3)).join(",")}"`,
+        ].join("\n");
+
+      if (!cmdOpts.makeClip) {
+        output(opts, { beats, tempo: summary.tempo }, pretty);
+        return;
+      }
+      const lengthBeats = Math.ceil(Math.max(...beats) / beatsPerBar + 0.001) * beatsPerBar;
+      const isSlot = /\/slot:\d+$/.test(cmdOpts.makeClip);
+      if (!isSlot && cmdOpts.atBar === undefined) {
+        throw new Error("--make-clip with a track path needs --at-bar");
+      }
+      const created = (await op(opts, "clip.create-midi", {
+        target: isSlot
+          ? { type: "session", slotPath: cmdOpts.makeClip }
+          : {
+              type: "arrangement",
+              trackPath: cmdOpts.makeClip,
+              startBeat: (Number(cmdOpts.atBar) - 1) * beatsPerBar,
+            },
+        lengthBeats,
+        notes: beats.map((b) => ({ pitch: 36, start: b, duration: 0.25, velocity: 100 })),
+        name: "Trigger (detected)",
+      })) as { path: string };
+      output(opts, { beats, clip: created.path }, () =>
+        `${pretty()}\nTrigger clip -> ${created.path} (${beats.length} notes, C1)`,
       );
     },
   );
@@ -1339,6 +1467,162 @@ lib
   );
 
 // ---------------------------------------------------------------------------
+// Knowledge base (B4): tiered, executable-first entries; open-ended topics;
+// measurement records surfaced alongside. See knowledge/README.md.
+// ---------------------------------------------------------------------------
+
+function knowledgeStore(): KnowledgeStore {
+  const root = repoRoot();
+  return new KnowledgeStore(
+    join(root, "knowledge"),
+    join(findLibraryRoot(), "measurements"),
+    join(findLibraryRoot(), "references"),
+  );
+}
+
+const kb = program
+  .command("kb")
+  .description("Browse the knowledge base (knowledge/ + measurement records)");
+
+kb
+  .command("list")
+  .description("List knowledge entries")
+  .option("--topic <topic>", "topic prefix filter (topics are open-ended directories)")
+  .option("--tag <tag>", "tag filter")
+  .option("--tier <tier>", "verified | sourced | draft")
+  .action(async (cmdOpts: { topic?: string; tag?: string; tier?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const entries = await knowledgeStore().listEntries({
+      ...(cmdOpts.topic ? { topic: cmdOpts.topic } : {}),
+      ...(cmdOpts.tag ? { tag: cmdOpts.tag } : {}),
+      ...(cmdOpts.tier ? { tier: cmdOpts.tier } : {}),
+    });
+    output(opts, entries, () =>
+      entries.length === 0
+        ? "no matching knowledge entries"
+        : entries
+            .map(
+              (e) =>
+                `${e.slug.padEnd(30)} ${e.topic.padEnd(16)} [${e.tier}]` +
+                `${e.executable ? "" : " PROSE-ONLY"} ${e.tags.join(",")}`,
+            )
+            .join("\n"),
+    );
+  });
+
+kb
+  .command("topics")
+  .description("List knowledge topics (discovered from the tree)")
+  .action(async () => {
+    const opts = program.opts<GlobalOpts>();
+    const topics = await knowledgeStore().listTopics();
+    output(opts, topics, () => (topics.length ? topics.join("\n") : "no topics yet"));
+  });
+
+kb
+  .command("show <slug>")
+  .description("Print a knowledge entry (full markdown)")
+  .action(async (slug: string) => {
+    const opts = program.opts<GlobalOpts>();
+    const store = knowledgeStore();
+    const entry = await store.loadEntry(slug);
+    output(opts, entry, () => readFileSync(join(store.root, entry.relPath), "utf8").trimEnd());
+  });
+
+kb
+  .command("index")
+  .description("Regenerate knowledge/INDEX.md (entries by topic + measurement records)")
+  .action(async () => {
+    const opts = program.opts<GlobalOpts>();
+    const content = await knowledgeStore().buildIndex();
+    output(opts, { root: knowledgeStore().root }, () => content.trimEnd());
+  });
+
+kb
+  .command("new <topic> <slug>")
+  .description("Scaffold a well-formed knowledge entry (tier: draft) to fill in")
+  .option("--title <title>", "entry title (default: from the slug)")
+  .option("--tags <tags>", "comma-separated tags")
+  .action(async (topic: string, slug: string, cmdOpts: { title?: string; tags?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const title =
+      cmdOpts.title ?? slug.replace(/-/g, " ").replace(/^./, (c) => c.toUpperCase());
+    const file = await knowledgeStore().saveEntry({
+      slug,
+      topic,
+      tier: "draft",
+      tags: splitTags(cmdOpts.tags),
+      sources: [],
+      related: [],
+      title,
+      body: [
+        "## Executable",
+        "<!-- pipeline spec, awh-notation block, awh-style-spec block, or recipe.",
+        "     Prose-only is a last resort and gets flagged in the index. -->",
+        "",
+        "## The rule",
+        "<!-- the knowledge, with numbers -->",
+      ].join("\n"),
+    });
+    await knowledgeStore().buildIndex();
+    output(opts, { file }, () => `scaffolded ${file} — fill in Executable + rule, then kb index`);
+  });
+
+program
+  .command("distill")
+  .description(
+    "Dump the open project for knowledge curation: structure, devices, and " +
+      "every MIDI clip's notation — feed for creating library/knowledge entries",
+  )
+  .option("-o, --out <file>", "write to a file instead of stdout")
+  .option("--sig <beatsPerBar>", "beats per bar for notation", "4")
+  .action(async (cmdOpts: { out?: string; sig: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const summary = (await op(opts, "set.summary")) as SetSummary;
+    const beatsPerBar = Number(cmdOpts.sig);
+    const lines = [
+      `# Project distill — ${new Date().toISOString().slice(0, 10)}`,
+      "",
+      `tempo ${summary.tempo} BPM · ${summary.trackCount} tracks · ${summary.sceneCount} scenes` +
+        (summary.scale.active
+          ? ` · scale ${PITCH_CLASSES[summary.scale.rootNote % 12]} ${summary.scale.name}`
+          : ""),
+      "",
+    ];
+    for (const track of summary.tracks) {
+      lines.push(`## ${track.path} [${track.kind}] ${track.name}`);
+      if (track.devices.length) {
+        lines.push(`devices: ${track.devices.map((d) => d.name).join(" -> ")}`);
+      }
+      const clips = [...track.sessionClips, ...track.arrangementClips];
+      for (const clip of clips) {
+        if (clip.kind !== "midi") {
+          lines.push("", `### ${clip.path} ${clip.name} (audio)`);
+          continue;
+        }
+        const detail = (await op(opts, "clip.get", { path: clip.path })) as ClipDetail;
+        lines.push(
+          "",
+          `### ${clip.path} ${clip.name || "(unnamed)"} — ${detail.duration} beats`,
+          "```awh-notation",
+          detail.notes?.length
+            ? serializeNotation(detail.notes, { beatsPerBar })
+            : "# (empty clip)",
+          "```",
+        );
+      }
+      lines.push("");
+    }
+    const text = lines.join("\n");
+    if (cmdOpts.out) {
+      await writeFile(cmdOpts.out, text, "utf8");
+      output(opts, { out: cmdOpts.out }, () => `distilled -> ${cmdOpts.out}`);
+    } else {
+      process.stdout.write(`${text}\n`);
+    }
+  });
+
+// ---------------------------------------------------------------------------
 // Mix analysis (M6): measurement engine (Python) + M4L capture tap driver.
 // ---------------------------------------------------------------------------
 
@@ -1610,6 +1894,12 @@ async function captureSpan(
   await new Promise((r) => setTimeout(r, seconds * 1000));
   await sendToTap("/awh/play", [0], spec.tapPort);
   await sendToTap("/awh/stop", [], spec.tapPort);
+  // sfrecord~ has no completion ack over OSC — give it a moment to flush
+  // and close the WAV header before anything reads the file. Without this,
+  // an immediate read can see a file that `existsSync` but whose header
+  // still reports 0 frames (found live: intermittent "selection is 0.000s"
+  // analysis failures on files that were valid moments later).
+  await new Promise((r) => setTimeout(r, 400));
   if (!existsSync(spec.out)) {
     throw new Error(
       `${spec.out} was not created — is the AWH Capture Tap device loaded (m4l/README.md) ` +
@@ -1694,14 +1984,23 @@ duckCmd
       await setDeviceParam(opts, inserted.path, name, value);
       return `  ok ${name} -> ${value} (raw range ${p.min}..${p.max})`;
     };
+    // "Sidechain On" is a normal automatable param (live-verified) — only
+    // the Audio From ROUTING is genuinely outside the SDK. Live's exact
+    // param name varies, so match candidates.
+    const scOn = ["S/C On", "Sidechain On", "SideChain On", "SC On"]
+      .map((n) => byName.get(n))
+      .find((q) => q !== undefined);
     const lines = [
       `Compressor inserted at ${inserted.path}`,
       await setRaw("Attack", byName.get("Attack")?.min ?? 0),
       await setRaw("Ratio", byName.get("Ratio")?.max ?? 0),
+      scOn
+        ? await setRaw(scOn.name, scOn.max)
+        : '  !  no sidechain-enable param found (looked for S/C On variants) — enable it by hand',
       "",
-      "Manual touches (SDK cannot set routing or ms-displays):",
-      "  1. Unfold the Compressor's sidechain section -> enable Sidechain,",
-      "     Audio From = your trigger source (Kick / Trigger-audio track)",
+      "Manual touches (the SDK cannot set routing or ms-displays):",
+      "  1. Audio From = your trigger source (Kick / Trigger-audio track)" +
+        (scOn ? "" : " + enable Sidechain"),
       `  2. Release -> ${cmdOpts.releaseMs ? `${cmdOpts.releaseMs} ms` : "the release_ms from `awh mix duck fit`"}`,
       "",
       "Then calibrate the depth automatically:",
@@ -1858,35 +2157,230 @@ mix
       tail: string;
     }) => {
       const opts = program.opts<GlobalOpts>();
-      const beatsPerBar = Number(cmdOpts.sig);
-      const startBeat = (Number(cmdOpts.fromBar) - 1) * beatsPerBar;
-      const lengthBeats = Number(cmdOpts.bars) * beatsPerBar;
-      const summary = (await op(opts, "set.summary")) as SetSummary;
-      const seconds = (lengthBeats / summary.tempo) * 60 + Number(cmdOpts.tail);
-      const port = Number(cmdOpts.tapPort);
       const outPath = resolve(cmdOpts.out);
-
-      await sendToTap("/awh/loop", [startBeat, lengthBeats], port);
-      await sendToTap("/awh/record", [outPath], port);
-      await sendToTap("/awh/play", [1], port);
       process.stderr.write(
-        `recording ${cmdOpts.bars} bars (~${seconds.toFixed(1)}s) at ${summary.tempo} BPM…\n`,
+        `recording ${cmdOpts.bars} bars at the tap (${outPath})…\n`,
       );
-      await new Promise((r) => setTimeout(r, seconds * 1000));
-      await sendToTap("/awh/play", [0], port);
-      await sendToTap("/awh/stop", [], port);
-
-      if (!existsSync(outPath)) {
-        throw new Error(
-          `${outPath} was not created — is the AWH Capture Tap device loaded (m4l/README.md) ` +
-            "and listening on the right port? The tap writes wherever the device sits.",
-        );
-      }
+      const seconds = await captureSpan(opts, {
+        fromBar: Number(cmdOpts.fromBar),
+        bars: Number(cmdOpts.bars),
+        beatsPerBar: Number(cmdOpts.sig),
+        tapPort: Number(cmdOpts.tapPort),
+        out: outPath,
+        tailS: Number(cmdOpts.tail),
+      });
+      const summary = (await op(opts, "set.summary")) as SetSummary;
       output(opts, { file: outPath, seconds }, () =>
         `captured -> ${outPath}\nanalyze with: awh mix report ${outPath} --bpm ${summary.tempo}`,
       );
     },
   );
+
+// ---------------------------------------------------------------------------
+// Reference deconstruction (M8): tempo/grid/energy/sections from a reference
+// audio file, draft section map as marker clips, corrections read back.
+// ---------------------------------------------------------------------------
+
+interface RefSection {
+  name: string;
+  start_bar: number;
+  end_bar: number;
+  confidence: number;
+  evidence?: string;
+}
+
+const ref = program
+  .command("ref")
+  .description("Deconstruct reference tracks: tempo, energy arc, section map");
+
+ref
+  .command("analyze <audio>")
+  .description("Analyze a reference: BPM/grid, bar energy arc, rule-based sections")
+  .option("--phrase <bars>", "phrase length sections snap to (4 or 8)", "4")
+  .option(
+    "--hint-bpm <bpm>",
+    "tempo disambiguation hint (e.g. the Set's tempo) — swaps in the runner-up " +
+      "when it matches within 2%; never invents a tempo",
+  )
+  .option("--save [name]", "save to library/references/<name>.json (knowledge citizen)")
+  .action(
+    async (audio: string, cmdOpts: { phrase: string; hintBpm?: string; save?: string | boolean }) => {
+      const opts = program.opts<GlobalOpts>();
+      const args = ["ref", audio, "--phrase", cmdOpts.phrase];
+      if (cmdOpts.hintBpm) args.push("--hint-bpm", cmdOpts.hintBpm);
+      if (cmdOpts.save !== undefined) {
+        const name =
+          typeof cmdOpts.save === "string"
+            ? cmdOpts.save
+            : slugify(basename(audio).replace(/\.[^.]+$/, "") || "reference");
+        const dest = join(findLibraryRoot(), "references", `${name}.json`);
+        await mkdir(dirname(dest), { recursive: true });
+        args.push("--save-record", dest);
+        process.stderr.write(`reference record -> ${dest}\n`);
+      }
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+const refSections = ref
+  .command("sections")
+  .description("Draft section map <-> named marker clips on a Sections track");
+
+refSections
+  .command("apply <analysisOrAudio>")
+  .description(
+    "Write the analyzed section map into Live as empty named clips on a " +
+      "'Sections' MIDI track (created if missing) — the owner corrects by " +
+      "dragging/renaming, then `ref sections read` picks the corrections up",
+  )
+  .option("--track <trackPath>", "existing track to use instead of 'Sections'")
+  .option("--phrase <bars>", "phrase length (when analyzing audio directly)", "4")
+  .option("--sig <beatsPerBar>", "beats per bar on the timeline", "4")
+  .option("--clear", "clear existing clips on the target track first")
+  .action(
+    async (
+      analysisOrAudio: string,
+      cmdOpts: { track?: string; phrase: string; sig: string; clear?: boolean },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const beatsPerBar = Number(cmdOpts.sig);
+
+      let sections: RefSection[];
+      let sourceBpm: number | undefined;
+      if (analysisOrAudio.endsWith(".json")) {
+        const parsed = JSON.parse(await readFile(analysisOrAudio, "utf8")) as {
+          sections?: RefSection[];
+          bpm?: number;
+          reference?: { sections: RefSection[]; bpm: number };
+        };
+        const analysis = parsed.reference ?? parsed;
+        if (!analysis.sections) throw new Error(`${analysisOrAudio} has no sections`);
+        sections = analysis.sections;
+        sourceBpm = analysis.bpm;
+      } else {
+        const result = (await runAnalysisJson([
+          "ref",
+          analysisOrAudio,
+          "--phrase",
+          cmdOpts.phrase,
+        ])) as unknown as { sections: RefSection[]; bpm: number };
+        sections = result.sections;
+        sourceBpm = result.bpm;
+      }
+      if (sections.length === 0) throw new Error("no sections detected — nothing to apply");
+
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      let trackPath = cmdOpts.track;
+      if (!trackPath) {
+        const existing = summary.tracks.find(
+          (t) => t.kind === "midi" && t.name.toLowerCase() === "sections",
+        );
+        if (existing) {
+          trackPath = existing.path;
+        } else {
+          const created = (await op(opts, "track.create", {
+            kind: "midi",
+            name: "Sections",
+          })) as { path: string };
+          trackPath = created.path;
+        }
+      }
+      const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
+      if (track && track.arrangementClips.length > 0) {
+        if (!cmdOpts.clear) {
+          throw new Error(
+            `${trackPath} already has ${track.arrangementClips.length} arrangement clips — ` +
+              "pass --clear to replace the map, or --track for a different track",
+          );
+        }
+        const endBeat = Math.max(...track.arrangementClips.map((c) => c.endTime ?? 0));
+        await op(opts, "track.clear-range", { path: trackPath, startBeat: 0, endBeat });
+      }
+
+      for (const s of sections) {
+        const startBeat = (s.start_bar - 1) * beatsPerBar;
+        const lengthBeats = (s.end_bar - s.start_bar + 1) * beatsPerBar;
+        await op(opts, "clip.create-midi", {
+          target: { type: "arrangement", trackPath, startBeat },
+          lengthBeats,
+          notes: [],
+          name: `${s.name} ${s.end_bar - s.start_bar + 1}b [c=${s.confidence.toFixed(2)}]`,
+        });
+      }
+      output(opts, { trackPath, sections: sections.length, bpm: sourceBpm }, () =>
+        [
+          `${sections.length} section markers -> ${trackPath}` +
+            (sourceBpm ? ` (reference ${sourceBpm.toFixed(1)} BPM)` : ""),
+          ...sections.map(
+            (s) =>
+              `  bar ${String(s.start_bar).padStart(3)}-${String(s.end_bar).padEnd(3)} ` +
+              `${s.name} [confidence ${s.confidence.toFixed(2)}]`,
+          ),
+          "correct by dragging/renaming the clips, then: awh ref sections read " + trackPath,
+        ].join("\n"),
+      );
+    },
+  );
+
+refSections
+  .command("read <trackPath>")
+  .description("Read the (corrected) section clips back into an analysis JSON")
+  .option("--sig <beatsPerBar>", "beats per bar on the timeline", "4")
+  .option("-o, --out <file>", "write the updated section map JSON here")
+  .option(
+    "--save <name>",
+    "merge the correction into an existing library/references/<name>.json " +
+      "(the saved reference's sections field; bpm/arc/etc. untouched)",
+  )
+  .action(async (trackPath: string, cmdOpts: { sig: string; out?: string; save?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const beatsPerBar = Number(cmdOpts.sig);
+    const summary = (await op(opts, "set.summary")) as SetSummary;
+    const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
+    if (!track) throw new Error(`track not found: ${trackPath}`);
+    const sections = track.arrangementClips
+      .slice()
+      .sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0))
+      .map((c) => {
+        // lenient parse of "<name> <len>b [c=0.82]" — corrections may drop parts
+        const m = c.name.match(/^(.*?)(?:\s+\d+b)?(?:\s+\[c=([\d.]+)\])?\s*$/);
+        return {
+          name: (m?.[1] ?? c.name).trim() || "section",
+          start_bar: Math.round((c.startTime ?? 0) / beatsPerBar) + 1,
+          end_bar: Math.round((c.endTime ?? 0) / beatsPerBar),
+          confidence: m?.[2] ? Number(m[2]) : 1.0, // owner-corrected = certain
+          evidence: "owner correction",
+        };
+      });
+    if (sections.length === 0) throw new Error(`no section clips on ${trackPath}`);
+    const result = { trackPath, beatsPerBar, sections };
+    if (cmdOpts.out) {
+      await writeFile(cmdOpts.out, `${JSON.stringify(result, null, 2)}\n`, "utf8");
+    }
+    let savedTo: string | undefined;
+    if (cmdOpts.save) {
+      const dest = join(findLibraryRoot(), "references", `${cmdOpts.save}.json`);
+      if (!existsSync(dest)) {
+        throw new Error(`${dest} does not exist — run \`awh ref analyze --save ${cmdOpts.save}\` first`);
+      }
+      const record = JSON.parse(await readFile(dest, "utf8")) as {
+        reference: { sections: unknown };
+      };
+      record.reference.sections = sections;
+      await writeFile(dest, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+      savedTo = dest;
+    }
+    output(opts, { ...result, ...(savedTo ? { savedTo } : {}) }, () =>
+      [
+        `${sections.length} sections read from ${trackPath}${cmdOpts.out ? ` -> ${cmdOpts.out}` : ""}`,
+        ...sections.map(
+          (s) => `  bar ${String(s.start_bar).padStart(3)}-${String(s.end_bar).padEnd(3)} ${s.name}`,
+        ),
+        ...(savedTo ? [`merged into ${savedTo} — run \`awh kb index\` to refresh the index`] : []),
+      ].join("\n"),
+    );
+  });
 
 program
   .command("render <trackPath>")

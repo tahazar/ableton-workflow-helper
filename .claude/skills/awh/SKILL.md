@@ -171,6 +171,56 @@ awh mix target <refFiles...> --save <name>        # measure refs -> genre target
   master; if it fails, fall back to asking the user to export the span and
   run report on that file.
 
+## References (`awh ref`) — deconstruct, mark, correct
+
+```sh
+awh ref analyze <audio> [--save name]     # BPM/grid + bar energy arc +
+                                          # rule-based intro/build/drop/breakdown
+awh ref sections apply <analysis.json|audio>  # draft map -> named empty clips
+                                          # on a "Sections" track
+awh ref sections read <trackPath> [-o f]  # owner's corrections -> JSON
+```
+
+- The map is a DRAFT: always tell the owner the confidence values and that
+  they should drag/rename the marker clips to correct it — then `read` the
+  corrections back. Never treat low-confidence sections as fact.
+- Half/double-time ambiguity (trap!) is surfaced in `bpm_runner_up` and
+  notes — mention it when present, don't silently pick.
+- `--save` makes the reference a knowledge citizen (library/references/);
+  its embedded measurement profile feeds `mix target` comparisons.
+- apply refuses a non-empty Sections track without --clear (usual rule).
+- Building an arrangement against a reference: analyze -> apply -> owner
+  corrects -> read -> use the corrected bars to shape an `awh sections`
+  plan (bars per section come straight from the reference map).
+
+## Knowledge base (`awh kb` / `awh distill`) — read before you reason
+
+`knowledge/<topic>/<slug>.md`: tiered (verified/sourced/draft), executable-
+first entries. Topics are OPEN-ENDED (new domain = new directory). Saved mix
+reports (`library/measurements/`) are part of the same surface.
+
+```sh
+awh kb list [--topic t] [--tag t] [--tier t]   # browse entries
+awh kb topics / awh kb show <slug> / awh kb index
+awh kb new <topic> <slug>            # scaffold a well-formed draft entry
+awh distill [-o file]                # dump the open project for curation
+```
+
+- **Retrieval-first**: BEFORE genre/technique/setup tasks, grep
+  `knowledge/INDEX.md` (or `awh kb list --topic <t>`). Setup entries (e.g.
+  `sidechain-template`) are read before designing anything touching that
+  part of the studio. Cite `slug [tier]` when applying an entry; NEVER
+  present a `draft` as fact.
+- **Capture**: when the owner says "remember this" / "save what we learned",
+  `awh kb new` + fill in Executable + rule; end-of-session distillation via
+  `awh distill` → curate notable clips into `awh save` and rules into
+  entries. New entries you author are tier `draft` (or `sourced` WITH
+  citations) — never `verified`; only the owner promotes.
+- **Data-driven drum styles**: a `drum-style-<name>` entry with an
+  ```awh-style-spec``` block makes `awh drums gen --style <name>` work for
+  styles beyond the built-ins — adding a style = writing knowledge, not
+  code. gen prints the entry's tier when it uses one.
+
 ## Library (`awh save` / `awh lib`) — the owner's clip memory
 
 Git-versioned clips under `library/clips/<category>/<slug>.md` (markdown +
@@ -268,6 +318,32 @@ song structure"):
    don't fight that by hand-placing clips instead — use `--at-bar` past the
    song's end, or ask the user before `--clear`ing real content.
 
+**Map out a reference track / build a matching skeleton** ("map out this
+reference and build me a matching skeleton", "structure my track like
+<reference>", "what's the arrangement of this reference song"):
+1. Get the reference audio (owner-provided file, or a track/clip already in
+   the Set — render it with `awh render` if it's on an audio track).
+2. `awh ref analyze <audio> [--save <name>]` → BPM/grid + a rule-based DRAFT
+   section map. This is NOT `awh sections` (that builds skeletons from the
+   owner's OWN loops) — `awh ref` deconstructs someone else's track first.
+3. `awh ref sections apply <analysis.json|audio>` → named empty clips on a
+   "Sections" track. Tell the owner the per-section confidence and that
+   low-confidence/unlabeled stretches are expected — the rules refuse to
+   guess past their evidence rather than mislabel. Never present a
+   low-confidence section as settled fact.
+4. Owner corrects by dragging boundaries/renaming clips in Live. Then
+   `awh ref sections read <trackPath> [--save <name>]` pulls the correction
+   back — `--save` merges it into the saved reference record (`analyze`'s
+   file only ever holds what was true at analyze time otherwise). Names are
+   parsed leniently; don't "fix" a non-standard name the owner chose.
+5. To build a matching skeleton: `awh sections plan --from-ref <file> --role
+   <role>=<sourceClip> ...` where `<file>` is the `-o` output of `ref
+   sections read` (or a saved `library/references/*.json`) — bars come
+   straight from the reference's corrected map, every layer verbatim (no
+   genre ops guessed, since an arbitrary reference has no known convention
+   to apply). Mutually exclusive with `--form`. Same review-before-apply
+   flow as the preset path: show the YAML, `apply --dry-run`, then apply.
+
 **Save/place a library clip** ("save that hat loop for later", "place my
 garage hats", "use my saved bassline"):
 1. Saving: `awh save <clipPath> --category <c> [--tags ...] [--tier ...]` —
@@ -317,7 +393,12 @@ the owner's template routes BASS/SAMPLES through a Sidechain bus with a
 MIDI "Trigger" track. Always start from the fit, then pick a strategy:
 1. FIT (both strategies): capture the DRUMS bus over a span starting on the
    Trigger pattern's boundary, then
-   `awh mix duck fit <drumsCapture> --trigger-clip <Trigger clip>`
+   `awh mix duck fit <drumsCapture> --trigger-clip <Trigger clip>`.
+   No MIDI Trigger clip (audio one-shot kits)? Derive real positions first:
+   `awh drums detect-onsets <drumsCapture> [--make-clip <target>]` — NEVER
+   guess trigger beats; fit now warns when triggers don't match real hits
+   (peak far from window start / absurd peak-over-floor) — treat those
+   warnings as a stop, not noise.
    (`--bass <bassCapture>` → masking-based depth) → measured kick body/tail
    + depth/hold/release + points.
 2. AUTOMATIC strategy (default when the owner says "automatic" or has no
@@ -340,6 +421,18 @@ MIDI "Trigger" track. Always start from the fit, then pick a strategy:
    tightening the kick's own decay.
 Volume-automation ducking is NOT possible via the gateway (no automation
 API) — say so if asked; don't improvise workarounds into real projects.
+
+**Answer from / add to the knowledge base** ("what do we know about X",
+"how does <artist> do Y", "remember this", "save what we learned today"):
+1. Retrieval: `awh kb list --topic <t>` or grep `knowledge/INDEX.md` FIRST —
+   if an entry covers it, `awh kb show <slug>`, apply its Executable
+   section, and cite `slug [tier]`. Only reason from scratch when the KB is
+   genuinely silent (and say so).
+2. Capture: `awh kb new <topic> <slug>` (topics are open-ended — invent a
+   directory if none fits), fill in Executable + rule; your entries are
+   `draft` (or `sourced` with citations), never `verified`.
+3. End-of-session: `awh distill -o /tmp/distill.md` dumps the project;
+   curate the notable clips into `awh save` and the lessons into entries.
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not

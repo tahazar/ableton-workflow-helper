@@ -79,3 +79,22 @@ def to_mono(x: np.ndarray) -> np.ndarray:
     if x.ndim == 1:
         return x
     return x.mean(axis=1)
+
+
+def sanitize_json(obj):
+    """Replace non-finite floats (inf/-inf/nan) with None recursively.
+
+    Python's json module happily writes Infinity/-Infinity/NaN with
+    allow_nan=True — which is NOT valid JSON and breaks strict parsers
+    (found live: a silent bar's -inf dB in a reference record crashed the
+    Node CLI). Null is the honest encoding of "no measurable energy".
+    """
+    import math
+
+    if isinstance(obj, float):
+        return obj if math.isfinite(obj) else None
+    if isinstance(obj, dict):
+        return {k: sanitize_json(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [sanitize_json(v) for v in obj]
+    return obj

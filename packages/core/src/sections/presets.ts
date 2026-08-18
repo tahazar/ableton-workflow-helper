@@ -48,6 +48,41 @@ export function listForms(): string[] {
 }
 
 /**
+ * Build a plan from a reference track's (owner-corrected) section map
+ * instead of a genre-form preset — bars come straight from the reference,
+ * not an opinionated preset. Every layer defaults to verbatim (no ops):
+ * unlike the built-in presets, an arbitrary reference's section names
+ * ("bridge 2", "post drop", ...) carry no known genre convention to apply,
+ * so this doesn't guess thinning/effects the way HOUSE/TRAP do — the owner
+ * edits the emitted YAML to taste, same review-before-apply flow.
+ */
+export function planFromReferenceSections(
+  refSections: { name: string; start_bar: number; end_bar: number }[],
+  roles: Record<string, { trackPath: string; source: string }>,
+): SectionsPlan {
+  if (refSections.length === 0) {
+    throw new BridgeError("bad_request", "reference has no sections to build a plan from");
+  }
+  if (Object.keys(roles).length === 0) {
+    throw new BridgeError("bad_request", "at least one role (e.g. drums=track:0/slot:0) is required");
+  }
+  const trackMap: Record<string, string> = {};
+  for (const [role, { trackPath }] of Object.entries(roles)) trackMap[role] = trackPath;
+
+  return {
+    name: "reference-skeleton",
+    trackMap,
+    sections: refSections.map((s) => ({
+      name: s.name,
+      bars: s.end_bar - s.start_bar + 1,
+      tracks: Object.fromEntries(
+        Object.entries(roles).map(([role, { source }]) => [role, { source }]),
+      ),
+    })),
+  };
+}
+
+/**
  * Build a concrete plan from a form preset.
  * roles: role name -> { trackPath, source } for the roles the user has.
  */

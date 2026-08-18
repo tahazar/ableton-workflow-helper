@@ -398,6 +398,8 @@ def save_record(
         "findings": finding_list,
     }
     os.makedirs(os.path.dirname(os.path.abspath(record_path)), exist_ok=True)
+    from .audio import sanitize_json
+
     with open(record_path, "w", encoding="utf-8") as f:
-        json.dump(record, f, indent=2, allow_nan=True)
+        json.dump(sanitize_json(record), f, indent=2, allow_nan=False)
         f.write("\n")

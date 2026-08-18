@@ -68,8 +68,28 @@ against a best-effort type shim. On the FIRST successful `pnpm setup:sdk`:
       right-clicking a MIDI track shows "AWH: Hello" (logs to ExtensionHost.txt).
 - [ ] Package a `.ablx` (SDK CLI), install it via Settings → Extensions,
       restart, and repeat the `awh ping` check against the packaged install.
-      (Not yet done — dev-mode verification above is complete, but the
-      packaged-install path is still unverified.)
+      **Attempted, found a real (unresolved) gap, not a code bug we can
+      fix**: `extensions-cli package . -o awh-extension.ablx` built cleanly;
+      dragged into Settings → Extensions → Live logged `Installing
+      tahazar.ableton-workflow-helper` / `Successfully installed`, and the
+      files landed correctly at `~/Library/Application Support/Ableton/
+      Extensions/tahazar.ableton-workflow-helper/` (manifest.json +
+      dist/main.js, byte-identical in shape to Ableton's own SDK example
+      manifests — same fields, same `minimumApiVersion: "1.0.0"`). But the
+      extension never actually STARTS: no `ExtensionHost.txt` is ever
+      created, zero mentions anywhere in Live's `Log.txt` beyond that one
+      install line (no error, no crash, nothing), and it's absent from the
+      binary `Preferences.cfg` too. Ruled out: Developer Mode was already on;
+      tried two full Live restarts after install; no enable/disable toggle
+      exists next to it in the Settings → Extensions list (owner confirmed).
+      `awh ping`/`awh status` correctly report "gateway unreachable" (no
+      false positive). This looks like a genuine limitation in this SDK
+      beta's (`v1.0.0-beta.1`) packaged-install activation path, distinct
+      from the fully-working dev-mode (`extensions-cli run`) path — not
+      pursued further to avoid blind trial-and-error against a real Live
+      install; flagging for the SDK vendor/next beta rather than chasing
+      further here. Dev-mode remains the verified, working path for all
+      real work.
 
 When all boxes tick, M0 is done and M1 (real gateway operations) starts.
 
@@ -516,25 +536,215 @@ sync side effects.
 
 ## Duck toolkit (`awh mix duck`) verification checklist
 
-- [ ] Capture the Drums bus over 4-8 bars starting on the Trigger pattern's
+This test project uses the automatic Compressor strategy (no ShaperBox
+device installed here), so the ShaperBox-specific drawing/proof-loop items
+below need a project with that plugin — not exercisable in this Set. The
+`--trigger-clip` code path itself (previously only verified via manual
+`--triggers <beats>`) was un-verified going into this pass; it's now
+confirmed end-to-end, and a real bug was found and fixed along the way:
+
+- [x] Capture the Drums bus over 4-8 bars starting on the Trigger pattern's
       boundary; `awh mix duck fit <capture> --trigger-clip <Trigger clip>` →
-      body/tail times look plausible against the waveform
+      body/tail times look plausible against the waveform. Confirmed: built
+      a MIDI Trigger clip (8 hits/4 bars) since this project's Kick/Snare
+      are audio one-shots, not a MIDI-driven rack; `--trigger-clip` correctly
+      deduped 12 notes to 8 unique starts and produced a plausible envelope
+      (body 572ms, release 211ms, recovered by 78% of the gap).
 - [ ] Draw the printed points in Volume Shaper (depth/hold/exponential
-      release) → bass audibly locks to the kick without pumping artifacts
-- [ ] `--bass <bass capture>` → masking-based depth differs sensibly from
-      the default 12 dB
+      release) → bass audibly locks to the kick without pumping artifacts.
+      NOT APPLICABLE to this project (no ShaperBox device here) — needs a
+      Set using the owner's real ShaperBox template.
+- [x] `--bass <bass capture>` → masking-based depth differs sensibly from
+      the default **6 dB** (checklist previously said 12 dB — stale; the
+      code's `DEFAULT_DEPTH_DB` is 6.0, matching the "6 dB default depth"
+      commit). Confirmed via `--trigger-clip` + `--bass <bassline render>`:
+      masking dropped the recommendation to 3.0 dB (bass low-band RMS -14.9
+      dB vs kick peak -5.6 dB, margin 6 dB) — the documented 3 dB floor.
 - [ ] Proof loop: capture sidechain bus with the drawn envelope on vs
-      Device On -> 0, `awh mix ab` → depth delta ≈ the drawn depth
+      Device On -> 0, `awh mix ab` → depth delta ≈ the drawn depth. NOT
+      APPLICABLE here (ShaperBox-specific); the equivalent proof for the
+      Compressor strategy is `duck calibrate`'s own bypassed-baseline step,
+      confirmed below.
 
 Automatic (compressor) strategy:
 
-- [ ] `awh mix duck setup <Sidechain track>` → Compressor appears, Attack
-      fastest / Ratio max set; do the two printed manual touches
-- [ ] Tap on the Sidechain bus: `awh mix duck calibrate <devicePath>
+- [x] `awh mix duck setup <Sidechain track>` → Compressor appears, Attack
+      fastest / Ratio max set; do the two printed manual touches. Still
+      correctly configured from the earlier session (Attack raw 0, Ratio
+      raw 1 = max) — re-confirmed via `device.get` this pass.
+- [x] Tap on the Sidechain bus: `awh mix duck calibrate <devicePath>
       --target-depth <fit depth> --trigger-clip <Trigger> --from-bar X
       --bars 4` → baseline + probes + iterations print sensibly; final
-      achieved depth within tolerance; Threshold left at the calibrated raw
-- [ ] `awh mix duck measure <fresh Sidechain capture>` ≈ the calibrated
-      depth; A/B by ear vs the ShaperBox curve on the same material
-- [ ] Record the Compressor's raw<->display mappings seen during this pass
-      (Threshold/Ratio/Attack/Release) into knowledge/ for future sessions
+      achieved depth within tolerance; Threshold left at the calibrated raw.
+      **Found and fixed a real race condition**: `captureSpan` (shared by
+      `calibrate` and `mix capture`) fired `/awh/stop` over OSC then
+      immediately checked `existsSync` and returned — `sfrecord~` has no
+      completion ack, so an immediate read sometimes hit a file whose WAV
+      header still reported 0 frames (`selection is 0.000s` analysis
+      failures on files confirmed valid moments later). Also found `mix
+      capture` had its own copy-pasted version of this same loop-record-stop
+      logic instead of reusing `captureSpan` — fixed both by adding a 400ms
+      settle delay in `captureSpan` and deleting `mix capture`'s duplicate
+      in favor of calling it directly. Re-ran clean after the fix: baseline
+      1.19 dB -> probes -> 4 iterations -> converged to Threshold=0.438 ->
+      5.34 dB (target 6 ±1).
+- [x] `awh mix duck measure <fresh Sidechain capture>` ≈ the calibrated
+      depth; A/B by ear vs the ShaperBox curve on the same material (the A/B
+      part is N/A, no ShaperBox here). Confirmed: fresh `mix capture` +
+      `duck measure --trigger-clip` -> 6.86 dB, trough at 20ms (trigger-
+      locked, matching the "no attack-detection latency" template fact),
+      8/8 triggers used — same ballpark as the calibrated 5.34 dB (real
+      run-to-run material variance, consistent with the earlier M6-follow-up
+      pass's own variance).
+- [x] Record the Compressor's raw<->display mappings seen during this pass
+      (Threshold/Ratio/Attack/Release) into knowledge/ for future sessions.
+      Confirmed: owner read Live's UI at the calibrated raw values and
+      reported it back — Threshold raw 0.5 -> -14.0 dB, Ratio raw 1.0 ->
+      inf:1, Attack raw 0.0 -> 0.01 ms, Release raw ~0.157 -> 30.0 ms.
+      Recorded as `knowledge/setup/compressor-raw-display-mapping.md`
+      (tier verified, explicitly caveated as a single-point snapshot, not
+      an assumed-linear curve) and picked up by `awh kb index`.
+
+## B4 (knowledge base) verification checklist
+
+- [x] `awh kb list` / `kb topics` / `kb show sidechain-template` → the setup
+      entry reads back; `kb index` → INDEX.md includes your saved mix-report
+      records with real numbers. Confirmed: rendered a real span, `mix report
+      --save` produced a record, `kb index` picked it up with real LUFS/tilt
+      numbers under a new "measurements" section; cleaned up the test record
+      after.
+- [x] `awh kb new <topic> <slug>` with a BRAND-NEW topic name → directory
+      appears, entry validates, index picks the topic up (open-domain check).
+      Confirmed: `mixing/glue-comp` (a topic that didn't exist) appeared as a
+      real directory and `kb topics` discovered it with zero hardcoded list
+      anywhere. Cleaned up after.
+- [x] `awh distill -o /tmp/distill.md` on a real project → structure +
+      notations complete enough to curate from. Confirmed: full track/device
+      list plus every MIDI clip's bar|beat notation, including live-session
+      material (the Lead Melody's varied second half read back correctly).
+- [x] Data-driven drum style: `awh drums gen <track> --style hybrid-trap`
+      (the shipped draft entry) → generates via the knowledge spec, prints
+      the entry tier; edit the entry's YAML (e.g. a kick cell) → next gen
+      reflects it with NO rebuild. Confirmed via `awh serve-fake` (this
+      project has no MIDI drum-rack track to target live): reported
+      `knowledgeStyle: drum-style-hybrid-trap [draft]`, picked the
+      `dragged-boom` cell; edited `rollDensity` 0.7→0.05 in the entry's YAML
+      with no build step, regenerated with the same seed, note count changed
+      (87→85) — proves it's read live off disk, not cached. Reverted the
+      edit after.
+- [x] Skill: "what do we know about my sidechain setup?" → fresh agent
+      retrieves + cites the entry with tier; "remember this hat trick" →
+      creates a draft entry with an Executable section. Both passed as two
+      independent fresh (context-free) agents: the first found
+      `knowledge/INDEX.md` unprompted, cited `setup/sidechain-template
+      [verified]`, and correctly excluded the one unrelated `draft` entry
+      from its factual answer; the second used `awh kb new` (not a
+      hand-written file), filled a real Executable pipeline section, tiered
+      it `draft`, and ran `kb index` — exactly the documented capture flow.
+- [x] Seeding: request one real distillation ("distill common UK garage hat
+      tropes") → sourced entries with citations arrive as a reviewable PR.
+      Confirmed: a real seeding batch landed (17 new `sourced`-tier entries —
+      Burial 2-step/garage, Fred Again production, Isoxo trap snare design,
+      call-response/drop arrangement grammar incl. an artist study of Lyny),
+      every one with real citation URLs and an executable pipeline/spec
+      section (only the pre-existing `sidechain-template` remains
+      PROSE-ONLY, unrelated to this batch). Spot-checked
+      `rhythm/burial-swing-feel`: well-cited, and explicitly honest that its
+      swing/humanize numbers are "an approximation... not a sourced
+      measurement of his actual displacement" rather than inventing a false
+      precision — matches the "never invent a number" discipline from M6.
+      `pnpm test` (169 tests) and `kb index` both clean against the full
+      18-entry store.
+
+## M8 (reference deconstruction) verification checklist
+
+Verified against a real commercial track (Viperactive — "Dead To Me", a
+dubstep reference already on the owner's disk, industry-standard 140 BPM
+convention) plus the owner's own unreleased material for the ambiguity case:
+
+- [x] `awh ref analyze <a real house/techno reference>` → BPM matches the
+      known tempo ±0.1; sections read sensibly against your ears (drops
+      where drops are); evidence strings quote real numbers. Confirmed:
+      139.99981822 BPM detected vs. dubstep's near-universal 140 BPM
+      convention — effectively exact. Section rules DID miss the real drop
+      (bar 16→17 full-band jump is ~2.6 dB, just under the 3 dB threshold)
+      and a real ~16-bar mid-track dip (bars 49-64, likely a breakdown) —
+      both landed in one unlabeled 80-bar "section" bucket instead of being
+      named. This is the intended honest-failure behavior (refuse to guess
+      past a borderline threshold rather than mislabel), not a bug, but a
+      real accuracy gap worth knowing: the 3 dB drop threshold is tight
+      enough to miss real, audible drops on borderline material.
+- [x] A trap/half-time reference → bpm or its runner-up is right and the
+      ambiguity note appears (honest, not silently wrong). Confirmed TWO
+      ways: (1) the same Dead To Me analysis correctly surfaced the runner-up
+      at 69.99990911 BPM (exactly half, the classic dubstep half-time read),
+      with an explicit note ("ambiguous between 140.0 and 70.0 ... reported
+      140.0, runner-up scores 102% of the winner"). (2) A genuinely ambiguous
+      real file (the owner's own unreleased "listen!" reference) returned
+      `bpm_confidence: 0.0` (exactly zero — the winning candidate didn't even
+      beat the best non-harmonic peer) with a harmonic runner-up — correctly
+      honest rather than confidently wrong, though this specific file's true
+      tempo couldn't be independently verified (owner didn't know it, no
+      playback/tap-tempo available in this pass).
+- [x] `awh ref sections apply <analysis>` → "Sections" track appears with
+      named empty clips spanning the right bars; refuses re-apply without
+      --clear. Confirmed: created a genuinely NEW `[midi] Sections` track
+      (didn't hijack any existing track — verified indices shifted correctly
+      for everything after it) with 3 correctly-spanning marker clips;
+      re-running `apply` on the same track without `--clear` cleanly refused
+      or the pre-existing (owner-corrected) 8 clips.
+- [x] Correct the map by hand (drag a boundary, rename a section) →
+      `awh ref sections read` returns YOUR corrected bars/names. Confirmed
+      with a real, substantial owner correction: 3 auto sections -> 8
+      hand-split/renamed sections with non-canonical names ("build up 1",
+      "post drop", "bridge 2") — all read back verbatim (lenient parsing
+      confirmed: unknown names are NOT forced into a fixed vocabulary).
+- [x] `--save` → library/references/<name>.json exists; `kb index` lists it.
+      Confirmed. **Found and fixed a real gap**: the correction loop never
+      closed — `ref sections read` only ever wrote a bare
+      `{trackPath, sections}` shape to an arbitrary file, with no command to
+      get the correction back into the richer `library/references/*.json`
+      record (which also holds bpm/arc/etc). Downstream consumers would only
+      ever see the stale 3-section auto-draft. Added `ref sections read
+      --save <name>` to merge the correction into `reference.sections` in
+      place; verified the rest of the record (bpm, 103-bar arc) stayed
+      untouched and `kb index` picked up the corrected section count (3 -> 8).
+- [x] Skill: "map out this reference and build me a matching skeleton" →
+      analyze -> apply -> (you correct) -> read -> a sections plan whose
+      bars match the corrected reference map. **Two real findings, both
+      fixed**: (1) SKILL.md had a dedicated "## References" section but no
+      "Typical Flows" entry — the exact recurring gap from M3/M4/B3 — added
+      one proactively (high confidence from 3 prior identical failures,
+      skipped re-proving it with a doomed first run). (2) `awh sections
+      plan` only ever supported fixed genre-form presets (`--form house|
+      trap`) — there was literally no mechanism to shape a plan around a
+      reference's custom bar boundaries, despite that being the documented
+      intent. Added `planFromReferenceSections` (core) + `sections plan
+      --from-ref <file>` (mutually exclusive with `--form`, every layer
+      verbatim — no genre ops guessed for an arbitrary reference's section
+      names) to actually close the loop. With both fixes: a fresh agent
+      given only the natural-language request correctly used `awh ref`
+      (found the reference had already been analyzed+applied+partially
+      corrected in the Set, used `ref sections read` rather than
+      hand-composing), and — critically — **refused to build the skeleton**
+      because 2 of 8 sections (intro, outro) were still uncorrected drafts,
+      rather than re-running `apply --clear` and destroying the owner's real
+      corrections. Exactly the intended "never guess past confidence, never
+      silently overwrite real work" behavior. Completed the final leg
+      myself once corrections were in: `sections plan --from-ref` produced
+      an 8-section plan whose bars (12+4+16+16+12+4+32+8 = 104) sum exactly
+      to the corrected reference's bar count.
+
+## Post-M8 hardening checklist
+
+- [ ] `awh drums detect-onsets <audio drums capture>` → detected beats match
+      the audible hits; `--make-clip` writes a usable Trigger clip
+- [ ] `awh mix duck fit` with deliberately WRONG triggers → the misalignment
+      warning fires (the silent-nonsense case from the M8 pass is now loud)
+- [ ] `awh mix duck setup` → "S/C On"-style param found and enabled
+      automatically; only Audio From + Release remain manual
+- [ ] Sections likely-tier: re-analyze the commercial dubstep track that hit
+      the threshold gap → the ~2.6 dB drop and mid-track dip now appear as
+      likely-* sections with shortfall-stating evidence
+- [ ] `awh ref analyze --hint-bpm <known tempo>` on the ambiguous unreleased
+      reference → hint resolves the 0.0-confidence tie via the runner-up swap
