@@ -1,7 +1,13 @@
 import type { NoteSpec } from "../bridge/types.js";
 import { sortNotes } from "../transforms/types.js";
 import type { DrumContext, DrumKit, DrumRole } from "./types.js";
-import type { TrapFamilyStyleSpec, TrapHatBaseName } from "./styleSpec.js";
+import type {
+  DrumStyleSpec,
+  HouseFamilyStyleSpec,
+  HouseHatGridConfig,
+  TrapFamilyStyleSpec,
+  TrapHatBaseName,
+} from "./styleSpec.js";
 
 /**
  * Style grammars: deterministic drum-pattern generators. Each style builds a
@@ -50,120 +56,277 @@ export function isNearGrid(value: number, grid: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// house
+// house family — four-on-the-floor (house/techno/garage-adjacent) styles
+//
+// A house-family groove has no groove-level "held" choice the way trap's
+// kick cell does (the four-floor kick is fixed); every draw happens per bar.
+// The built-in "house" and "techno" styles are houseFamilyPlan(spec) over
+// HOUSE_STYLE_SPEC / TECHNO_STYLE_SPEC below — see those constants' comments
+// for exactly how each field reproduces the original hand-written generators
+// draw-for-draw, so existing seeded output never changes.
 // ---------------------------------------------------------------------------
 
-function houseBar(
-  kit: DrumKit,
-  beatsPerBar: number,
-  density: number,
-  rng: () => number,
-): NoteSpec[] {
-  const notes: NoteSpec[] = [];
+const RUMBLE_KICK_VELOCITY = 45;
+// Ableton note-probability value on rumble-kick hits; fixed (not spec data),
+// matching the original technoBar literal.
+const RUMBLE_KICK_NOTE_PROBABILITY = 0.4;
+// Fixed entry gate for the perc/shaker ghost layer (matches original houseBar's
+// `density > 0.3`); not spec-configurable — ghostChance only scales the
+// per-16th hit chance once this gate is open.
+const GHOST_GATE_MIN_DENSITY = 0.3;
 
-  for (let b = 0; b < beatsPerBar; b++) {
-    // four-on-the-floor kick, accented
-    addHit(notes, kit, "kick", b, randVelocity(rng, ACCENT));
-
-    // clap and/or snare on the backbeats (2 & 4 -> odd 0-based indices)
-    if (b % 2 === 1) {
-      addHit(notes, kit, "clap", b, randVelocity(rng, NORMAL));
-      addHit(notes, kit, "snare", b, randVelocity(rng, NORMAL));
-    }
-
-    // open hat on every offbeat
-    addHit(notes, kit, "hat-open", b + 0.5, randVelocity(rng, NORMAL));
-  }
-
-  // closed hats: 8ths below density 0.5, 16ths at/above it
-  if (density < 0.5) {
-    for (let pos = 0; pos < beatsPerBar; pos += 0.5) {
-      addHit(notes, kit, "hat-closed", pos, randVelocity(rng, NORMAL));
-    }
-  } else {
-    for (let pos = 0; pos < beatsPerBar; pos += 0.25) {
-      const onEighth = isNearGrid(pos, 0.5);
-      addHit(notes, kit, "hat-closed", pos, randVelocity(rng, onEighth ? NORMAL : HAT_OFF16));
-    }
-  }
-
-  // low-probability perc/shaker ghosts scattered on 16th positions
-  if (density > 0.3) {
-    const ghostRole: DrumRole | undefined =
-      kit.perc !== undefined ? "perc" : kit.shaker !== undefined ? "shaker" : undefined;
-    if (ghostRole !== undefined) {
-      for (let pos = 0; pos < beatsPerBar; pos += 0.25) {
-        if (rng() < 0.15 * density) {
-          addHit(notes, kit, ghostRole, pos, randVelocity(rng, GHOST), 0.3 + rng() * 0.3);
-        }
-      }
-    }
-  }
-
-  return notes;
+function isBackbeatBeat(b: number): boolean {
+  return b % 2 === 1;
 }
 
-// ---------------------------------------------------------------------------
-// techno
-// ---------------------------------------------------------------------------
-
-function technoBar(
+/** Emit one role-hit per backbeat role, in spec order, at `beat`. */
+function emitBackbeatRoles(
+  notes: NoteSpec[],
   kit: DrumKit,
-  beatsPerBar: number,
-  density: number,
+  beat: number,
   rng: () => number,
-): NoteSpec[] {
-  const notes: NoteSpec[] = [];
+  roles: readonly ("clap" | "snare")[],
+): void {
+  for (const role of roles) {
+    addHit(notes, kit, role, beat, randVelocity(rng, NORMAL));
+  }
+}
 
+function emitKicks(notes: NoteSpec[], kit: DrumKit, beatsPerBar: number, rng: () => number): void {
   for (let b = 0; b < beatsPerBar; b++) {
     addHit(notes, kit, "kick", b, randVelocity(rng, ACCENT));
   }
+}
 
-  // closed hat: 16ths only once busy, otherwise sparse offbeat 8ths
-  if (density >= 0.6) {
-    for (let pos = 0; pos < beatsPerBar; pos += 0.25) {
-      addHit(notes, kit, "hat-closed", pos, randVelocity(rng, NORMAL));
-    }
-  } else {
+/**
+ * Closed-hat base grid, dispatching on density vs `grid.threshold` (default
+ * 0.5). See HouseHatLowMode/HouseHatHighMode in styleSpec.ts for what each
+ * mode means; "8ths" at `high` and "16ths" at `low`/`high` intentionally
+ * describe the VELOCITY treatment (uniform vs on-8th/off-16th split), not
+ * grid spacing, since that's what's needed to reproduce both house's and
+ * techno's original dense-hat passes from the same code.
+ */
+function emitHatGrid(
+  notes: NoteSpec[],
+  kit: DrumKit,
+  beatsPerBar: number,
+  rng: () => number,
+  grid: HouseHatGridConfig,
+  density: number,
+  swingDelay: number,
+): void {
+  const threshold = grid.threshold ?? 0.5;
+  const isHigh = density >= threshold;
+  const mode = isHigh ? grid.high : grid.low;
+
+  if (mode === "offbeat-8ths") {
     for (let b = 0; b < beatsPerBar; b++) {
       addHit(notes, kit, "hat-closed", b + 0.5, randVelocity(rng, NORMAL));
     }
+    return;
   }
 
-  // ride 8ths once there's room for it
-  if (density >= 0.5) {
+  if (mode === "8ths" && !isHigh) {
+    // sparse 8th grid, every half beat, uniform velocity
     for (let pos = 0; pos < beatsPerBar; pos += 0.5) {
-      addHit(notes, kit, "ride", pos, randVelocity(rng, NORMAL));
+      addHit(notes, kit, "hat-closed", pos, randVelocity(rng, NORMAL));
     }
+    return;
   }
 
-  // clap on the backbeats, but only once the pattern is dense enough to want it
-  if (density >= 0.4) {
-    for (let b = 0; b < beatsPerBar; b++) {
-      if (b % 2 === 1) addHit(notes, kit, "clap", b, randVelocity(rng, NORMAL));
+  if (mode === "8ths" && isHigh) {
+    // dense 16th-spaced grid, uniform velocity (no on/off split)
+    for (let pos = 0; pos < beatsPerBar; pos += 0.25) {
+      addHit(notes, kit, "hat-closed", pos, randVelocity(rng, NORMAL));
     }
+    return;
   }
 
-  // ghost "rumble" kicks on late 16ths, placement drawn from rng
-  if (density >= 0.5) {
-    for (let b = 0; b < beatsPerBar; b++) {
-      if (rng() < 0.5) {
-        addHit(notes, kit, "kick", b + 0.75, 45, 0.4);
-      }
-    }
+  // "16ths": dense 16th-spaced grid, on-8th/off-16th velocity split; off-16ths
+  // may be delayed by swingDelay.
+  for (let pos = 0; pos < beatsPerBar; pos += 0.25) {
+    const off16 = !isNearGrid(pos, 0.5);
+    const swing = off16 ? swingDelay : 0;
+    addHit(notes, kit, "hat-closed", pos + swing, randVelocity(rng, off16 ? HAT_OFF16 : NORMAL));
   }
-
-  // optional open hat offbeats
-  if (density >= 0.3) {
-    for (let b = 0; b < beatsPerBar; b++) {
-      if (rng() < 0.3) {
-        addHit(notes, kit, "hat-open", b + 0.5, randVelocity(rng, NORMAL));
-      }
-    }
-  }
-
-  return notes;
 }
+
+function emitRide(
+  notes: NoteSpec[],
+  kit: DrumKit,
+  beatsPerBar: number,
+  rng: () => number,
+  density: number,
+  ride: { minDensity: number } | null,
+): void {
+  if (!ride || density < ride.minDensity) return;
+  for (let pos = 0; pos < beatsPerBar; pos += 0.5) {
+    addHit(notes, kit, "ride", pos, randVelocity(rng, NORMAL));
+  }
+}
+
+function emitRumbleKicks(
+  notes: NoteSpec[],
+  kit: DrumKit,
+  beatsPerBar: number,
+  rng: () => number,
+  density: number,
+  rumble: { minDensity: number; probability: number } | null,
+): void {
+  if (!rumble || density < rumble.minDensity) return;
+  for (let b = 0; b < beatsPerBar; b++) {
+    if (rng() < rumble.probability) {
+      addHit(notes, kit, "kick", b + 0.75, RUMBLE_KICK_VELOCITY, RUMBLE_KICK_NOTE_PROBABILITY);
+    }
+  }
+}
+
+/** Techno-style open-hat pass: gated on density >= chance, chance per beat. */
+function emitOpenHatChance(
+  notes: NoteSpec[],
+  kit: DrumKit,
+  beatsPerBar: number,
+  rng: () => number,
+  density: number,
+  chance: number,
+): void {
+  if (density < chance) return;
+  for (let b = 0; b < beatsPerBar; b++) {
+    if (rng() < chance) {
+      addHit(notes, kit, "hat-open", b + 0.5, randVelocity(rng, NORMAL));
+    }
+  }
+}
+
+function pickGhostRole(kit: DrumKit, ghostRoles: readonly ("perc" | "shaker")[]): DrumRole | undefined {
+  for (const role of ghostRoles) {
+    if (kit[role] !== undefined) return role;
+  }
+  return undefined;
+}
+
+function emitGhosts(
+  notes: NoteSpec[],
+  kit: DrumKit,
+  beatsPerBar: number,
+  rng: () => number,
+  density: number,
+  ghostRoles: readonly ("perc" | "shaker")[],
+  ghostChance: number,
+): void {
+  if (density <= GHOST_GATE_MIN_DENSITY) return;
+  const role = pickGhostRole(kit, ghostRoles);
+  if (role === undefined) return;
+  for (let pos = 0; pos < beatsPerBar; pos += 0.25) {
+    if (rng() < 0.15 * density * ghostChance) {
+      addHit(notes, kit, role, pos, randVelocity(rng, GHOST), 0.3 + rng() * 0.3);
+    }
+  }
+}
+
+/**
+ * Build a StyleFactory for a house-family StyleSpec (data-driven B4.1
+ * mechanism). The built-in "house" and "techno" styles are
+ * houseFamilyPlan(HOUSE_STYLE_SPEC) / houseFamilyPlan(TECHNO_STYLE_SPEC).
+ *
+ * `openHatOffbeats === true` (house's default) selects the INTERLEAVED
+ * structure: kick, backbeat, and open-hat are drawn together in one per-beat
+ * loop, exactly matching the original houseBar's draw order. Any other value
+ * (a number, techno-style) selects the SEQUENTIAL structure: kicks, then the
+ * hat grid, ride, backbeat, rumble kicks and open-hat chance each as their
+ * own pass — exactly matching the original technoBar's draw order. This
+ * split exists purely to keep both built-ins byte-identical to their
+ * pre-B4.1 output; a fresh house-family spec can use either shape.
+ */
+function houseFamilyPlan(spec: HouseFamilyStyleSpec): StyleFactory {
+  const backbeat = spec.backbeat ?? ["clap", "snare"];
+  const backbeatMinDensity = spec.backbeatMinDensity ?? 0;
+  const openHatOffbeats = spec.openHatOffbeats ?? true;
+  const hatGrid: HouseHatGridConfig = spec.hatGrid ?? { low: "8ths", high: "16ths" };
+  const ride = spec.ride ?? null;
+  const ghostRoles = spec.ghostRoles ?? ["perc", "shaker"];
+  const ghostChance = spec.ghostChance ?? 1;
+  const rumbleKicks = spec.rumbleKicks ?? null;
+  const swingDelay = spec.swingDelay ?? 0;
+  const interleaved = openHatOffbeats === true;
+
+  return (kit, beatsPerBar, density, _rng, _variant) => {
+    // hatBase is a pure function of density + hatGrid (no rng draw), so it's
+    // safe to report in meta without disturbing the draw sequence.
+    const threshold = hatGrid.threshold ?? 0.5;
+    const hatBase = density >= threshold ? hatGrid.high : hatGrid.low;
+
+    const bar = (barCtx: { rng: () => number; turnaround: boolean }): NoteSpec[] => {
+      const { rng } = barCtx; // house family has no turnaround logic (matches original)
+      const notes: NoteSpec[] = [];
+      const backbeatEnabled = backbeat.length > 0 && density >= backbeatMinDensity;
+
+      if (interleaved) {
+        for (let b = 0; b < beatsPerBar; b++) {
+          addHit(notes, kit, "kick", b, randVelocity(rng, ACCENT));
+          if (backbeatEnabled && isBackbeatBeat(b)) {
+            emitBackbeatRoles(notes, kit, b, rng, backbeat);
+          }
+          addHit(notes, kit, "hat-open", b + 0.5, randVelocity(rng, NORMAL));
+        }
+        emitHatGrid(notes, kit, beatsPerBar, rng, hatGrid, density, swingDelay);
+        emitRide(notes, kit, beatsPerBar, rng, density, ride);
+        emitRumbleKicks(notes, kit, beatsPerBar, rng, density, rumbleKicks);
+        emitGhosts(notes, kit, beatsPerBar, rng, density, ghostRoles, ghostChance);
+      } else {
+        emitKicks(notes, kit, beatsPerBar, rng);
+        emitHatGrid(notes, kit, beatsPerBar, rng, hatGrid, density, swingDelay);
+        emitRide(notes, kit, beatsPerBar, rng, density, ride);
+        if (backbeatEnabled) {
+          for (let b = 0; b < beatsPerBar; b++) {
+            if (isBackbeatBeat(b)) emitBackbeatRoles(notes, kit, b, rng, backbeat);
+          }
+        }
+        emitRumbleKicks(notes, kit, beatsPerBar, rng, density, rumbleKicks);
+        if (typeof openHatOffbeats === "number") {
+          emitOpenHatChance(notes, kit, beatsPerBar, rng, density, openHatOffbeats);
+        }
+        emitGhosts(notes, kit, beatsPerBar, rng, density, ghostRoles, ghostChance);
+      }
+
+      return notes;
+    };
+
+    return { meta: { hatBase }, bar };
+  };
+}
+
+/** The built-in "house" style, expressed as data through the B4.1 path. */
+export const HOUSE_STYLE_SPEC: HouseFamilyStyleSpec = {
+  name: "house",
+  family: "house",
+  kickBeats: "four-floor",
+  backbeat: ["clap", "snare"],
+  backbeatMinDensity: 0,
+  openHatOffbeats: true,
+  hatGrid: { low: "8ths", high: "16ths", threshold: 0.5 },
+  ride: null,
+  ghostRoles: ["perc", "shaker"],
+  ghostChance: 1,
+  rumbleKicks: null,
+  swingDelay: 0,
+};
+
+/** The built-in "techno" style, expressed as data through the B4.1 path. */
+export const TECHNO_STYLE_SPEC: HouseFamilyStyleSpec = {
+  name: "techno",
+  family: "house",
+  kickBeats: "four-floor",
+  backbeat: ["clap"],
+  backbeatMinDensity: 0.4,
+  openHatOffbeats: 0.3,
+  hatGrid: { low: "offbeat-8ths", high: "8ths", threshold: 0.6 },
+  ride: { minDensity: 0.5 },
+  ghostRoles: [],
+  ghostChance: 1,
+  rumbleKicks: { minDensity: 0.5, probability: 0.5 },
+  swingDelay: 0,
+};
 
 // ---------------------------------------------------------------------------
 // trap (half-time) — pattern-CELL model
@@ -370,19 +533,9 @@ type StyleFactory = (
   variant?: number,
 ) => StylePlan;
 
-/** Wrap a stateless per-bar generator (no groove-level choices) as a plan. */
-function perBarStyle(
-  generator: (kit: DrumKit, beatsPerBar: number, density: number, rng: () => number) => NoteSpec[],
-): StyleFactory {
-  return (kit, beatsPerBar, density, _rng) => ({
-    meta: {},
-    bar: ({ rng }) => generator(kit, beatsPerBar, density, rng),
-  });
-}
-
 const STYLE_FACTORIES: Record<string, StyleFactory> = {
-  house: perBarStyle(houseBar),
-  techno: perBarStyle(technoBar),
+  house: houseFamilyPlan(HOUSE_STYLE_SPEC),
+  techno: houseFamilyPlan(TECHNO_STYLE_SPEC),
   trap: trapFamilyPlan(TRAP_STYLE_SPEC),
 };
 
@@ -393,19 +546,21 @@ export function listDrumStyles(): string[] {
 /**
  * Named groove variants a style offers (empty = seed-only variation). Pass a
  * `spec` to list a data-driven StyleSpec's own kick-cell names instead of
- * looking `style` up in the built-in table.
+ * looking `style` up in the built-in table. House-family specs have no
+ * named variants.
  */
-export function listDrumVariants(style: string, spec?: TrapFamilyStyleSpec): string[] {
-  if (spec) return spec.kickCells.map((c) => c.name);
+export function listDrumVariants(style: string, spec?: DrumStyleSpec): string[] {
+  if (spec) return spec.family === "house" ? [] : spec.kickCells.map((c) => c.name);
   return style === "trap" ? TRAP_KICK_CELLS.map((c) => c.name) : [];
 }
 
 export interface GeneratePatternOptions {
-  /** Force a specific groove variant (index into listDrumVariants). */
+  /** Force a specific groove variant (index into listDrumVariants). Ignored
+   * for house-family specs. */
   variant?: number;
-  /** Data-driven trap-family spec (B4). When set, used regardless of `style`,
+  /** Data-driven style spec (B4/B4.1). When set, used regardless of `style`,
    * which becomes just a display label. */
-  styleSpec?: TrapFamilyStyleSpec;
+  styleSpec?: DrumStyleSpec;
 }
 
 export interface GeneratedPattern {
@@ -420,8 +575,8 @@ export interface GeneratedPattern {
  * loop; each bar then draws only its breathing layer (velocities, ghosts,
  * roll events) so the loop repeats like a played groove without being a
  * copy-paste. Every 4th bar — and the final bar — is a "turnaround" that may
- * carry a fill gesture. Deterministic: same kit + ctx (incl. rng) => byte-
- * identical notes.
+ * carry a fill gesture (trap only; house-family styles ignore it). Deterministic:
+ * same kit + ctx (incl. rng) => byte-identical notes.
  */
 export function generateDrumPatternDetailed(
   style: string,
@@ -429,7 +584,11 @@ export function generateDrumPatternDetailed(
   ctx: DrumContext,
   opts: GeneratePatternOptions = {},
 ): GeneratedPattern {
-  const factory = opts.styleSpec ? trapFamilyPlan(opts.styleSpec) : STYLE_FACTORIES[style];
+  const factory = opts.styleSpec
+    ? opts.styleSpec.family === "house"
+      ? houseFamilyPlan(opts.styleSpec)
+      : trapFamilyPlan(opts.styleSpec)
+    : STYLE_FACTORIES[style];
   if (!factory) {
     throw new Error(
       `unknown drum style "${style}" (available: ${listDrumStyles().join(", ")})`,

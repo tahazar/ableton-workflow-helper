@@ -115,6 +115,8 @@ export {
 export { type DrumContext, type DrumKit, type DrumRole } from "./drums/types.js";
 export { GM_DRUM_KIT, mapPadRoles, roleOfNote } from "./drums/roles.js";
 export {
+  HOUSE_STYLE_SPEC,
+  TECHNO_STYLE_SPEC,
   TRAP_KICK_CELLS,
   TRAP_STYLE_SPEC,
   generateDrumPattern,
@@ -135,6 +137,11 @@ export {
 } from "./drums/fills.js";
 export {
   parseDrumStyleSpec,
+  type DrumStyleSpec,
+  type HouseFamilyStyleSpec,
+  type HouseHatGridConfig,
+  type HouseRideConfig,
+  type HouseRumbleKicksConfig,
   type TrapFamilyKickCell,
   type TrapFamilyStyleSpec,
   type TrapHatBaseName,

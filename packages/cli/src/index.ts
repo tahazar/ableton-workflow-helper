@@ -57,7 +57,7 @@ import {
   renderChords,
   voiceProgression,
   varyDrums,
-  type TrapFamilyStyleSpec,
+  type DrumStyleSpec,
   type ClipDetail,
   type ClipEntry,
   type DrumContext,
@@ -763,7 +763,7 @@ drums
 
       // built-in style, or a data-driven one from the knowledge base:
       // a `drum-style-<name>` entry with an ```awh-style-spec``` block
-      let styleSpec: TrapFamilyStyleSpec | undefined;
+      let styleSpec: DrumStyleSpec | undefined;
       let styleTier: string | undefined;
       if (!listDrumStyles().includes(cmdOpts.style)) {
         let entry;
