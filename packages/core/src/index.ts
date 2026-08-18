@@ -152,3 +152,11 @@ export {
   type ReferenceRecordSummary,
   type StoredKnowledgeEntry,
 } from "./knowledge/store.js";
+export { parseProgression, type ChordSpec, type ScaleContextLike } from "./harmony/progression.js";
+export {
+  renderChords,
+  voiceProgression,
+  type RenderChordsOptions,
+  type VoicedChord,
+  type VoicingOptions,
+} from "./harmony/voicing.js";
