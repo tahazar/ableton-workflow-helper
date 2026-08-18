@@ -524,6 +524,43 @@ calibrator, verified live on a purpose-built kick/snare/hat/bassline project:
       beat-grid-folded) are the reliable path for this template; treat
       `pump_shape_*` as a rough single-file heads-up, not a verdict.
 
+## M4L Ducker owner validation checklist
+
+Not yet verified in Live (built without a running Max/Live session — see
+`m4l/README.md`'s "AWH Ducker" section for the protocol, install steps,
+and full manual-patching fallback). Run this before trusting the device
+on a real project:
+
+- [ ] `m4l/AWH Ducker.maxpat` opens/pastes cleanly in Max on the Sidechain
+      track (between `plugin~`/`plugout~`) without validator errors. If it
+      doesn't, hand-build from the manual build table in `m4l/README.md`.
+- [ ] `awh mix duck push --off` (no shape/triggers pushed yet) → device
+      replies to ping, gain confirmed at unity by ear/meter.
+- [ ] `awh mix duck fit <drums> --trigger-clip <Trigger clip> --json >
+      fit.json` then `awh mix duck push --fit fit.json --trigger-clip
+      <Trigger clip>` → summary prints the right trigger count/pattern
+      length/shape; audibly ducks in time with the kick, not late/early.
+- [ ] Transport-stopped behavior: stop playback mid-duck → gain returns to
+      unity and stays there (no dangling dip, no runaway retriggering).
+- [ ] Loop-wrap behavior: let the Trigger pattern's arrangement loop wrap
+      → no spurious envelope fires exactly at the wrap point.
+- [ ] Retrigger-while-releasing: two triggers closer together than the
+      release time → the second visibly/audibly restarts the dip from
+      wherever the gain currently is, matching ShaperBox's own behavior.
+- [ ] `awh mix duck push` with an EMPTY Trigger clip → prints the no-op
+      message and sends nothing (confirm via `awh mix duck push --off`
+      immediately after still replying normally — i.e. nothing broke).
+- [ ] `awh mix duck measure <captured Sidechain bus> --trigger-clip ...`
+      on a push'd capture → achieved depth is in the same ballpark as the
+      pushed `depthDb` (some loss vs. the programmed value is expected and
+      fine; a near-zero achieved depth means something's wrong).
+- [ ] `current_song_time` assumption (flagged in `m4l/README.md`): confirm
+      the LOM property is actually in BEATS as assumed — if the duck fires
+      at the wrong rate relative to the pattern, this is the first thing
+      to check, per the README's flagged deviation.
+- [ ] Freeze to `AWH Ducker.amxd` and reload from a fresh Live session (new
+      Set) → still responds on 9722/9723 without re-patching.
+
 ## Troubleshooting
 
 - **Restarted Live? Restart `extensions-cli` too.** A stale extension-host
