@@ -196,3 +196,29 @@ describe("renderChords", () => {
     }
   });
 });
+
+describe("explicit quality suffixes (maj/min)", () => {
+  const aMinor = { rootNote: 9, intervals: [0, 2, 3, 5, 7, 8, 10] };
+
+  it("Vmaj forces the major dominant in natural minor (the i-iv-Vmaj-i cadence)", () => {
+    const [i, iv, V, i2] = parseProgression("i-iv-Vmaj-i", aMinor);
+    expect(i!.quality).toBe("min");
+    expect(iv!.quality).toBe("min");
+    expect(V!.quality).toBe("maj");
+    expect(V!.intervals).toEqual([0, 4, 7]);
+    expect(V!.rootPc).toBe(4); // E stays diatonic — only the quality is forced
+    expect(i2!.intervals).toEqual([0, 3, 7]);
+  });
+
+  it("min forces a minor triad on a naturally-major degree", () => {
+    const cMajor = { rootNote: 0, intervals: [0, 2, 4, 5, 7, 9, 11] };
+    const [IVmin] = parseProgression("IVmin", cMajor);
+    expect(IVmin!.quality).toBe("min");
+    expect(IVmin!.intervals).toEqual([0, 3, 7]);
+    expect(IVmin!.rootPc).toBe(5);
+  });
+
+  it("still rejects unknown suffix combos", () => {
+    expect(() => parseProgression("Vmaj7", aMinor)).toThrowError(/Vmaj7/);
+  });
+});
