@@ -55,6 +55,8 @@ awh clip write <clipPath> [file]     # notation (file or stdin) -> REPLACE notes
 awh clip create <target> [file]      # new clip from notation
     # target = slot path (track:0/slot:2), or track path + --at-bar <bar>
     # options: --length <beats> --name <name> --sig <beatsPerBar>
+awh clip from-audio <audioFile> <target> [--bpm N] [--quantize 1/16] [--dry-run]
+    # melodic audio -> MIDI clip (Basic Pitch transcription, see below)
 
 awh render <trackPath> --from <beat> --to <beat>   # audio track pre-FX -> file
 awh serve-fake                 # offline gateway with a fake Set (for testing)
@@ -99,6 +101,36 @@ Flow: vary → tell the user which slots to audition → they pick favourites �
 `awh sweep` the rest (sweep deletes by name prefix — confirm the prefix with
 the user before sweeping anything they might have renamed). Vary needs enough
 empty slots; create scenes via `awh call scene.create` if it says there aren't.
+
+## Audio-to-MIDI (`awh clip from-audio`) — melodic transcription
+
+```sh
+awh clip from-audio <audioFile> <target> [--bpm N] [--quantize 1/4|1/8|1/16|1/32|off]
+    [--onset-thresh N] [--frame-thresh N] [--min-len ms] [--min-freq Hz] [--max-freq Hz]
+    [--name <name>] [--dry-run]
+    # target = track path (auto-picks an empty session slot) or an explicit
+    # session slot (track:0/slot:2)
+```
+
+- Transcribes MELODIC audio (a vocal take, hummed idea, synth/bass recording)
+  into a MIDI clip via Basic Pitch (polyphonic pitch estimate). Give the user
+  the estimate honestly: note count, pitch range, duration, and the params
+  used — this is a starting point to audition and correct, NOT ground truth.
+- **NOT for drums** — for drum-hit timing use `awh drums detect-onsets`
+  instead (it finds onset positions, not pitches).
+- `--bpm` converts seconds to beats; if omitted it reads the Set's tempo, so
+  usually you don't need to pass it. `--quantize` is `off` by default (raw
+  performance timing) — turn it on when the user wants a cleaned-up grid-snapped
+  result instead of the human feel.
+- Zero notes detected (silence, quiet recording, wrong thresholds) is a
+  normal outcome, not an error: it says so and creates nothing — don't retry
+  blindly, ask the user if the file/thresholds are right.
+- Explicit slot target with an existing clip: overwritten in place (same
+  convention as `awh lib place`) — clamped to the existing clip's length if
+  the transcription is longer (the gateway can't resize a clip), and it
+  tells you if that happened.
+- Always end with: this is an estimate — the user should audition and fix
+  wrong notes/octaves before treating it as done.
 
 ## Sections (`awh sections`) — motif -> arrangement skeleton
 
@@ -320,6 +352,24 @@ sig 4/4              # optional header (default 4/4)
    `awh clip create track:2/slot:0 <<'EOF' ... EOF` or `--at-bar` for the
    arrangement.
 3. Re-read to verify; hand back to the user to audition.
+
+**Turn a recorded/hummed idea into a MIDI clip** ("transcribe this vocal
+take", "turn my hummed idea into notes", "get the melody out of this audio
+file"):
+1. Get the audio file (owner-provided, or rendered/captured from the Set).
+   Get the tempo from `awh status` unless the user gives `--bpm` explicitly.
+2. `awh clip from-audio <audioFile> <target>` — don't hand-transcribe pitches
+   yourself or reach for `clip create`; this runs the real transcription
+   model (Basic Pitch) and does the seconds→beats/clip-length math for you.
+   `--dry-run` first if the user wants to see the note count/pitch range
+   before committing anything to the Set.
+3. Zero notes is a normal result (silence, quiet take, wrong thresholds) —
+   it says so and writes nothing; don't retry blindly, ask about the file or
+   loosen `--onset-thresh`/`--frame-thresh` if the user expects notes.
+4. Tell the user plainly this is an ESTIMATE (polyphonic pitch detection,
+   not ground truth) and to audition + fix wrong notes/octaves — never
+   present it as a finished transcript. For drum-hit timing instead of
+   pitches, use `awh drums detect-onsets`, not this command.
 
 **Vary an existing loop** (transform — "make me N variations", "more
 syncopated", "denser", etc. on material that already exists in the Set):

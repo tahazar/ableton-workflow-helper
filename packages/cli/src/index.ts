@@ -44,6 +44,8 @@ import {
   writePack,
   GM_DRUM_KIT,
   KnowledgeStore,
+  clampNotesToLength,
+  clipLengthBeats,
   drumFill,
   extractFencedBlock,
   generateDrumPatternDetailed,
@@ -54,7 +56,10 @@ import {
   midiToPitch,
   parseDrumStyleSpec,
   parseProgression,
+  parseQuantizeGrid,
+  quantizeNotes,
   renderChords,
+  secondsToBeats,
   voiceProgression,
   varyDrums,
   type DrumStyleSpec,
@@ -320,6 +325,201 @@ clip
       })) as { result: { path: string } };
       output(opts, body.result, () =>
         `created ${body.result.path} (${lengthBeats} beats, ${parsed.notes.length} notes)`,
+      );
+    },
+  );
+
+interface A2mTranscription {
+  notes: { start_s: number; dur_s: number; pitch: number; velocity: number }[];
+  params: {
+    onset_thresh: number;
+    frame_thresh: number;
+    min_note_len_ms: number;
+    min_freq: number | null;
+    max_freq: number | null;
+    melodia_trim: boolean;
+  };
+  model: string;
+  n_notes: number;
+}
+
+clip
+  .command("from-audio <audioFile> <target>")
+  .description(
+    "Transcribe melodic audio to a MIDI clip via Basic Pitch (polyphonic pitch " +
+      "estimate to audition and correct — NOT ground truth; for drums use " +
+      "`awh drums detect-onsets` instead). Target: a track path (auto-picks an " +
+      "empty session slot) or an explicit slot (track:0/slot:2) — an existing " +
+      "clip there is overwritten with the transcription (same occupied-target " +
+      "convention as `awh lib place`).",
+  )
+  .option("--bpm <bpm>", "tempo for seconds -> beats conversion (default: the Set's tempo)")
+  .option(
+    "--quantize <grid>",
+    "snap note starts to a grid (1/4|1/8|1/16|1/32|off) — lengths >= one grid unit snap too",
+    "off",
+  )
+  .option("--onset-thresh <n>", "onset sensitivity (Basic Pitch default 0.5)")
+  .option("--frame-thresh <n>", "frame/pitch confidence threshold (Basic Pitch default 0.3)")
+  .option("--min-len <ms>", "minimum note length in ms (Basic Pitch default 127.7)")
+  .option("--min-freq <hz>", "ignore pitches below this frequency")
+  .option("--max-freq <hz>", "ignore pitches above this frequency")
+  .option("--name <name>", "clip name (default: the audio file's basename)")
+  .option("--dry-run", "print the note summary without touching Live")
+  .action(
+    async (
+      audioFile: string,
+      target: string,
+      cmdOpts: {
+        bpm?: string;
+        quantize: string;
+        onsetThresh?: string;
+        frameThresh?: string;
+        minLen?: string;
+        minFreq?: string;
+        maxFreq?: string;
+        name?: string;
+        dryRun?: boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const beatsPerBar = 4;
+      // Validate --quantize before spending time running the model.
+      const gridBeats = parseQuantizeGrid(cmdOpts.quantize);
+
+      const analysisArgs = ["a2m", audioFile];
+      if (cmdOpts.onsetThresh) analysisArgs.push("--onset-thresh", cmdOpts.onsetThresh);
+      if (cmdOpts.frameThresh) analysisArgs.push("--frame-thresh", cmdOpts.frameThresh);
+      if (cmdOpts.minLen) analysisArgs.push("--min-len", cmdOpts.minLen);
+      if (cmdOpts.minFreq) analysisArgs.push("--min-freq", cmdOpts.minFreq);
+      if (cmdOpts.maxFreq) analysisArgs.push("--max-freq", cmdOpts.maxFreq);
+      const transcription = (await runAnalysisJson(
+        analysisArgs,
+      )) as unknown as A2mTranscription;
+      const p = transcription.params;
+      const paramsLine =
+        `onset=${p.onset_thresh} frame=${p.frame_thresh} minLen=${p.min_note_len_ms}ms` +
+        (p.min_freq !== null ? ` minFreq=${p.min_freq}Hz` : "") +
+        (p.max_freq !== null ? ` maxFreq=${p.max_freq}Hz` : "");
+
+      // Zero notes is a STATE, not an error (docs/lessons-learned.md #5):
+      // no clip is created, exit 0.
+      if (transcription.n_notes === 0) {
+        output(opts, transcription, () =>
+          `no notes detected (silence or below thresholds) in ${audioFile} — ${paramsLine} (${transcription.model})`,
+        );
+        return;
+      }
+
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const bpm = cmdOpts.bpm ? Number(cmdOpts.bpm) : summary.tempo;
+
+      let notes: NoteSpec[] = transcription.notes.map((n) => ({
+        start: secondsToBeats(n.start_s, bpm),
+        duration: secondsToBeats(n.dur_s, bpm),
+        pitch: n.pitch,
+        velocity: n.velocity,
+      }));
+      if (gridBeats !== null) notes = quantizeNotes(notes, gridBeats);
+
+      const lastEnd = notes.reduce((max, n) => Math.max(max, n.start + n.duration), 0);
+      const lengthBeats = clipLengthBeats(lastEnd, beatsPerBar);
+      const pitches = notes.map((n) => n.pitch);
+      const loPitch = Math.min(...pitches);
+      const hiPitch = Math.max(...pitches);
+      const summaryLine =
+        `${notes.length} notes, ${midiToPitch(loPitch)}(${loPitch})-${midiToPitch(hiPitch)}(${hiPitch}), ` +
+        `${lengthBeats / beatsPerBar} bars @ ${bpm} BPM — ${paramsLine} (${transcription.model})`;
+      const estimateNote = "estimate only — audition and correct in Live.";
+
+      // Resolve the target (reads only — clip.get/set.summary) even in
+      // --dry-run, same as `sections apply`: a dry run should still catch
+      // "no such track"/"no empty slot" instead of only surfacing that on
+      // the real run. Only the WRITE ops below are skipped for --dry-run.
+      const name = cmdOpts.name ?? basename(audioFile).replace(/\.[^./]+$/, "");
+      const isSlot = /\/slot:\d+$/.test(target);
+
+      let targetSpec: unknown;
+      let where: string;
+      let existing: { path: string; lengthBeats: number } | undefined;
+      if (isSlot) {
+        try {
+          const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
+          existing = { path: target, lengthBeats: detail.duration };
+        } catch {
+          // nothing there yet -> create fresh below
+        }
+        targetSpec = { type: "session", slotPath: target };
+        where = target;
+      } else {
+        const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
+        if (!track) {
+          throw new Error(
+            `track not found: ${target} (pass a session slot like track:0/slot:2 to target an occupied clip)`,
+          );
+        }
+        const occupied = new Set(
+          track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+        );
+        const free = Array.from({ length: track.slotCount }, (_, i) => i).find(
+          (i) => !occupied.has(i),
+        );
+        if (free === undefined) {
+          throw new Error(
+            `no empty session slot on ${target} — pass an explicit track:N/slot:M target`,
+          );
+        }
+        where = `${target}/slot:${free}`;
+        targetSpec = { type: "session", slotPath: where };
+      }
+
+      if (cmdOpts.dryRun) {
+        output(
+          opts,
+          { notes, lengthBeats, bpm, params: p, model: transcription.model, target: where },
+          () =>
+            [
+              `dry run: ${summaryLine} -> ${where}${existing ? " (fills an existing clip)" : ""}`,
+              estimateNote,
+            ].join("\n"),
+        );
+        return;
+      }
+
+      let placedNotes = notes;
+      let result: { path: string };
+      if (existing) {
+        // Occupied target: overwrite in place (same convention as `awh lib
+        // place`). The gateway has no clip-resize op, so a transcription
+        // longer than the existing clip is clamped to fit rather than
+        // silently sending notes Live would never play.
+        placedNotes = clampNotesToLength(notes, existing.lengthBeats);
+        await op(opts, "clip.notes", { path: existing.path, notes: placedNotes });
+        await op(opts, "clip.update", { path: existing.path, name });
+        result = { path: existing.path };
+      } else {
+        result = (await op(opts, "clip.create-midi", {
+          target: targetSpec,
+          lengthBeats,
+          notes: placedNotes,
+          name,
+        })) as { path: string };
+      }
+
+      const clampedNote =
+        existing && placedNotes.length < notes.length
+          ? ` — existing clip is ${existing.lengthBeats} beats, ${notes.length - placedNotes.length} ` +
+            "note(s) past its end were dropped (it can't be resized via the gateway)"
+          : "";
+
+      output(
+        opts,
+        { path: result.path, notes: placedNotes, lengthBeats, params: p, model: transcription.model },
+        () =>
+          [
+            `transcribed -> ${result.path}: ${summaryLine}${existing ? ", filled existing clip" : ""}${clampedNote}`,
+            estimateNote,
+          ].join("\n"),
       );
     },
   );
