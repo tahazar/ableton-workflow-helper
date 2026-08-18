@@ -824,3 +824,12 @@ convention) plus the owner's own unreleased material for the ambiguity case:
       collisions get -2/-3 suffixes
 - [ ] Skill: "I saved a couple of clips, pull them in" → import + guided
       naming/tagging/curation
+
+## Pump v2 (`awh mix pump-check`) verification checklist
+
+- [ ] Capture the Sidechain bus with the duck ACTIVE →
+      `awh mix pump-check <capture> --trigger-clip <Trigger>` → verdict
+      "ducking", fitted depth ≈ the drawn/calibrated depth, r² ≥ 0.8
+- [ ] Same capture with the duck BYPASSED → verdict "no-duck" (the exact
+      on/off test that exposed pump v1's 228→218 ms failure)
+- [ ] Full-MIX capture → the honest bleed note appears (isolated bus advised)

@@ -2205,6 +2205,25 @@ duckCmd
   );
 
 mix
+  .command("pump-check <busCapture>")
+  .description(
+    "Trigger-locked sidechain verification (pump v2): fits the fixed dip " +
+      "model per trigger and gives a ducking/no-duck/inconclusive verdict. " +
+      "Capture the ISOLATED ducked bus (Sidechain track), not the full mix",
+  )
+  .option("--trigger-clip <clipPath>", "the Trigger MIDI clip")
+  .option("--triggers <beats>", "manual trigger positions in BEATS")
+  .action(
+    async (busCapture: string, cmdOpts: { triggerClip?: string; triggers?: string }) => {
+      const opts = program.opts<GlobalOpts>();
+      const t = await resolveTriggerSeconds(opts, cmdOpts);
+      const args = ["pumpcheck", busCapture, ...triggerArgs(t)];
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+mix
   .command("capture")
   .description(
     "Record post-FX audio via the M4L capture tap (m4l/): loops the arrangement " +

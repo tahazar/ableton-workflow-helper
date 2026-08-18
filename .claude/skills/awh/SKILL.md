@@ -416,9 +416,11 @@ loud enough for clubs", "did that EQ change help"):
    — quote the findings' numbers verbatim; never state a measurement the
    report didn't print. Offer `--save` so the measurement becomes a
    retrievable record (`awh mix records`).
-3. Comparisons: `awh mix ab <before> <after>` (loudness-matched). This is
-   also THE way to verify a sidechain: capture with the compressor on and
-   bypassed, ab the pair — single-file pump shape alone can't prove it.
+3. Comparisons: `awh mix ab <before> <after>` (loudness-matched). For
+   sidechain verification use `awh mix pump-check <SidechainBusCapture>
+   --trigger-clip <Trigger>` — trigger-locked fit with a ducking/no-duck/
+   inconclusive verdict (capture the ISOLATED ducked bus; it warns on
+   full-mix bleed). The on/off `ab` pair remains the gold-standard proof.
 4. No target yet? Offer `awh mix target <owner's reference tracks> --save
    <genre>` first — comparisons run against THEIR references, not folklore.
 
