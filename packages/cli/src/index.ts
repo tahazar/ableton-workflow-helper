@@ -6,7 +6,7 @@
  * extension running inside Live, or `awh serve-fake` for offline dev).
  * The same commands are what a Claude Code skill drives — no AI-only paths.
  */
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
@@ -51,7 +51,11 @@ import {
   listDrumStyles,
   listDrumVariants,
   mapPadRoles,
+  midiToPitch,
   parseDrumStyleSpec,
+  parseProgression,
+  renderChords,
+  voiceProgression,
   varyDrums,
   type TrapFamilyStyleSpec,
   type ClipDetail,
@@ -2172,6 +2176,285 @@ mix
       const summary = (await op(opts, "set.summary")) as SetSummary;
       output(opts, { file: outPath, seconds }, () =>
         `captured -> ${outPath}\nanalyze with: awh mix report ${outPath} --bpm ${summary.tempo}`,
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Scaffolding + harmony (M7): new projects from the owner's template,
+// declarative populate, chord progressions in-scale.
+// ---------------------------------------------------------------------------
+
+async function copyDirRecursive(src: string, dest: string): Promise<void> {
+  await mkdir(dest, { recursive: true });
+  for (const entry of await readdir(src, { withFileTypes: true })) {
+    const from = join(src, entry.name);
+    const to = join(dest, entry.name);
+    if (entry.isDirectory()) await copyDirRecursive(from, to);
+    else await copyFile(from, to);
+  }
+}
+
+/** Resolve the Set scale (or --key) into a ScaleContext for harmony work. */
+function resolveKey(
+  summary: SetSummary,
+  key: string | undefined,
+): { rootNote: number; intervals: number[]; label: string } {
+  if (key) {
+    const parsed = parseScale(key);
+    return { ...parsed, label: key };
+  }
+  if (!summary.scale.active) {
+    throw new Error(
+      'the Set has no active scale — pass --key "A minor" (or enable the Set scale)',
+    );
+  }
+  return {
+    rootNote: summary.scale.rootNote,
+    intervals: summary.scale.intervals,
+    label: `${PITCH_CLASSES[summary.scale.rootNote % 12]} ${summary.scale.name}`,
+  };
+}
+
+const newCmd = program
+  .command("new")
+  .description("Start a track the way you actually start: from YOUR template");
+
+newCmd
+  .command("project <name>")
+  .description(
+    "Copy your template project to a new '<name> Project' folder (disk only — " +
+      "open it in Live, then `awh new populate`)",
+  )
+  .option(
+    "--template <dir>",
+    "template project directory (default: library/templates/project)",
+  )
+  .option("--dest <dir>", "parent directory for the new project (default: cwd)")
+  .action(async (name: string, cmdOpts: { template?: string; dest?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const template =
+      cmdOpts.template ?? join(findLibraryRoot(), "templates", "project");
+    if (!existsSync(template)) {
+      throw new Error(
+        `no template at ${template} — copy your starting-point Live project folder ` +
+          "there once (the whole '<x> Project' folder), or pass --template",
+      );
+    }
+    const dest = resolve(cmdOpts.dest ?? ".", `${name} Project`);
+    if (existsSync(dest)) throw new Error(`${dest} already exists — refusing to overwrite`);
+    await copyDirRecursive(template, dest);
+    // rename the template's .als to the new project name
+    const als = (await readdir(dest)).filter((f) => f.endsWith(".als"));
+    let setPath = "";
+    if (als.length > 0) {
+      setPath = join(dest, `${name}.als`);
+      await rename(join(dest, als[0]!), setPath);
+      for (const extra of als.slice(1)) await rm(join(dest, extra));
+    }
+    output(opts, { project: dest, set: setPath }, () =>
+      [
+        `project created -> ${dest}`,
+        setPath ? `open ${setPath} in Live, then:` : "open the project in Live, then:",
+        "  awh new populate            # tempo/tracks/starters from your scaffold",
+      ].join("\n"),
+    );
+  });
+
+interface ScaffoldSpec {
+  tempo?: number;
+  tracks?: { name: string; kind?: "midi" | "audio" }[];
+  starters?: { slug: string; track: string; atBar?: number }[];
+  chords?: {
+    track: string;
+    progression: string;
+    key?: string;
+    bars?: number;
+    atBar?: number;
+    voicing?: "close" | "spread";
+    rhythm?: "whole" | "half" | "quarters" | "offbeat-stabs";
+  };
+}
+
+newCmd
+  .command("populate [scaffoldFile]")
+  .description(
+    "Apply your scaffold (library/templates/scaffold.yaml) to the OPEN Set: " +
+      "tempo, named tracks, starter clips from the library, a chord bed",
+  )
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .action(async (scaffoldFile: string | undefined, cmdOpts: { sig: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const file = scaffoldFile ?? join(findLibraryRoot(), "templates", "scaffold.yaml");
+    if (!existsSync(file)) {
+      throw new Error(
+        `no scaffold at ${file} — create one (tempo/tracks/starters/chords; see the ` +
+          "skill's scaffolding flow) or pass a path",
+      );
+    }
+    const scaffold = parseYaml(await readFile(file, "utf8")) as ScaffoldSpec;
+    const beatsPerBar = Number(cmdOpts.sig);
+    const done: string[] = [];
+
+    if (scaffold.tempo !== undefined) {
+      await op(opts, "set.tempo", { bpm: scaffold.tempo });
+      done.push(`tempo -> ${scaffold.tempo} BPM`);
+    }
+
+    let summary = (await op(opts, "set.summary")) as SetSummary;
+    const trackByName = (trackName: string) =>
+      summary.tracks.find((t) => t.name.toLowerCase() === trackName.toLowerCase());
+
+    for (const spec of scaffold.tracks ?? []) {
+      if (trackByName(spec.name)) continue;
+      const created = (await op(opts, "track.create", {
+        kind: spec.kind ?? "midi",
+        name: spec.name,
+      })) as { path: string };
+      done.push(`track ${spec.name} -> ${created.path}`);
+    }
+    summary = (await op(opts, "set.summary")) as SetSummary;
+
+    const store = libraryStore({});
+    for (const starter of scaffold.starters ?? []) {
+      const track = trackByName(starter.track);
+      if (!track) throw new Error(`starter "${starter.slug}": no track named "${starter.track}"`);
+      const entry = await store.loadClip(starter.slug);
+      if (!entry.notation) throw new Error(`starter ${starter.slug} has no notation`);
+      const { notes } = parseNotation(entry.notation, {
+        beatsPerBar: entry.beatsPerBar ?? 4,
+      });
+      const target =
+        starter.atBar !== undefined
+          ? {
+              type: "arrangement",
+              trackPath: track.path,
+              startBeat: (starter.atBar - 1) * beatsPerBar,
+            }
+          : (() => {
+              const occupied = new Set(
+                track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+              );
+              const free = Array.from({ length: track.slotCount }, (_, i) => i).find(
+                (i) => !occupied.has(i),
+              );
+              if (free === undefined)
+                throw new Error(`no empty slot on ${track.name} for ${starter.slug}`);
+              return { type: "session", slotPath: `${track.path}/slot:${free}` };
+            })();
+      await op(opts, "clip.create-midi", {
+        target,
+        lengthBeats: entry.lengthBeats,
+        notes,
+        name: starter.slug,
+      });
+      done.push(`starter ${entry.slug} [${entry.tier}] -> ${track.name}`);
+    }
+
+    if (scaffold.chords) {
+      const c = scaffold.chords;
+      const track = trackByName(c.track);
+      if (!track) throw new Error(`chords: no track named "${c.track}"`);
+      const keyCtx = resolveKey(summary, c.key);
+      const chords = parseProgression(c.progression, keyCtx);
+      const voiced = voiceProgression(chords, { style: c.voicing ?? "close" });
+      const bars = c.bars ?? chords.length;
+      const notes = renderChords(voiced, {
+        bars,
+        beatsPerBar,
+        rhythm: c.rhythm ?? "whole",
+      });
+      await op(opts, "clip.create-midi", {
+        target:
+          c.atBar !== undefined
+            ? { type: "arrangement", trackPath: track.path, startBeat: (c.atBar - 1) * beatsPerBar }
+            : { type: "session", slotPath: `${track.path}/slot:0` },
+        lengthBeats: bars * beatsPerBar,
+        notes,
+        name: c.progression,
+      });
+      done.push(`chords ${c.progression} (${keyCtx.label}) -> ${c.track}`);
+    }
+
+    output(opts, { applied: done }, () =>
+      done.length ? done.map((d) => `  ok ${d}`).join("\n") : "scaffold had nothing to apply",
+    );
+  });
+
+program
+  .command("chords <target>")
+  .description(
+    "CO-WRITE a chord progression clip, in the Set's scale (or --key). " +
+      "Target: slot path, or track path with --at-bar",
+  )
+  .requiredOption(
+    "--progression <spec>",
+    'roman numerals in-scale, e.g. "i-VI-III-VII" or "I IV V vi" (7/sus2/sus4/dim/aug, b/# borrow)',
+  )
+  .option("--key <key>", 'e.g. "A minor" (default: the Set scale)')
+  .option("--bars <bars>", "total bars (default: one per chord)")
+  .option("--voicing <style>", "close | spread", "close")
+  .option("--rhythm <style>", "whole | half | quarters | offbeat-stabs", "whole")
+  .option("--center <midi>", "voicing register center", "60")
+  .option("--bass", "add a root bass note an octave below")
+  .option("--at-bar <bar>", "arrangement position for track targets")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--name <name>", "clip name (default: the progression)")
+  .action(
+    async (
+      target: string,
+      cmdOpts: {
+        progression: string;
+        key?: string;
+        bars?: string;
+        voicing: "close" | "spread";
+        rhythm: "whole" | "half" | "quarters" | "offbeat-stabs";
+        center: string;
+        bass?: boolean;
+        atBar?: string;
+        sig: string;
+        name?: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const keyCtx = resolveKey(summary, cmdOpts.key);
+      const chords = parseProgression(cmdOpts.progression, keyCtx);
+      const voiced = voiceProgression(chords, {
+        style: cmdOpts.voicing,
+        center: Number(cmdOpts.center),
+      });
+      const beatsPerBar = Number(cmdOpts.sig);
+      const bars = cmdOpts.bars ? Number(cmdOpts.bars) : chords.length;
+      const notes = renderChords(voiced, {
+        bars,
+        beatsPerBar,
+        rhythm: cmdOpts.rhythm,
+        bassOctaves: cmdOpts.bass ? 1 : 0,
+      });
+      const isSlot = /\/slot:\d+$/.test(target);
+      if (!isSlot && cmdOpts.atBar === undefined) {
+        throw new Error("track targets need --at-bar (or pass a slot path)");
+      }
+      const created = (await op(opts, "clip.create-midi", {
+        target: isSlot
+          ? { type: "session", slotPath: target }
+          : {
+              type: "arrangement",
+              trackPath: target,
+              startBeat: (Number(cmdOpts.atBar) - 1) * beatsPerBar,
+            },
+        lengthBeats: bars * beatsPerBar,
+        notes,
+        name: cmdOpts.name ?? cmdOpts.progression,
+      })) as { path: string };
+      output(opts, { path: created.path, chords: voiced.map((v) => v.symbol) }, () =>
+        [
+          `${cmdOpts.progression} (${keyCtx.label}, ${cmdOpts.voicing}, ${cmdOpts.rhythm}) -> ${created.path}`,
+          ...voiced.map(
+            (v) => `  ${v.symbol.padEnd(8)} ${v.pitches.map((p) => midiToPitch(p)).join(" ")}`,
+          ),
+        ].join("\n"),
       );
     },
   );
