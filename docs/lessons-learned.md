@@ -8,12 +8,15 @@ time). These lessons are the "definition of done" for future milestones.
 
 ## Definition of done — every new `awh` command ships with:
 
-1. **A "Typical Flows" entry in `.claude/skills/awh/SKILL.md`.** A dedicated
-   docs section is NOT enough: fresh agents answer "how do I do X" from the
-   flows playbook, and three separate times (vary, sections, lib place) a
-   new tool with good docs was bypassed for hand-composition with older
-   general tools because the flow for its natural request didn't name it.
-   Not polish — part of done.
+1. **A "Typical Flows" entry in `.claude/skills/awh/SKILL.md` — now a
+   MECHANIZED gate.** A dedicated docs section is NOT enough: FIVE separate
+   times (vary/M3, sections/M4, lib place/B3, ref/M8, kb/B4) a new tool with
+   good docs shipped without a flows entry and fresh agents bypassed it.
+   The written rule did not stop occurrences 4 and 5, so it is now a test:
+   `packages/core/test/skill-flows.test.ts` fails the suite when a feature
+   section's commands are missing from the flows region. Lesson inside the
+   lesson: a process rule that keeps recurring needs to become a check the
+   build runs, not better prose.
 2. **A negative-control test.** If the checklist says "break X → report
    reflects it", the builder runs that inversion against synthetic fixtures
    BEFORE shipping. M6's pump detector shipped without one and its real flaw
@@ -48,6 +51,18 @@ time). These lessons are the "definition of done" for future milestones.
 - Utility gain plugins (clip-style limiters, GClip etc.) sitting before the
   capture tap can mask small gain changes during A/B tests — bypass them or
   place the tap after.
+- **A tool that accepts positions/times must sanity-check them against the
+  audio.** `duck fit` fed guessed trigger times produced a plausible-looking
+  but nonsensical envelope (peak mid-window, 174 dB over floor) with no
+  flag — dangerous precisely because the output looked normal. Fits now
+  warn on misaligned peaks and silence-floor readings; the general rule:
+  when garbage-in can look like signal-out, detect the garbage.
+- **Recheck "impossible" manual steps.** "Sidechain On" was documented as a
+  manual touch alongside Audio From routing — but it's an ordinary
+  automatable device.param; only the routing is genuinely outside the SDK.
+  When declaring something unautomatable, verify each item separately.
+- SDK limitations worth escalating to Ableton are collected in
+  `docs/sdk-feedback.md` — add to it when a new one is hit.
 
 ## What's working (keep doing it)
 

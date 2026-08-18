@@ -1,6 +1,7 @@
 import type { NoteSpec } from "../bridge/types.js";
 import { sortNotes } from "../transforms/types.js";
 import type { DrumContext, DrumKit, DrumRole } from "./types.js";
+import type { TrapFamilyStyleSpec, TrapHatBaseName } from "./styleSpec.js";
 
 /**
  * Style grammars: deterministic drum-pattern generators. Each style builds a
@@ -190,113 +191,161 @@ export const TRAP_KICK_CELLS: TrapKickCell[] = [
 ];
 
 const TRAP_HAT_BASES = ["straight-8ths", "16th-run", "swung-16ths"] as const;
-type TrapHatBase = (typeof TRAP_HAT_BASES)[number];
 
-/** Delay applied to off-16th hats in the swung base, in beats. */
-const TRAP_SWING_DELAY = 0.06;
+/**
+ * Weight of each hat base at a given density, in the ORIGINAL (fixed, all-
+ * three-bases) proportions: {0.4, 0.35, 0.25} once dense, {0.7, 0.3, 0} when
+ * sparse (swung-16ths never appears at low density). pickHatBase renormalizes
+ * these over whichever bases a spec allows, so a spec listing all three in
+ * this order reproduces the exact original draw.
+ */
+const HAT_BASE_WEIGHT: Record<TrapHatBaseName, (density: number) => number> = {
+  "straight-8ths": (density) => (density >= 0.5 ? 0.4 : 0.7),
+  "16th-run": (density) => (density >= 0.5 ? 0.35 : 0.3),
+  "swung-16ths": (density) => (density >= 0.5 ? 0.25 : 0),
+};
 
-function trapPlan(
-  kit: DrumKit,
-  beatsPerBar: number,
-  density: number,
+/**
+ * Draw ONE rng() value and pick a hat base from `allowed` (a subset of
+ * TRAP_HAT_BASES, in canonical order), weighted per HAT_BASE_WEIGHT and
+ * renormalized to the allowed subset. A single allowed base is always picked
+ * regardless of the draw (still consumes the rng() call, for draw-order
+ * stability).
+ */
+function pickHatBase(
   rng: () => number,
-  variant?: number,
-): StylePlan {
-  // --- groove-level choices: drawn ONCE, held for the whole loop ---------
-  const cell =
-    TRAP_KICK_CELLS[
-      variant !== undefined
-        ? ((variant % TRAP_KICK_CELLS.length) + TRAP_KICK_CELLS.length) % TRAP_KICK_CELLS.length
-        : Math.floor(rng() * TRAP_KICK_CELLS.length)
-    ]!;
-  const kickOffsets = cell.offsets.filter((pos) => pos < beatsPerBar);
+  density: number,
+  allowed: readonly TrapHatBaseName[],
+): TrapHatBaseName {
+  const draw = rng();
+  const candidates = TRAP_HAT_BASES.filter((base) => allowed.includes(base));
+  const weights = candidates.map((base) => HAT_BASE_WEIGHT[base](density));
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  let cumulative = 0;
+  for (let i = 0; i < candidates.length; i++) {
+    cumulative += weights[i]!;
+    if (i === candidates.length - 1 || draw < cumulative / total) return candidates[i]!;
+  }
+  return candidates[candidates.length - 1]!;
+}
 
-  const baseDraw = rng();
-  const hatBase: TrapHatBase =
-    density >= 0.5
-      ? baseDraw < 0.4
-        ? "straight-8ths"
-        : baseDraw < 0.75
-          ? "16th-run"
-          : "swung-16ths"
-      : baseDraw < 0.7
-        ? "straight-8ths"
-        : "16th-run";
+/**
+ * Build a StyleFactory for a trap-family StyleSpec (data-driven B4 mechanism).
+ * The built-in "trap" style is just trapFamilyPlan(TRAP_STYLE_SPEC) — see
+ * below — so new trap-family grooves can be authored as spec DATA instead of
+ * code, through the exact same generator path.
+ */
+function trapFamilyPlan(spec: TrapFamilyStyleSpec): StyleFactory {
+  const cells = spec.kickCells;
+  const allowedHatBases = spec.hatBases ?? TRAP_HAT_BASES;
+  const snareBeat1Based = spec.snareBeat ?? 3;
+  const clapWithSnare = spec.clapWithSnare ?? true;
+  const rollDensityMult = spec.rollDensity ?? 1;
+  const openHatChanceVal = spec.openHatChance ?? 0.5;
+  const swingDelay = spec.swingDelay ?? 0.06;
 
-  const bar = (barCtx: { rng: () => number; turnaround: boolean }): NoteSpec[] => {
-    const { rng: breath, turnaround } = barCtx;
-    const notes: NoteSpec[] = [];
+  return (kit, beatsPerBar, density, rng, variant) => {
+    // --- groove-level choices: drawn ONCE, held for the whole loop ---------
+    const cell =
+      cells[
+        variant !== undefined
+          ? ((variant % cells.length) + cells.length) % cells.length
+          : Math.floor(rng() * cells.length)
+      ]!;
+    const kickOffsets = cell.offsets.filter((pos) => pos < beatsPerBar);
 
-    // kick: the cell, placement LOCKED — only velocities breathe
-    for (const pos of kickOffsets) {
-      addHit(notes, kit, "kick", pos, randVelocity(breath, pos === 0 ? ACCENT : NORMAL));
-    }
-    // turnaround bars may sneak a ghost kick on the final 16th
-    if (turnaround && breath() < 0.6) {
-      addHit(notes, kit, "kick", beatsPerBar - 0.25, randVelocity(breath, GHOST), 0.8);
-    }
+    const hatBase = pickHatBase(rng, density, allowedHatBases);
 
-    // snare/clap on beat 3 only (half-time backbeat)
-    const snareBeat = Math.min(2, beatsPerBar - 1);
-    addHit(notes, kit, "snare", snareBeat, randVelocity(breath, ACCENT));
-    addHit(notes, kit, "clap", snareBeat, randVelocity(breath, ACCENT));
+    const bar = (barCtx: { rng: () => number; turnaround: boolean }): NoteSpec[] => {
+      const { rng: breath, turnaround } = barCtx;
+      const notes: NoteSpec[] = [];
 
-    // hats: the held base pattern, with per-bar roll EVENTS substituted in —
-    // 0-1 on ordinary bars, always one on the LAST beat of turnaround bars
-    if (kit["hat-closed"] !== undefined || kit["hat-open"] !== undefined) {
-      const eventBeats = new Set<number>();
-      if (turnaround) eventBeats.add(beatsPerBar - 1);
-      if (breath() < (turnaround ? 0.3 : 0.5)) {
-        eventBeats.add(Math.floor(breath() * beatsPerBar));
+      // kick: the cell, placement LOCKED — only velocities breathe
+      for (const pos of kickOffsets) {
+        addHit(notes, kit, "kick", pos, randVelocity(breath, pos === 0 ? ACCENT : NORMAL));
+      }
+      // turnaround bars may sneak a ghost kick on the final 16th
+      if (turnaround && breath() < 0.6) {
+        addHit(notes, kit, "kick", beatsPerBar - 0.25, randVelocity(breath, GHOST), 0.8);
       }
 
-      let loud = true;
-      for (let b = 0; b < beatsPerBar; b++) {
-        if (eventBeats.has(b)) {
-          const roll = breath();
-          const offsets =
-            roll < 0.34
-              ? [0, 0.25, 0.5, 0.75] // 16th roll
-              : roll < 0.67
-                ? [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875] // 32nd roll
-                : [0, 1 / 3, 2 / 3]; // triplet fill
-          for (const offset of offsets) {
-            addHit(notes, kit, "hat-closed", b + offset, randVelocity(breath, loud ? ACCENT : GHOST));
+      // snare (and, unless disabled, clap) on the half-time backbeat
+      const snareBeat = Math.min(snareBeat1Based - 1, beatsPerBar - 1);
+      addHit(notes, kit, "snare", snareBeat, randVelocity(breath, ACCENT));
+      if (clapWithSnare) {
+        addHit(notes, kit, "clap", snareBeat, randVelocity(breath, ACCENT));
+      }
+
+      // hats: the held base pattern, with per-bar roll EVENTS substituted in —
+      // 0-1 on ordinary bars, always one on the LAST beat of turnaround bars
+      if (kit["hat-closed"] !== undefined || kit["hat-open"] !== undefined) {
+        const eventBeats = new Set<number>();
+        if (turnaround) eventBeats.add(beatsPerBar - 1);
+        if (breath() < (turnaround ? 0.3 : 0.5) * rollDensityMult) {
+          eventBeats.add(Math.floor(breath() * beatsPerBar));
+        }
+
+        let loud = true;
+        for (let b = 0; b < beatsPerBar; b++) {
+          if (eventBeats.has(b)) {
+            const roll = breath();
+            const offsets =
+              roll < 0.34
+                ? [0, 0.25, 0.5, 0.75] // 16th roll
+                : roll < 0.67
+                  ? [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875] // 32nd roll
+                  : [0, 1 / 3, 2 / 3]; // triplet fill
+            for (const offset of offsets) {
+              addHit(notes, kit, "hat-closed", b + offset, randVelocity(breath, loud ? ACCENT : GHOST));
+              loud = !loud;
+            }
+          } else if (hatBase === "straight-8ths") {
+            addHit(notes, kit, "hat-closed", b, randVelocity(breath, loud ? NORMAL : HAT_OFF16));
             loud = !loud;
+            addHit(notes, kit, "hat-closed", b + 0.5, randVelocity(breath, loud ? NORMAL : HAT_OFF16));
+            loud = !loud;
+          } else {
+            // 16th bases: on-8ths normal, off-16ths soft (swung base delays them)
+            for (let pos = 0; pos < 1; pos += 0.25) {
+              const off16 = !isNearGrid(pos, 0.5);
+              const swing = off16 && hatBase === "swung-16ths" ? swingDelay : 0;
+              addHit(
+                notes,
+                kit,
+                "hat-closed",
+                b + pos + swing,
+                randVelocity(breath, off16 ? HAT_OFF16 : NORMAL),
+              );
+            }
           }
-        } else if (hatBase === "straight-8ths") {
-          addHit(notes, kit, "hat-closed", b, randVelocity(breath, loud ? NORMAL : HAT_OFF16));
-          loud = !loud;
-          addHit(notes, kit, "hat-closed", b + 0.5, randVelocity(breath, loud ? NORMAL : HAT_OFF16));
-          loud = !loud;
-        } else {
-          // 16th bases: on-8ths normal, off-16ths soft (swung base delays them)
-          for (let pos = 0; pos < 1; pos += 0.25) {
-            const off16 = !isNearGrid(pos, 0.5);
-            const swing = off16 && hatBase === "swung-16ths" ? TRAP_SWING_DELAY : 0;
-            addHit(
-              notes,
-              kit,
-              "hat-closed",
-              b + pos + swing,
-              randVelocity(breath, off16 ? HAT_OFF16 : NORMAL),
-            );
-          }
+        }
+
+        // open hat at the bar end — likelier going into the next phrase
+        const openChance = turnaround ? 0.7 : density >= 0.4 ? openHatChanceVal : 0;
+        if (kit["hat-open"] !== undefined && openChance > 0 && breath() < openChance) {
+          addHit(notes, kit, "hat-open", beatsPerBar - 0.5, randVelocity(breath, NORMAL));
         }
       }
 
-      // open hat at the bar end — likelier going into the next phrase
-      const openChance = turnaround ? 0.7 : density >= 0.4 ? 0.5 : 0;
-      if (kit["hat-open"] !== undefined && openChance > 0 && breath() < openChance) {
-        addHit(notes, kit, "hat-open", beatsPerBar - 0.5, randVelocity(breath, NORMAL));
-      }
-    }
+      return notes;
+    };
 
-    return notes;
+    return { meta: { kickCell: cell.name, hatBase }, bar };
   };
-
-  return { meta: { kickCell: cell.name, hatBase }, bar };
 }
+
+/** The built-in "trap" style, expressed as data through the same B4 path. */
+export const TRAP_STYLE_SPEC: TrapFamilyStyleSpec = {
+  name: "trap",
+  family: "trap",
+  snareBeat: 3,
+  clapWithSnare: true,
+  kickCells: TRAP_KICK_CELLS,
+  hatBases: [...TRAP_HAT_BASES],
+  rollDensity: 1,
+  openHatChance: 0.5,
+  swingDelay: 0.06,
+};
 
 // ---------------------------------------------------------------------------
 // public API
@@ -334,21 +383,29 @@ function perBarStyle(
 const STYLE_FACTORIES: Record<string, StyleFactory> = {
   house: perBarStyle(houseBar),
   techno: perBarStyle(technoBar),
-  trap: trapPlan,
+  trap: trapFamilyPlan(TRAP_STYLE_SPEC),
 };
 
 export function listDrumStyles(): string[] {
   return Object.keys(STYLE_FACTORIES);
 }
 
-/** Named groove variants a style offers (empty = seed-only variation). */
-export function listDrumVariants(style: string): string[] {
+/**
+ * Named groove variants a style offers (empty = seed-only variation). Pass a
+ * `spec` to list a data-driven StyleSpec's own kick-cell names instead of
+ * looking `style` up in the built-in table.
+ */
+export function listDrumVariants(style: string, spec?: TrapFamilyStyleSpec): string[] {
+  if (spec) return spec.kickCells.map((c) => c.name);
   return style === "trap" ? TRAP_KICK_CELLS.map((c) => c.name) : [];
 }
 
 export interface GeneratePatternOptions {
   /** Force a specific groove variant (index into listDrumVariants). */
   variant?: number;
+  /** Data-driven trap-family spec (B4). When set, used regardless of `style`,
+   * which becomes just a display label. */
+  styleSpec?: TrapFamilyStyleSpec;
 }
 
 export interface GeneratedPattern {
@@ -372,7 +429,7 @@ export function generateDrumPatternDetailed(
   ctx: DrumContext,
   opts: GeneratePatternOptions = {},
 ): GeneratedPattern {
-  const factory = STYLE_FACTORIES[style];
+  const factory = opts.styleSpec ? trapFamilyPlan(opts.styleSpec) : STYLE_FACTORIES[style];
   if (!factory) {
     throw new Error(
       `unknown drum style "${style}" (available: ${listDrumStyles().join(", ")})`,
