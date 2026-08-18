@@ -273,6 +273,10 @@ awh lib index                             # regenerate INDEX.md
 
 - Save liberally when the owner likes something ("save that hat loop"); default
   tier is `draft` — the owner promotes to `verified` after real use.
+- Right-click captures: the owner can 'AWH: Save clip to library' on any
+  MIDI clip in Live — run `awh lib import` at session start (and whenever
+  they mention having captured things) to drain those into
+  clips/inbox/ drafts, then help name/tag/re-categorize them.
 - Slugs are unique across the whole library; `--overwrite` updates an entry.
 - Live-browser mirror: `awh lib export-alc` renders every clip to a generated
   Pack of .alc Live Clips (drag into Places once; re-exports auto-re-index).

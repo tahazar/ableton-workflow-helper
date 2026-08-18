@@ -15,6 +15,8 @@ import {
   type Song,
   type Track,
 } from "@ableton-extensions/sdk";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import {
   BridgeError,
   parsePath,
@@ -28,6 +30,7 @@ import {
   type LiveBridge,
   type MixerArgs,
   type NoteSpec,
+  type OutboxEntry,
   type PathSegment,
   type SetSummary,
   type TrackSummary,
@@ -339,6 +342,72 @@ export class SdkLiveBridge implements LiveBridge {
     }
     const audioPath = await this.ctx.resources.renderPreFxAudio(track, startBeat, endBeat);
     return { audioPath };
+  }
+
+  // -- library outbox (B3b) -------------------------------------------------
+  // Right-click captures are buffered in storageDirectory (the only place
+  // the sandbox lets us persist); `awh lib import` drains via this op.
+
+  private outboxFile(): string | undefined {
+    const dir = this.ctx.environment.storageDirectory;
+    return dir === undefined ? undefined : join(dir, "outbox.json");
+  }
+
+  async drainOutbox(): Promise<OutboxEntry[]> {
+    const file = this.outboxFile();
+    if (file === undefined) return [];
+    let entries: OutboxEntry[] = [];
+    try {
+      entries = JSON.parse(await readFile(file, "utf8")) as OutboxEntry[];
+    } catch {
+      return []; // no outbox yet (or unreadable) — nothing captured
+    }
+    await rm(file, { force: true });
+    return entries;
+  }
+
+  /**
+   * Capture a right-clicked MIDI clip (by Handle) into the outbox — called
+   * by the context-menu command in main.ts. Uses the same verified
+   * NoteDescription conversion as every other note read.
+   */
+  async captureClipToOutbox(handle: Parameters<ExtensionContext["getObjectFromHandle"]>[0]): Promise<string> {
+    const clip = this.ctx.getObjectFromHandle(handle, MidiClip);
+    const lengthBeats =
+      clip.endMarker - clip.startMarker > 0
+        ? clip.endMarker - clip.startMarker
+        : clip.duration;
+    await this.appendOutboxEntry({
+      name: clip.name,
+      notes: clip.notes.map(fromNoteDescription),
+      lengthBeats,
+      looping: clip.looping,
+      tempo: this.song.tempo,
+      scale: {
+        rootNote: this.song.rootNote,
+        name: this.song.scaleName,
+        active: this.song.scaleMode,
+      },
+      capturedAt: new Date().toISOString(),
+    });
+    return clip.name;
+  }
+
+  /** Append one capture to the outbox (called by the context-menu command). */
+  async appendOutboxEntry(entry: OutboxEntry): Promise<void> {
+    const file = this.outboxFile();
+    if (file === undefined) {
+      throw new BridgeError("unavailable", "no storageDirectory — cannot buffer captures");
+    }
+    await mkdir(dirname(file), { recursive: true });
+    let entries: OutboxEntry[] = [];
+    try {
+      entries = JSON.parse(await readFile(file, "utf8")) as OutboxEntry[];
+    } catch {
+      // first capture
+    }
+    entries.push(entry);
+    await writeFile(file, JSON.stringify(entries, null, 2), "utf8");
   }
 
   // -- scenes ---------------------------------------------------------------

@@ -133,6 +133,12 @@ export function buildOpRegistry(): Map<string, OpDefinition> {
   });
 
   add({
+    name: "library.outbox",
+    description: "Drain right-click library captures (returns entries and clears the outbox)",
+    handler: async (_args, ctx) => ctx.bridge.drainOutbox(),
+  });
+
+  add({
     name: "set.tempo",
     description: "Set the Set tempo. Args: {bpm}",
     handler: async (args, ctx) => ctx.bridge.setTempo(num(obj(args, "set.tempo"), "bpm", "set.tempo")),

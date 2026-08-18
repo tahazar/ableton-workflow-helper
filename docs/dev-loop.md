@@ -812,3 +812,15 @@ convention) plus the owner's own unreleased material for the ambiguity case:
       agent test against a synthetic/fake template wouldn't exercise the
       real "opens in Live with your template's devices/routing intact"
       concern the flow exists to verify).
+
+## B3b (right-click capture) verification checklist
+
+- [ ] Rebuild + reload the extension; right-click a MIDI clip → "AWH: Save
+      clip to library" appears and logs a capture (ExtensionHost.txt)
+- [ ] `awh lib import` → entry lands in clips/inbox/ with notes identical to
+      the clip (`awh lib place` it back to verify), bpm/scale context
+      captured; second import → "outbox empty"
+- [ ] Capture 3 clips before importing → all 3 drain in one import, slug
+      collisions get -2/-3 suffixes
+- [ ] Skill: "I saved a couple of clips, pull them in" → import + guided
+      naming/tagging/curation

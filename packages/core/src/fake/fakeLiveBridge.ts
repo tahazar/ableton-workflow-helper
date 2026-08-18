@@ -10,6 +10,7 @@ import {
   type LiveBridge,
   type MixerArgs,
   type NoteSpec,
+  type OutboxEntry,
   type SetSummary,
   type TrackSummary,
   type UpdateClipArgs,
@@ -605,6 +606,19 @@ export class FakeLiveBridge implements LiveBridge {
   }
 
   /** Test helper: add a chain to a drum rack (the SDK does this via insertChain). */
+  private outbox: OutboxEntry[] = [];
+
+  drainOutbox(): Promise<OutboxEntry[]> {
+    const entries = this.outbox;
+    this.outbox = [];
+    return Promise.resolve(entries);
+  }
+
+  /** Test helper: simulate a right-click capture. */
+  addOutboxEntry(entry: OutboxEntry): void {
+    this.outbox.push(entry);
+  }
+
   addDrumChain(devicePath: string, name: string, note: number): void {
     const { device } = this.deviceAt(devicePath);
     if (!device.chains) throw new BridgeError("bad_request", `not a rack: ${devicePath}`);

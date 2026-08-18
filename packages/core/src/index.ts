@@ -13,6 +13,7 @@ export {
   type MidiClipTarget,
   type MixerArgs,
   type NoteSpec,
+  type OutboxEntry,
   type SceneSummary,
   type SetSummary,
   type TrackKind,

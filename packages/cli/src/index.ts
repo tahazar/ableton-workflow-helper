@@ -1293,6 +1293,71 @@ lib
     output(opts, { root: store.root }, () => content.trimEnd());
   });
 
+lib
+  .command("import")
+  .description(
+    "Drain right-click captures ('AWH: Save clip to library' in Live) into " +
+      "library/clips/inbox/ as draft entries for naming/tagging later",
+  )
+  .option("--library <dir>", "library root")
+  .action(async (cmdOpts: { library?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const entries = (await op(opts, "library.outbox")) as {
+      name: string;
+      notes: NoteSpec[];
+      lengthBeats: number;
+      tempo: number;
+      scale: { rootNote: number; name: string; active: boolean } | null;
+      capturedAt: string;
+    }[];
+    if (entries.length === 0) {
+      output(opts, [], () => "outbox empty — nothing captured since the last import");
+      return;
+    }
+    const store = libraryStore(cmdOpts);
+    const existing = new Set((await store.listClips()).map((e) => e.slug));
+    const imported: string[] = [];
+    for (const captured of entries) {
+      let base: string;
+      try {
+        base = slugify(captured.name || "captured-clip");
+      } catch {
+        base = "captured-clip";
+      }
+      let slug = base;
+      for (let n = 2; existing.has(slug); n++) slug = `${base}-${n}`;
+      existing.add(slug);
+      const file = await store.saveClip({
+        slug,
+        kind: "midi",
+        category: "inbox",
+        tags: [],
+        bpm: captured.tempo,
+        scale: captured.scale?.active
+          ? `${PITCH_CLASSES[captured.scale.rootNote % 12]} ${captured.scale.name}`
+          : null,
+        lengthBeats: captured.lengthBeats,
+        source: {
+          project: null,
+          path: "right-click capture",
+          saved: captured.capturedAt.slice(0, 10),
+        },
+        tier: "draft",
+        title: captured.name || slug,
+        notation: serializeNotation(captured.notes, { beatsPerBar: 4 }),
+      });
+      imported.push(file);
+    }
+    await store.buildIndex();
+    output(opts, { imported }, () =>
+      [
+        `${imported.length} capture(s) imported:`,
+        ...imported.map((f) => `  ${f}`),
+        "curate: rename/re-categorize (edit category + move the file), tag, then lib index",
+      ].join("\n"),
+    );
+  });
+
 // --- B3d: Live browser mirror ------------------------------------------
 
 const TEMPLATE_REL = join("templates", "midi-clip.xml");
