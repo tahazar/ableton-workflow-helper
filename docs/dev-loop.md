@@ -748,3 +748,21 @@ convention) plus the owner's own unreleased material for the ambiguity case:
       likely-* sections with shortfall-stating evidence
 - [ ] `awh ref analyze --hint-bpm <known tempo>` on the ambiguous unreleased
       reference → hint resolves the 0.0-confidence tie via the runner-up swap
+
+## M7 (scaffolding + harmony) verification checklist
+
+- [ ] One-time: copy your real template project folder to
+      library/templates/project; write library/templates/scaffold.yaml
+      (tempo/tracks/starters/chords)
+- [ ] `awh new project test-song` → folder + renamed .als; opens in Live
+      with your template's devices/routing intact
+- [ ] `awh new populate` → tempo set, named tracks appear, starter clips
+      placed from the library, chord bed lands in key
+- [ ] `awh chords track:X/slot:0 --progression "i-VI-III-VII"` in a Set with
+      an active scale → chords sound in-key; `--voicing spread` audibly
+      widens; `--rhythm offbeat-stabs` gives the house stab; voice leading:
+      "I-IV-V-I" moves smoothly (no octave jumps between chords)
+- [ ] `--key "F minor"` overrides an inactive Set scale; helpful error
+      when neither is available
+- [ ] Skill: "start a new track from my template and put a chord bed down"
+      → project -> populate -> chords, citing any KB entries used
