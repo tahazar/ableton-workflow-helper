@@ -12,7 +12,7 @@ real work outside.
 
 ## Status
 
-**M0–M6 + B3 done (all validated in Live) · B4 (knowledge base) in build** —
+**M0–M6, M8, B3, B4 done (all validated in Live) · M7 (scaffolding + harmony) built, awaiting pass** —
 the gateway serves 23 ops; the `awh` CLI speaks bar|beat notation; the `awh`
 Claude skill drives the Set conversationally; `awh vary` generates seeded,
 reproducible variations through a 17-transform pipeline vocabulary; `awh
@@ -25,9 +25,14 @@ third-octave spectrum vs measured genre targets, stereo/phase, pump
 verification) + an M4L capture tap for post-FX renders and loudness-matched
 A/B (`docs/design/analysis-engine.md`); the `awh mix duck` toolkit fits
 sidechain envelopes to the owner's drums (ShaperBox drawing instructions or
-closed-loop stock-Compressor calibration). B4 (in build): `awh kb` — the
-tiered, executable-first knowledge base with open-ended domains, measurement
-records as citizens, and data-driven drum styles.
+closed-loop stock-Compressor calibration). `awh kb` (B4) — the tiered,
+executable-first knowledge base with open-ended domains, measurement records
+as citizens, data-driven drum styles, and a seeded corpus (ISOxo, Burial,
+Fred again, call-and-response craft). `awh ref` (M8) deconstructs reference
+tracks (BPM/grid, energy arc, confidence-tagged sections) into correctable
+marker-clip maps that feed `sections plan --from-ref`. `awh new`/`awh chords`
+(M7) scaffold projects from the owner's template and co-write in-scale chord
+progressions with voice leading.
 Backlog candidates B1 (audio-to-MIDI) and B2 (Operator sound design) are
 researched and queued — see `docs/spec.md`.
 See [`docs/spec.md`](docs/spec.md) for requirements + milestones,
