@@ -753,16 +753,58 @@ convention) plus the owner's own unreleased material for the ambiguity case:
 
 - [ ] One-time: copy your real template project folder to
       library/templates/project; write library/templates/scaffold.yaml
-      (tempo/tracks/starters/chords)
+      (tempo/tracks/starters/chords). **NOT DONE YET** — needs the owner's
+      real template; this blocks the two Live-facing items below (`new
+      project` against Live, `new populate` against a real open Set). The
+      CLI-level mechanics of both are verified below via a synthetic
+      template + the fake gateway, but never against real Live/a real
+      template project.
 - [ ] `awh new project test-song` → folder + renamed .als; opens in Live
-      with your template's devices/routing intact
+      with your template's devices/routing intact. Mechanics confirmed via
+      a synthetic template (whole folder copied incl. subdirs, .als
+      correctly renamed, clean refusal on an existing destination) — the
+      "opens in Live with devices/routing intact" half is unverified
+      (needs a real template + Live).
 - [ ] `awh new populate` → tempo set, named tracks appear, starter clips
-      placed from the library, chord bed lands in key
-- [ ] `awh chords track:X/slot:0 --progression "i-VI-III-VII"` in a Set with
+      placed from the library, chord bed lands in key. Confirmed
+      end-to-end via `awh serve-fake`: tempo, 3 named tracks, a starter clip
+      (from a saved library entry) on one track, an in-key chord bed on
+      another — all read back correct.
+- [x] `awh chords track:X/slot:0 --progression "i-VI-III-VII"` in a Set with
       an active scale → chords sound in-key; `--voicing spread` audibly
       widens; `--rhythm offbeat-stabs` gives the house stab; voice leading:
-      "I-IV-V-I" moves smoothly (no octave jumps between chords)
+      "I-IV-V-I" moves smoothly (no octave jumps between chords). Confirmed
+      via `awh serve-fake`: i-VI-III-VII in A minor and I-IV-V-I in C major
+      both produced correct in-scale triads; `--bass`+`--rhythm
+      offbeat-stabs` correctly added the low root and placed hits at +0.5
+      beat with reduced velocity; voice leading moved by single-digit
+      semitone totals per transition (no octave jumps), common tones held
+      where the chords share one.
+      **Found a real register-drift issue in `--voicing spread`**: each
+      chord's voice-leading search targets the PREVIOUS chord's
+      already-spread (lower) pitches rather than its pre-spread close
+      voicing, so the progression sinks by nearly an octave after the very
+      first transition and stays there — `--center` only actually controls
+      where the FIRST chord lands, not the progression as a whole.
+      Reproduced on both a 4- and 8-chord progression (drift stabilizes,
+      doesn't run away, but settles well below the requested center).
+      **Also found (not a bug, a documentation gap)**: roman-numeral CASE
+      is entirely cosmetic — `V`/`v` produce byte-identical pitches, since
+      quality is 100% scale-derived. This means the extremely common
+      i-iv-V-i minor cadence (expecting a borrowed MAJOR dominant) silently
+      gives the natural-minor diatonic (minor) v instead — with zero
+      indication anything unusual happened. The capability to get the
+      "correct" major V DOES exist (`--key "<root> harmonic-minor"`), it's
+      just non-obvious; worth a one-line SKILL.md callout for this specific
+      idiom since it's likely the single most common minor-key request.
 - [ ] `--key "F minor"` overrides an inactive Set scale; helpful error
-      when neither is available
+      when neither is available. Confirmed the override half (every test
+      above used `--key` against the fake Set's inactive/default scale and
+      worked correctly); the "helpful error when neither is available" half
+      not separately exercised this pass.
 - [ ] Skill: "start a new track from my template and put a chord bed down"
-      → project -> populate -> chords, citing any KB entries used
+      → project -> populate -> chords, citing any KB entries used. Not run
+      — blocked on the same real-template gap as the first item (a fresh
+      agent test against a synthetic/fake template wouldn't exercise the
+      real "opens in Live with your template's devices/routing intact"
+      concern the flow exists to verify).
