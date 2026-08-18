@@ -780,14 +780,18 @@ convention) plus the owner's own unreleased material for the ambiguity case:
       beat with reduced velocity; voice leading moved by single-digit
       semitone totals per transition (no octave jumps), common tones held
       where the chords share one.
-      **Found a real register-drift issue in `--voicing spread`**: each
-      chord's voice-leading search targets the PREVIOUS chord's
+      **Found and fixed a real register-drift bug in `--voicing spread`**:
+      each chord's voice-leading search targeted the PREVIOUS chord's
       already-spread (lower) pitches rather than its pre-spread close
-      voicing, so the progression sinks by nearly an octave after the very
-      first transition and stays there — `--center` only actually controls
-      where the FIRST chord lands, not the progression as a whole.
-      Reproduced on both a 4- and 8-chord progression (drift stabilizes,
-      doesn't run away, but settles well below the requested center).
+      voicing, so the progression sank by nearly an octave after the very
+      first transition and stayed there — `--center` only actually
+      controlled where the FIRST chord landed, not the progression as a
+      whole. Fixed: voice-lead against the close voicing lineage, spread
+      only the per-chord output. Re-verified the exact failing 8-chord
+      progression now stays anchored around `--center` throughout. Added a
+      regression test — confirmed it fails against the pre-fix code
+      (asserted `36 > 36`, the bug's exact boundary) and passes with the
+      fix. Originally reproduced on both a 4- and 8-chord progression.
       **Also found (not a bug, a documentation gap)**: roman-numeral CASE
       is entirely cosmetic — `V`/`v` produce byte-identical pitches, since
       quality is 100% scale-derived. This means the extremely common

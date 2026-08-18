@@ -137,7 +137,12 @@ export function voiceProgression(chords: ChordSpec[], opts: VoicingOptions = {})
     const pitches = style === "spread" ? spreadPitches(closeVoiced) : [...closeVoiced];
     pitches.sort((a, b) => a - b);
     out.push({ symbol: chord.symbol, pitches });
-    prevPitches = pitches;
+    // Voice-lead the NEXT chord against this chord's CLOSE voicing, not its
+    // spread (widened, lower) output — otherwise each spread pass compounds
+    // into the next chord's search target, and the whole progression sinks
+    // by nearly an octave after the first transition and stays there.
+    // `center` should govern the entire progression, not just chord 1.
+    prevPitches = closeVoiced;
   }
   return out;
 }
