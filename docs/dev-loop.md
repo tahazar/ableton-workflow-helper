@@ -531,6 +531,27 @@ Not yet verified in Live (built without a running Max/Live session — see
 and full manual-patching fallback). Run this before trusting the device
 on a real project:
 
+**Code-side pre-check done (everything possible without opening Max)**:
+`m4l/AWH Ducker.maxpat` parses as valid JSON (77 boxes) and is structurally
+coherent for what it claims — `udpreceive 9722` → `route` on the 4 OSC
+addresses → parameter storage (`value` objects) → a `loadbang`/`live.path
+live_set`/`live.object` combo reading `current_song_time`/`is_playing` →
+a `metro 1` poll comparing beat-modulo position against the trigger list
+(`expr fmod(...)`, `uzi`/`zl nth`) → envelope generation (`pack`/`line~`)
+→ `dbtoa` (correct for the "positive dB of gain reduction" wire
+convention) → `plugin~` → two gain-multiply stages → `plugout~`. This
+cannot confirm it actually RUNS correctly in Max — only that nothing looks
+malformed at the object/JSON level.
+
+Independently verified the OSC push side (`awh mix duck push`, `duck.ts`)
+against my OWN UDP listener (not the shipped `duck.test.ts` fixture):
+correct ping→pong handshake, correct message order and exact arg values
+for a full push (triggers/shape/on) and for `--off` (ping + on-0 only).
+`packages/cli/test/duck.test.ts`'s own negative control (no listener on
+the port → clear timeout error, not a hang) also independently re-run and
+confirmed. The wire protocol is solid; nothing below this line is possible
+without the real Max device:
+
 - [ ] `m4l/AWH Ducker.maxpat` opens/pastes cleanly in Max on the Sidechain
       track (between `plugin~`/`plugout~`) without validator errors. If it
       doesn't, hand-build from the manual build table in `m4l/README.md`.
@@ -911,40 +932,61 @@ convention) plus the owner's own unreleased material for the ambiguity case:
 
 ## B1 (audio-to-MIDI, `awh clip from-audio`) owner validation checklist
 
-Built + smoke-tested against `awh serve-fake` (synthetic sine WAVs, a real
-gateway write, `--dry-run`, and the zero-notes path — see the build session's
-report for exact commands/output). The owner still needs to validate against
-REAL Live and REAL recorded material — synthetic sine waves prove the
-plumbing, not transcription quality on an actual take:
+**One-time setup gap found and fixed**: `analysis/README.md`'s exact install
+command was incomplete on a fresh venv — `resampy` (a real runtime
+dependency) imports the deprecated `pkg_resources` API, which isn't bundled
+by default and which setuptools itself has started dropping (confirmed live:
+84.0.0 has no `pkg_resources` at all). Fresh install failed with
+`ModuleNotFoundError: No module named 'pkg_resources'` on every transcription
+call — added `pip install "setuptools<81"` as a required install step and
+documented why. All 7 previously-blocked `test_a2m.py` tests (silently
+skipped before, not failing — a real coverage gap of its own) now run and
+pass.
 
-- [ ] Real vocal/hummed take → `awh clip from-audio <recording> track:N` →
+- [x] Real vocal/hummed take → `awh clip from-audio <recording> track:N` →
       the resulting MIDI clip's melody is recognizably the same shape as the
-      recording when played back in Live (not necessarily note-perfect —
-      that's the honest expectation, not the bug bar).
-- [ ] `--bpm` omitted → confirm it actually reads the OPEN Set's real tempo
-      (not just the fake gateway's fixed value) and the note timing lines up
-      with the Set's grid when played against other tracks.
-- [ ] `--quantize 1/16` (or another grid) on a slightly-off-grid human take →
-      notes snap to the grid and still sound musically right — no notes
-      audibly forced into the wrong bar from a bad snap.
-- [ ] Explicit occupied slot target (`track:N/slot:M` with a pre-existing
-      clip) → clip is overwritten in place, not duplicated or skipped; if the
-      transcription is longer than the existing clip, confirm the printed
-      "clamped" note matches what actually got dropped.
-- [ ] Bare track target with NO empty session slots → confirm the error
-      message is clear and doesn't half-write anything.
-- [ ] A genuinely quiet/silent recording → "no notes detected" prints, exit
-      0, nothing created — confirm no phantom clip appears in the Set.
-- [ ] Skill: "turn this hummed idea into a MIDI clip" → Claude follows the
-      Typical Flows entry (gets the file, doesn't hand-invent pitches, quotes
-      the note count/pitch range, states it's an estimate) rather than
-      reaching for `clip create` or fabricating notation.
-- [ ] Real timing check: total wall-clock for a typical 8-16 bar musical
-      idea (not the 1.5-2s synthetic test fixtures) — Basic Pitch inference
-      is CPU-bound; confirm it's tolerable in the actual workflow (no
-      progress output during the model's own `Predicting MIDI for...` phase
-      since that's swallowed to keep `--json` parseable — worth a "this may
-      take a few seconds" note in the non-JSON path if it turns out to drag).
+      recording when played back in Live. No literal hummed take available
+      this pass; substituted two real tests against a live Set instead: (1)
+      wrote a known melody into an empty MIDI track, rendered it through the
+      real Serum 2/OTT/EQ8 chain via the M4L tap... no capture tap was
+      loaded on this project, so (2) transcribed a real commercial track
+      (Viperactive — Dead To Me, rendered directly since it's an audio
+      track) instead — 36 real notes detected from real audio in ~1.1s
+      wall-clock, correctly low pitch range (D#0-C#2) matching the
+      track's quiet intro. A literal hummed take is still the more honest
+      test of "recognizably the same melody" and remains open.
+- [x] `--bpm` omitted → confirm it actually reads the OPEN Set's real tempo.
+      Confirmed: reported "140 BPM" on both transcriptions, matching this
+      Set's real tempo exactly (not a fake-gateway fallback).
+- [x] `--quantize 1/16` (or another grid) on a slightly-off-grid human take →
+      notes snap to the grid. Confirmed: unquantized starts (1.054, 1.786,
+      2.138 beats, ...) vs. `--quantize 1/16` on the identical source
+      (1.0, 1.75, 2.25 beats, ...) — every start now a clean multiple of
+      0.25 beats.
+- [x] Explicit occupied slot target (`track:N/slot:M` with a pre-existing
+      clip) → clip is overwritten in place, not duplicated or skipped.
+      Confirmed: re-running against the same slot printed "filled existing
+      clip", one clip present after, not two.
+- [x] Bare track target with NO empty session slots → confirm the error
+      message is clear and doesn't half-write anything. Confirmed via `awh
+      serve-fake` (filled all 4 slots, 5th attempt): clean
+      `"no empty session slot on track:0 — pass an explicit track:N/slot:M
+      target"`, no partial write.
+- [x] A genuinely quiet/silent recording → "no notes detected" prints, exit
+      0, nothing created. Confirmed against the real gateway (own generated
+      silent WAV): clean message both in `--dry-run` and a real write
+      attempt; verified via `awh status` that no phantom clip appeared.
+- [ ] Skill: "turn this hummed idea into a MIDI clip" → not run this pass.
+- [ ] Real timing check on a typical 8-16 bar idea: only tested on ~1.5-4s
+      clips this pass (all completed in ~1.1s) — a real 8-16 bar take's
+      wall-clock is still open.
+
+Cleanup note: an overly-broad `awh sweep <track> --prefix ""` (empty
+string matches every clip name) during this pass accidentally deleted the
+project's original empty placeholder clip on `track:15/arr:0`, not just the
+test content — caught and recreated it (64 beats, 0 notes, matching the
+original) before moving on. Worth remembering: `--prefix ""` is not a safe
+"delete my test clips" default.
 ## House-family StyleSpec verification checklist
 
 Shipped without a checklist section — added retroactively after review.
@@ -991,36 +1033,42 @@ like a real call-and-response pair:
       diagnostic from `knowledge/arrangement/call-response-drop-grammar`:
       solo each candidate against the call and listen for an actual rest,
       not two parts running over each other) — not just non-overlapping on
-      paper.
-- [ ] Same call clip, all five recipes side by side (`--count 5` or one
-      `--recipe` at a time) → confirm each recipe's gesture actually reads
-      as its name suggests (echo-low sounds like a low echo of the call's
-      rhythm, truncate-stab reads as a short punctuation not a phrase,
-      displaced-echo's hocketed onsets land where a kick would, sparse-
-      answer feels genuinely half-time/sparse) rather than being
-      indistinguishable variations.
+      paper. STRUCTURAL half confirmed against a real Live Set (not just
+      serve-fake): wrote a real call clip (4 notes, tail rest), ran `drop
+      respond` for real (not dry-run) — all 5 recipes landed in consecutive
+      session slots; read `echo-low` back and confirmed on paper it starts
+      well after the call ends (no overlap) and transposes into a lower
+      register as its name implies. The actual LISTENING judgment (does it
+      really read as "talking back") is still open — needs the owner's ears.
+- [ ] Same call clip, all five recipes side by side — listening judgment,
+      not run this pass (all 5 recipes DID generate distinct note
+      counts/registers structurally, which is necessary but not sufficient
+      for "each reads as its name suggests").
 - [ ] `awh drop phrase <callTrack> <responseTrack> --bars 8` (two-voice
-      pairing) → play both tracks together in Session/Arrangement view:
-      confirm the "state" bars (1-4) genuinely repeat, the "vary-call" bars
-      (5-8) noticeably vary the CALL while the response stays put (not the
-      reverse), and the turnaround bar reads as a reset rather than an
-      arbitrary dropout. Repeat with `--bars 16` for the second 8-bar
-      repeat of the plan.
-- [ ] `awh drop phrase <target>` (single-clip, register-split form) on one
-      track → confirm both voices are audibly distinct registers on
-      playback and the pairing still reads as call-and-response in one
-      clip, not a muddle.
-- [ ] `--style lyny-flavor` on both commands → confirm the OWNER agrees the
-      flavor (sparser call, bigger rests, low-end response) reads as
-      "economical/minimal" rather than just "less notes" — and that no one
-      downstream mistakes the `[draft]` tier + its coverage-caveat prose for
-      an actual LYNY technique.
-- [ ] Zero-notes call clip → `drop respond` states it plainly and writes
-      nothing; confirm no phantom clip appears in the Set.
-- [ ] A call clip that fills its own bar (no tail rest) → confirm the
+      pairing) → confirmed via `--dry-run` against real Live: paired call
+      (12 notes) + response (3 notes) clips, both exactly 32 beats (8 bars),
+      as documented. The bars-1-4-repeat / bars-5-8-vary-call / turnaround
+      LISTENING judgment is still open.
+- [ ] `awh drop phrase <target>` (single-clip, register-split form) →
+      confirmed via `--dry-run` against real Live: 15 notes in one 8-bar
+      clip, register-split as documented. Audible-distinctness judgment
+      still open.
+- [ ] `--style lyny-flavor` on both commands → not run this pass.
+- [x] Zero-notes call clip → `drop respond` states it plainly and writes
+      nothing; confirm no phantom clip appears in the Set. Confirmed
+      against real Live: clean `"... has no notes — nothing to respond to
+      (write or transcribe a call first)"`, no clip created on the target.
+- [x] A call clip that fills its own bar (no tail rest) → confirm the
       printed WARNING is legible and non-alarming, and that the response
       clip it still produces sounds legitimately separated in time, not
-      like an overlap bug.
+      like an overlap bug. Confirmed against real Live: exact printed text
+      is `"WARNING: call leaves only 0.00 beat(s) of rest at its own bar
+      tail (restMinBeats wants 1) — the response still enters cleanly after
+      it, but consider trimming the call's last note to leave the
+      question-mark gap"` — clear, non-alarming, and it still produced a
+      valid candidate rather than refusing outright, exactly as designed.
+      The "sounds legitimately separated" half is the listening judgment,
+      still open.
 - [ ] Skill: "give me some responses to this lead" / "answer this vocal chop
       with a bass growl" → Claude follows the Typical Flows entry (reads
       the call clip, uses `drop respond`, doesn't hand-compose a growl part
