@@ -110,6 +110,24 @@ describe("voiceProgression", () => {
     const b = voiceProgression(prog, { style: "spread" });
     expect(a).toEqual(b);
   });
+
+  it("spread + voice leading (the default combination) doesn't drift the register down over a long progression", () => {
+    // Regression: voice-leading a chord against the PREVIOUS chord's
+    // already-spread pitches (rather than its pre-spread close voicing)
+    // compounds each spread pass into the next search target, sinking the
+    // whole progression by nearly an octave after the first transition.
+    const prog = chords("I-IV-V-I-vi-IV-V-I", C_MAJOR);
+    const center = 60;
+    const voiced = voiceProgression(prog, { style: "spread", center, voiceLeading: true });
+    for (const v of voiced) {
+      // A generous bound: spread legitimately widens beyond a one-octave
+      // window around center, but the lowest voice must stay in the same
+      // ballpark for every chord, not sink further with each transition
+      // (the bug sank this exact progression to a lowest pitch of 24,
+      // 36 semitones below center — well outside this bound).
+      expect(Math.min(...v.pitches)).toBeGreaterThan(center - 24);
+    }
+  });
 });
 
 describe("renderChords", () => {
