@@ -179,6 +179,54 @@ awh drums vary <clipPath> [-n 4] [--amount 0..1]   # role-aware variations
 - density/style requests map naturally: "busier" → higher --density,
   "darker/minimal" → techno at lower density, "half-time/trap" → trap.
 
+## Phrase engine (`awh drop`) — call-and-response drop writing
+
+```sh
+awh drop respond <callClip> <target> [--recipe r] [--seed N] [-n count] [--key k]
+    [--style s] [--dry-run]
+    # THE core feature: answer an EXISTING call clip. <target> = a track
+    # path; candidates land in consecutive empty session slots, named
+    # "resp <recipe> s<seed>". Default: one candidate per recipe.
+awh drop phrase <target> [responseTarget] [--bars 8|16] [--style s] [--seed N]
+    [--variant v] [--key k] [--at-bar N] [--dry-run]
+    # CO-WRITE: cold-start an 8/16-bar call/response skeleton from a spec.
+    # Two targets = paired call/response clips (equal length, each voice
+    # silent during the other's bars). One target = single clip,
+    # register-split (both voices in the same clip).
+```
+
+- Two contrasting voices trade phrases — a bright/high CALL and a low
+  growl/stab RESPONSE — never a stacked, unrelated riff. The response
+  always enters AFTER a rest (the "question mark"), never on top of the
+  call, and always resolves to a stable low-register pitch (tonic/fifth by
+  default) — the "answer" gesture. This is general call-and-response craft
+  (`knowledge/arrangement/call-response-drop-grammar`,
+  `call-response-rest-placement`), not a specific artist's technique unless
+  a style entry says otherwise.
+- `respond` is the everyday tool: point it at a call clip the owner already
+  wrote (or transcribed via `awh clip from-audio`) and it proposes several
+  named, reproducible candidate responses to audition — never presents one
+  as final. Zero notes in the call clip is a normal result (nothing to
+  respond to yet): it says so and writes nothing, same convention as
+  `clip from-audio`'s zero-notes case.
+- `phrase` is for starting from nothing: it generates BOTH voices from a
+  spec's weighted call cells, applies the spec's evolution plan (state the
+  pair verbatim, then vary the call only while the response anchors — see
+  `knowledge/arrangement/drop-phrase-evolution`), and a turnaround reset cue
+  at each phrase boundary. Use `--variant` to pin a named call cell
+  (`awh kb show <phrase-style slug>` or the built-in's own `callCells`
+  names), same idea as `drums gen --variant`.
+- A target that already holds a clip is FILLED in place (notes clamped to
+  its length), same occupied-target convention as `awh lib place` — never
+  skipped or duplicated.
+- `--style`: the built-in `bass-music-cr`, or a knowledge entry with slug
+  `phrase-style-<name>` and an ```awh-phrase-spec``` block — same
+  data-driven convention as drum styles (adding a style = writing
+  knowledge, not code). Prints the entry's tier when used; never present a
+  `draft` style's flavor as fact about a real artist.
+- Always end with the honest reminder: candidates/skeletons are starting
+  points to audition, never a finished part.
+
 ## Mix analysis (`awh mix`) — measurements, never vibes
 
 ```sh
@@ -457,6 +505,39 @@ beat trap", "humanize my drums", "variations of my drum loop"):
    `awh drums vary` (variations), `awh drums fill` (last-bar fill),
    `awh drums humanize` (groove) — NOT plain `vary`/hand edits.
 3. Audition loop as with vary: name the slots, let the owner listen, sweep.
+
+**Answer a call clip with a response** ("give me some responses to this
+lead", "answer this vocal chop with a bass growl", "write a call and
+response for my drop"):
+1. `awh status --json` → find the call clip (or transcribe/write one first
+   — `awh clip from-audio` for a hummed/recorded idea, `awh clip create`
+   for hand notation) and a target TRACK for the response voice (a
+   different sound/track than the call — this is a PAIR, not a stack).
+2. `awh drop respond <callClip> <targetTrack>` — don't hand-compose a low
+   growl part yourself; this reads the call's actual notes and derives
+   several reproducible candidates (default: one per recipe), each
+   respecting the rest-before-entry and resolve-to-tonic/fifth rules. Zero
+   notes in the call clip is a normal result (nothing to respond to yet) —
+   it says so and writes nothing. `--dry-run` first to preview note counts
+   before committing slots.
+3. Name the candidate slots for the owner (`resp <recipe> s<seed>`) and let
+   them audition; `awh sweep <targetTrack> --prefix resp` clears the rest
+   once they've picked a favorite.
+
+**Cold-start a call-and-response drop skeleton** ("write me a dubstep drop
+from scratch", "give me an 8-bar call and response idea", "build a
+call/response skeleton in this key"):
+1. `awh status --json` → the Set's scale (or plan a `--key`), and two empty
+   targets (or one, for the single-clip register-split form) — two
+   different tracks/sounds for the two-voice pairing.
+2. `awh drop phrase <callTarget> [responseTarget] --bars 8|16 [--style s]` —
+   generates BOTH voices from a spec (weighted call cells, an evolution
+   plan that varies the call while the response anchors, a turnaround reset
+   at the phrase boundary) rather than one flat loop. `--dry-run` first;
+   `--variant` to pin a specific call-cell feel.
+3. Tell the owner plainly this is a SKELETON to audition and shape, never a
+   finished drop — the engine writes notes, not sound design (the growl/
+   chop timbre is still theirs to pick).
 
 **Mix feedback / "how does my mix measure?"** ("check my low end", "is this
 loud enough for clubs", "did that EQ change help"):

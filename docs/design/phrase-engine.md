@@ -1,6 +1,6 @@
 # Design: Phrase engine (M9 — drop writing, call & response)
 
-- Status: in build (2026-08-18). Craft basis (READ THESE — they are the
+- Status: built (pending owner validation) (2026-08-18). Craft basis (READ THESE — they are the
   spec's ground truth): `knowledge/arrangement/call-response-drop-grammar`,
   `call-response-rest-placement`, `drop-phrase-evolution`,
   `lyny-drop-structure` (the last is a stub — flavor only, per its own

@@ -176,3 +176,30 @@ export {
   secondsToBeats,
   QUANTIZE_GRIDS,
 } from "./a2m/quantize.js";
+export {
+  BASS_MUSIC_CR_SPEC,
+  RESPONSE_RECIPE_NAMES,
+  listPhraseStyles,
+  listPhraseVariants,
+  parsePhraseSpec,
+  type CallCell,
+  type EvolutionAction,
+  type EvolutionStep,
+  type PhraseSpec,
+  type ResponseRecipeName,
+  type TurnaroundKind,
+} from "./phrase/spec.js";
+export {
+  applyResponseRecipe,
+  fitResponseToWindow,
+  type RecipeResult,
+  type ResponseRecipe,
+} from "./phrase/recipes.js";
+export {
+  generatePhrase,
+  generateResponses,
+  type GeneratePhraseOptions,
+  type GenerateResponsesOptions,
+  type GeneratedPhrase,
+  type ResponseCandidate,
+} from "./phrase/phrase.js";
