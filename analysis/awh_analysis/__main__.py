@@ -9,7 +9,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import ab, duck, ref, report, targets
+from . import ab, duck, pumpcheck, ref, report, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -230,6 +230,51 @@ def _cmd_duckdepth(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_pumpcheck(args: argparse.Namespace) -> int:
+    from . import audio
+
+    triggers = [float(t) for t in args.triggers.split(",") if t.strip()]
+    x, sr = audio.load(args.file)
+    if args.cycle:
+        duration_s = x.shape[0] / sr
+        tiled = []
+        k = 0
+        while k * args.cycle < duration_s:
+            tiled.extend(t + k * args.cycle for t in triggers)
+            k += 1
+        triggers = [t for t in tiled if t < duration_s]
+    result = pumpcheck.check_pump(x, sr, triggers)
+    if args.json:
+        _print_json(result)
+    else:
+        env = result["envelope"]
+        fit = result["fitted"]
+        lines = [
+            f"Trigger-locked pump check ({result['used_triggers']} triggers, "
+            f"window {result['window_ms']:.0f} ms)",
+            "",
+            f"Envelope: peak {env['peak_db']:.1f} dB, tail {env['tail_db']:.1f} dB "
+            f"(span {env['peak_to_tail_db']:.1f} dB), minimum at {env['min_time_ms']:.0f} ms "
+            f"({100 * env['min_fraction']:.0f}% into the window)",
+            "",
+            "Fitted duck model (instant dip / hold / exponential release):",
+            f"  depth    {fit['depth_db']:.1f} dB",
+            f"  hold     {fit['hold_ms']:.0f} ms",
+            f"  release  tau {fit['release_tau_ms']:.0f} ms",
+            f"  fit r^2  {fit['r_squared']:.2f}",
+            "",
+            f"Verdict: {result['verdict']}",
+            f"  {result['evidence']}",
+        ]
+        if result["notes"]:
+            lines.append("")
+            lines.append("Notes:")
+            for note in result["notes"]:
+                lines.append(f"  - {note}")
+        print("\n".join(lines))
+    return 0
+
+
 def _render_ref_text(result: dict) -> str:
     lines = [
         f"File: {result['file']}  ({result['duration_s']:.1f} s)",
@@ -329,6 +374,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_dd.add_argument("--cycle", type=float, default=None)
     p_dd.add_argument("--json", action="store_true")
     p_dd.set_defaults(func=_cmd_duckdepth)
+
+    p_pump = sub.add_parser("pumpcheck", help="Trigger-locked sidechain-pump verification (fits the fixed duck model)")
+    p_pump.add_argument("file", help="capture to check (ideally the isolated ducked bus)")
+    p_pump.add_argument("--triggers", type=str, required=True,
+                        help="comma-separated trigger times in SECONDS (one cycle if --cycle)")
+    p_pump.add_argument("--cycle", type=float, default=None,
+                        help="trigger pattern cycle length in seconds — tiles the trigger "
+                             "list across the whole file (capture must start on a cycle boundary)")
+    p_pump.add_argument("--json", action="store_true")
+    p_pump.set_defaults(func=_cmd_pumpcheck)
 
     p_ref = sub.add_parser("ref", help="Analyze a reference track: tempo/grid, energy arc, section map")
     p_ref.add_argument("file")

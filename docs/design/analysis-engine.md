@@ -98,16 +98,20 @@ built/frozen to `.amxd` in Max on the owner's machine (Suite includes Max);
 `m4l/README.md` documents the freeze + a manual patching fallback if the
 generated patch fights Max's validator.
 
-## Pump v2 — trigger-locked detection (designed, not yet built)
+## Pump v2 — trigger-locked detection (BUILT: `awh mix pump-check`)
 
 The owner's template (`knowledge/setup/sidechain-template.md` — read it)
 uses ShaperBox Volume Shaper on a Sidechain bus, retriggered by a MIDI
 "Trigger" track that mirrors the Kick & Snare pattern. Consequences for v2:
 
-1. `awh mix pump-check` flow: read the Trigger clip's note starts via the
-   gateway → capture the Sidechain track post-FX → measure the RMS trough
-   **per trigger note** (align + average windows at each trigger, not a
-   beat-period fold — kick/snare patterns aren't 1-per-beat).
+1. `awh mix pump-check <busCapture> --trigger-clip <path>`: reads the
+   Trigger clip's note starts via the gateway, aligns + averages the
+   low-band envelope at each trigger (not a beat-period fold), FITS the
+   fixed dip model (depth/hold/exponential-tau, deterministic grid search,
+   r² reported) and issues a verdict: ducking / no-duck / inconclusive —
+   with the retriggered-decay case (the v1 killer) as a passing negative
+   control. A >20 dB peak-to-tail span adds an honest note that
+   trigger-source bleed may dominate: capture the ISOLATED ducked bus.
 2. Fit the fixed, user-drawn dip (attack/hold/release + depth) from the
    trigger-aligned average envelope and report the fitted shape — Volume
    Shaper applies the same programmed envelope every hit, so a fit is the
