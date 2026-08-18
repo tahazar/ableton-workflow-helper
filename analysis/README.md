@@ -39,7 +39,21 @@ tensorflow, substituting `onnxruntime` for the inference backend):
 .venv/bin/pip install "basic-pitch==0.4.0" --no-deps
 .venv/bin/pip install onnxruntime librosa "mir_eval>=0.6" "pretty_midi>=0.2.9" \
     "resampy>=0.2.2,<0.4.3" scikit-learn typing_extensions
+.venv/bin/pip install "setuptools<81"
 ```
+
+**The `setuptools<81` line matters, don't skip it**: `resampy` (a real
+runtime dependency above, not something we chose) imports the deprecated
+`pkg_resources` API at import time. Newer `pip`/Python don't bundle
+`pkg_resources` in a fresh venv, and setuptools itself dropped the module
+starting with its 81.x releases (confirmed live: 84.0.0 has no
+`pkg_resources` at all) — so a fresh venv fails with
+`ModuleNotFoundError: No module named 'pkg_resources'` the first time
+anything imports `basic_pitch.inference`, even though every package above
+installed successfully. This is an upstream `resampy`/librosa issue (not
+ours to fix), triggers a harmless deprecation warning once pinned, and
+will need revisiting if/when `pkg_resources` is actually removed upstream
+(flagged for 2025-11-30 as of this writing).
 
 (The second line is also captured as the `a2m` extras group in
 `pyproject.toml` — `pip install -e '.[a2m]'` from `analysis/` installs the
