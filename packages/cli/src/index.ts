@@ -63,6 +63,16 @@ import {
   secondsToBeats,
   voiceProgression,
   varyDrums,
+  BASS_MUSIC_CR_SPEC,
+  RESPONSE_RECIPE_NAMES,
+  generatePhrase,
+  generateResponses,
+  listPhraseStyles,
+  listPhraseVariants,
+  parsePhraseSpec,
+  sortNotes,
+  type PhraseSpec,
+  type ResponseRecipeName,
   type DrumStyleSpec,
   type ClipDetail,
   type ClipEntry,
@@ -1261,6 +1271,360 @@ drums
           `audition, keep favourites, then: awh sweep ${trackPath} --prefix ${prefix}-v`,
         ].join("\n"),
       );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Phrase engine (M9): call-and-response drop writing.
+// ---------------------------------------------------------------------------
+
+const PHRASE_BEATS_PER_BAR = 4;
+
+/** Resolve --style: built-in first, else a `phrase-style-<name>` knowledge
+ *  entry's ```awh-phrase-spec``` block — same convention as `drums gen`. */
+async function resolvePhraseSpec(style: string): Promise<{ spec: PhraseSpec; styleTier?: string }> {
+  if (listPhraseStyles().includes(style)) {
+    return { spec: BASS_MUSIC_CR_SPEC };
+  }
+  let entry;
+  try {
+    entry = await knowledgeStore().loadEntry(`phrase-style-${style}`);
+  } catch {
+    throw new Error(
+      `unknown phrase style "${style}" — built-ins: ${listPhraseStyles().join(", ")}; ` +
+        `data styles need a knowledge entry with slug phrase-style-${style} (see knowledge/README.md)`,
+    );
+  }
+  const specText = extractFencedBlock(entry.body, "awh-phrase-spec");
+  if (!specText) {
+    throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-phrase-spec block`);
+  }
+  return { spec: parsePhraseSpec(specText), styleTier: entry.tier };
+}
+
+/** Resolve a `drop phrase` target: explicit slot/arr path, track + --at-bar,
+ *  or a bare track path (auto-picks an empty session slot) — same
+ *  conventions as `drums gen`/`lib place`/`clip from-audio`. An existing
+ *  clip at the target is filled in place (same occupied-target convention). */
+async function resolvePhraseTarget(
+  opts: GlobalOpts,
+  summary: SetSummary,
+  target: string,
+  atBar: string | undefined,
+  lengthBeats: number,
+): Promise<{ targetSpec: unknown; where: string; existing?: { path: string; lengthBeats: number } }> {
+  const isSlotPath = /\/slot:\d+$/.test(target);
+  const isArrPath = /\/arr:\d+$/.test(target);
+  if (isSlotPath || isArrPath) {
+    let existing: { path: string; lengthBeats: number } | undefined;
+    try {
+      const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
+      existing = { path: target, lengthBeats: detail.duration };
+    } catch {
+      if (isArrPath) {
+        throw new Error(`no clip at ${target} — arr paths must point at an existing clip to fill`);
+      }
+    }
+    return { targetSpec: { type: "session", slotPath: target }, where: target, existing };
+  }
+  const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
+  if (!track) throw new Error(`track not found: ${target}`);
+  if (atBar !== undefined) {
+    const startBeat = (Number(atBar) - 1) * PHRASE_BEATS_PER_BAR;
+    const endBeat = startBeat + lengthBeats;
+    const overlap = track.arrangementClips.find(
+      (c) => startBeat < (c.endTime ?? 0) && endBeat > (c.startTime ?? 0),
+    );
+    const existing = overlap ? { path: overlap.path, lengthBeats: overlap.duration } : undefined;
+    return { targetSpec: { type: "arrangement", trackPath: target, startBeat }, where: `${target} @ bar ${atBar}`, existing };
+  }
+  const occupied = new Set(track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])));
+  const free = Array.from({ length: track.slotCount }, (_, i) => i).find((i) => !occupied.has(i));
+  if (free === undefined) {
+    throw new Error(`no empty session slot on ${target} — pass --at-bar or an explicit slot/arr path`);
+  }
+  const slotPath = `${target}/slot:${free}`;
+  return { targetSpec: { type: "session", slotPath }, where: slotPath };
+}
+
+/** Write (or fill) a phrase voice's clip. Occupied targets are filled in
+ *  place (notes clamped to the existing clip's length), same convention as
+ *  `awh lib place` / `awh clip from-audio`. */
+async function writePhraseClip(
+  opts: GlobalOpts,
+  resolved: { targetSpec: unknown; where: string; existing?: { path: string; lengthBeats: number } },
+  lengthBeats: number,
+  notes: NoteSpec[],
+  name: string,
+): Promise<{ path: string; notes: NoteSpec[]; clamped: number }> {
+  if (resolved.existing) {
+    const placed = clampNotesToLength(notes, resolved.existing.lengthBeats);
+    await op(opts, "clip.notes", { path: resolved.existing.path, notes: placed });
+    await op(opts, "clip.update", { path: resolved.existing.path, name });
+    return { path: resolved.existing.path, notes: placed, clamped: notes.length - placed.length };
+  }
+  const result = (await op(opts, "clip.create-midi", {
+    target: resolved.targetSpec,
+    lengthBeats,
+    notes,
+    name,
+  })) as { path: string };
+  return { path: result.path, notes, clamped: 0 };
+}
+
+const drop = program
+  .command("drop")
+  .description(
+    "Call-and-response phrase engine (M9): answer an existing call clip, or " +
+      "cold-start a call/response skeleton from a spec",
+  );
+
+drop
+  .command("respond <callClip> <target>")
+  .description(
+    "THE core call-and-response feature: reads an existing call clip and " +
+      "emits N candidate RESPONSE clips (default: one per recipe) into " +
+      "consecutive empty session slots on <target> (a track path), each " +
+      `named "resp <recipe> s<seed>".`,
+  )
+  .option("--recipe <recipe>", `pin one recipe (${RESPONSE_RECIPE_NAMES.join(", ")}) instead of one-per-recipe`)
+  .option("-n, --count <n>", "number of candidates (default: one per eligible recipe)")
+  .option("--seed <seed>", "base random seed (same seed = same candidates)", "1")
+  .option("--key <key>", 'e.g. "A minor" (default: the Set scale)')
+  .option(
+    "--style <style>",
+    `phrase spec: built-in (${listPhraseStyles().join(", ")}) or a knowledge phrase-style-<name>`,
+    "bass-music-cr",
+  )
+  .option("--dry-run", "print the candidates without touching Live")
+  .action(
+    async (
+      callClip: string,
+      target: string,
+      cmdOpts: {
+        recipe?: string;
+        count?: string;
+        seed: string;
+        key?: string;
+        style: string;
+        dryRun?: boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const detail = (await op(opts, "clip.get", { path: callClip })) as ClipDetail;
+      if (detail.kind !== "midi" || !detail.notes) {
+        throw new Error(`${callClip} is not a MIDI clip`);
+      }
+
+      // Zero notes is a STATE, not an error (docs/lessons-learned.md #5):
+      // nothing to respond to, nothing written, exit 0.
+      if (detail.notes.length === 0) {
+        output(opts, { callClip, created: [] }, () =>
+          `${callClip} has no notes — nothing to respond to (write or transcribe a call first)`,
+        );
+        return;
+      }
+
+      const { spec, styleTier } = await resolvePhraseSpec(cmdOpts.style);
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const keyCtx = resolveKey(summary, cmdOpts.key);
+
+      let recipes: ResponseRecipeName[];
+      if (cmdOpts.recipe) {
+        if (!RESPONSE_RECIPE_NAMES.includes(cmdOpts.recipe as ResponseRecipeName)) {
+          throw new Error(`unknown recipe "${cmdOpts.recipe}" (one of: ${RESPONSE_RECIPE_NAMES.join(", ")})`);
+        }
+        recipes = [cmdOpts.recipe as ResponseRecipeName];
+      } else {
+        recipes = spec.responseRecipes;
+      }
+      const count = cmdOpts.count !== undefined ? Number(cmdOpts.count) : recipes.length;
+      const candidates = generateResponses(detail.notes, keyCtx, spec, {
+        recipes,
+        count,
+        seed: Number(cmdOpts.seed),
+      });
+      const warnings = [...new Set(candidates.flatMap((c) => c.warnings))];
+      const specLine = `spec ${cmdOpts.style}${styleTier ? ` [${styleTier}]` : ""}, key ${keyCtx.label}`;
+
+      const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
+      if (!track) throw new Error(`track not found: ${target}`);
+      const occupied = new Set(track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])));
+      const free = Array.from({ length: track.slotCount }, (_, i) => i).filter((i) => !occupied.has(i));
+      if (free.length < candidates.length) {
+        throw new Error(
+          `need ${candidates.length} empty session slots on ${target}, found ${free.length} — ` +
+            "add scenes or sweep old auditions",
+        );
+      }
+
+      if (cmdOpts.dryRun) {
+        output(opts, { candidates, warnings }, () =>
+          [
+            `dry run: ${candidates.length} response candidate(s) for ${callClip} -> ${target} (${specLine}):`,
+            ...candidates.map((c) => `  resp ${c.recipe} s${c.seed} — ${c.notes.length} notes, ${c.lengthBeats} beats`),
+            ...warnings.map((w) => `  WARNING: ${w}`),
+            "candidates are starting points to audition, not a finished part.",
+          ].join("\n"),
+        );
+        return;
+      }
+
+      const created: { path: string; name: string }[] = [];
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i]!;
+        const slotPath = `${target}/slot:${free[i]}`;
+        const name = `resp ${c.recipe} s${c.seed}`;
+        await op(opts, "clip.create-midi", {
+          target: { type: "session", slotPath },
+          lengthBeats: c.lengthBeats,
+          notes: c.notes,
+          name,
+        });
+        created.push({ path: slotPath, name });
+      }
+
+      output(opts, { created, warnings }, () =>
+        [
+          `${created.length} response candidate(s) for ${callClip} -> ${target} (${specLine}):`,
+          ...created.map((c) => `  ${c.path.padEnd(22)} ${c.name}`),
+          ...warnings.map((w) => `  WARNING: ${w}`),
+          "candidates are starting points — audition, then keep/tweak your favorite.",
+        ].join("\n"),
+      );
+    },
+  );
+
+drop
+  .command("phrase <target> [responseTarget]")
+  .description(
+    "Cold-start an 8/16-bar call-and-response skeleton from a spec. One " +
+      "target = single clip, register-split; two targets = paired call/" +
+      "response clips of equal length (each voice silent during the " +
+      "other's bars).",
+  )
+  .option("--bars <bars>", "8 or 16", "8")
+  .option(
+    "--style <style>",
+    `phrase spec: built-in (${listPhraseStyles().join(", ")}) or a knowledge phrase-style-<name>`,
+    "bass-music-cr",
+  )
+  .option("--seed <seed>", "random seed (same seed = same phrase)", "1")
+  .option("--variant <variant>", "force a named call-cell variant (see the style's callCells) or its index")
+  .option("--key <key>", 'e.g. "A minor" (default: the Set scale)')
+  .option("--at-bar <bar>", "arrangement position (1-based bar) for track targets")
+  .option("--dry-run", "print the notation preview without touching Live")
+  .action(
+    async (
+      target: string,
+      responseTarget: string | undefined,
+      cmdOpts: {
+        bars: string;
+        style: string;
+        seed: string;
+        variant?: string;
+        key?: string;
+        atBar?: string;
+        dryRun?: boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const bars = Number(cmdOpts.bars);
+      if (bars !== 8 && bars !== 16) {
+        throw new Error(`--bars must be 8 or 16 (got "${cmdOpts.bars}")`);
+      }
+
+      const { spec, styleTier } = await resolvePhraseSpec(cmdOpts.style);
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const keyCtx = resolveKey(summary, cmdOpts.key);
+
+      let variant: number | undefined;
+      if (cmdOpts.variant !== undefined) {
+        const names = listPhraseVariants(spec);
+        variant = /^\d+$/.test(cmdOpts.variant) ? Number(cmdOpts.variant) : names.indexOf(cmdOpts.variant);
+        if (variant < 0) {
+          throw new Error(`unknown variant "${cmdOpts.variant}" (available: ${names.join(", ")})`);
+        }
+      }
+
+      const phrase = generatePhrase(spec, keyCtx, {
+        bars: bars as 8 | 16,
+        seed: Number(cmdOpts.seed),
+        ...(variant !== undefined ? { variant } : {}),
+      });
+      const specLine =
+        `spec ${cmdOpts.style}${styleTier ? ` [${styleTier}]` : ""} — cell ${phrase.meta.callCell}, ` +
+        `recipe ${phrase.meta.recipe}, seed ${cmdOpts.seed}, key ${keyCtx.label}`;
+
+      if (responseTarget) {
+        const callResolved = await resolvePhraseTarget(opts, summary, target, cmdOpts.atBar, phrase.lengthBeats);
+        const respResolved = await resolvePhraseTarget(
+          opts,
+          summary,
+          responseTarget,
+          cmdOpts.atBar,
+          phrase.lengthBeats,
+        );
+
+        if (cmdOpts.dryRun) {
+          output(
+            opts,
+            { call: phrase.callNotes, response: phrase.responseNotes, lengthBeats: phrase.lengthBeats, warnings: phrase.warnings },
+            () =>
+              [
+                `dry run: ${bars}-bar phrase (${specLine}):`,
+                `  call -> ${callResolved.where} (${phrase.callNotes.length} notes, ${phrase.lengthBeats} beats)`,
+                `  response -> ${respResolved.where} (${phrase.responseNotes.length} notes, ${phrase.lengthBeats} beats)`,
+                ...phrase.warnings.map((w) => `  WARNING: ${w}`),
+                "this is a skeleton — audition both voices together, then shape it into a real drop.",
+              ].join("\n"),
+          );
+          return;
+        }
+
+        const callResult = await writePhraseClip(opts, callResolved, phrase.lengthBeats, phrase.callNotes, `call ${spec.name}`);
+        const respResult = await writePhraseClip(
+          opts,
+          respResolved,
+          phrase.lengthBeats,
+          phrase.responseNotes,
+          `response ${spec.name}`,
+        );
+
+        output(opts, { call: callResult, response: respResult, warnings: phrase.warnings }, () =>
+          [
+            `${bars}-bar phrase (${specLine}):`,
+            `  call -> ${callResult.path} (${callResult.notes.length} notes)`,
+            `  response -> ${respResult.path} (${respResult.notes.length} notes)`,
+            ...phrase.warnings.map((w) => `  WARNING: ${w}`),
+            "this is a skeleton, not a finished drop — audition both voices together and shape it from there.",
+          ].join("\n"),
+        );
+      } else {
+        const resolved = await resolvePhraseTarget(opts, summary, target, cmdOpts.atBar, phrase.lengthBeats);
+        const merged = sortNotes([...phrase.callNotes, ...phrase.responseNotes]);
+
+        if (cmdOpts.dryRun) {
+          output(opts, { notes: merged, lengthBeats: phrase.lengthBeats, warnings: phrase.warnings }, () =>
+            [
+              `dry run: ${bars}-bar phrase (${specLine}) -> ${resolved.where} ` +
+                `(${merged.length} notes, register-split call/response in one clip)`,
+              ...phrase.warnings.map((w) => `  WARNING: ${w}`),
+              "this is a skeleton — audition, then shape it into a real drop.",
+            ].join("\n"),
+          );
+          return;
+        }
+
+        const result = await writePhraseClip(opts, resolved, phrase.lengthBeats, merged, spec.name);
+        output(opts, { path: result.path, notes: result.notes, warnings: phrase.warnings }, () =>
+          [
+            `${bars}-bar phrase (${specLine}) -> ${result.path} (${result.notes.length} notes, register-split)`,
+            ...phrase.warnings.map((w) => `  WARNING: ${w}`),
+            "this is a skeleton, not a finished drop — audition and shape it from there.",
+          ].join("\n"),
+        );
+      }
     },
   );
 

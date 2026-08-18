@@ -968,3 +968,60 @@ Shipped without a checklist section — added retroactively after review.
 - [x] Live-edit-no-rebuild: edited `ghostChance` 0.7→0.05 in the entry's
       YAML with no build step, regenerated with the same seed — shaker
       ghost count dropped from several to exactly 0. Reverted after.
+
+## M9 (phrase engine, `awh drop`) owner validation checklist
+
+Built + smoke-tested against `awh serve-fake`: real call clips written via
+`awh clip create`, `drop respond` (real writes + `--dry-run`), `drop phrase`
+(two-target and single-target register-split forms, `--bars 8` and `--bars
+16`), `--style lyny-flavor` (knowledge path, tier printed), the zero-notes
+call case, and the negative control (a call filling its own bar still
+produces a WARNING plus a legally-rested, non-overlapping response) — see
+the build session's report for exact commands/output. `pnpm test` green
+(core property/regression suite: rest budget, no overlap, resolve-degree
+endings, equal-length paired clips, evolution touching only its claimed
+side, recipe determinism, parsePhraseSpec typo rejection). The owner still
+needs to validate this AUDITIONED IN LIVE — synthetic notes prove the
+plumbing and the craft rules as coded, not whether the actual result sounds
+like a real call-and-response pair:
+
+- [ ] `awh drop respond <a real call clip you wrote/transcribed> <target>`
+      on an actual Live Set → the candidate responses genuinely read as
+      "talking back" to the call when played together (the working
+      diagnostic from `knowledge/arrangement/call-response-drop-grammar`:
+      solo each candidate against the call and listen for an actual rest,
+      not two parts running over each other) — not just non-overlapping on
+      paper.
+- [ ] Same call clip, all five recipes side by side (`--count 5` or one
+      `--recipe` at a time) → confirm each recipe's gesture actually reads
+      as its name suggests (echo-low sounds like a low echo of the call's
+      rhythm, truncate-stab reads as a short punctuation not a phrase,
+      displaced-echo's hocketed onsets land where a kick would, sparse-
+      answer feels genuinely half-time/sparse) rather than being
+      indistinguishable variations.
+- [ ] `awh drop phrase <callTrack> <responseTrack> --bars 8` (two-voice
+      pairing) → play both tracks together in Session/Arrangement view:
+      confirm the "state" bars (1-4) genuinely repeat, the "vary-call" bars
+      (5-8) noticeably vary the CALL while the response stays put (not the
+      reverse), and the turnaround bar reads as a reset rather than an
+      arbitrary dropout. Repeat with `--bars 16` for the second 8-bar
+      repeat of the plan.
+- [ ] `awh drop phrase <target>` (single-clip, register-split form) on one
+      track → confirm both voices are audibly distinct registers on
+      playback and the pairing still reads as call-and-response in one
+      clip, not a muddle.
+- [ ] `--style lyny-flavor` on both commands → confirm the OWNER agrees the
+      flavor (sparser call, bigger rests, low-end response) reads as
+      "economical/minimal" rather than just "less notes" — and that no one
+      downstream mistakes the `[draft]` tier + its coverage-caveat prose for
+      an actual LYNY technique.
+- [ ] Zero-notes call clip → `drop respond` states it plainly and writes
+      nothing; confirm no phantom clip appears in the Set.
+- [ ] A call clip that fills its own bar (no tail rest) → confirm the
+      printed WARNING is legible and non-alarming, and that the response
+      clip it still produces sounds legitimately separated in time, not
+      like an overlap bug.
+- [ ] Skill: "give me some responses to this lead" / "answer this vocal chop
+      with a bass growl" → Claude follows the Typical Flows entry (reads
+      the call clip, uses `drop respond`, doesn't hand-compose a growl part
+      or reach for plain `vary`).
