@@ -688,8 +688,16 @@ program
   .command("sweep <trackPath>")
   .description("Delete session clips on a track whose name starts with --prefix")
   .requiredOption("--prefix <prefix>", "name prefix to match (e.g. bass-v)")
-  .action(async (trackPath: string, cmdOpts: { prefix: string }) => {
+  .option("--all", "allow an empty --prefix (matches EVERY clip on the track)")
+  .action(async (trackPath: string, cmdOpts: { prefix: string; all?: boolean }) => {
     const opts = program.opts<GlobalOpts>();
+    // An empty prefix matches every clip name — a validation pass lost a
+    // placeholder clip to it. Deleting everything must be said out loud.
+    if (cmdOpts.prefix === "" && !cmdOpts.all) {
+      throw new Error(
+        `--prefix "" matches EVERY clip on ${trackPath} — pass --all if you really mean that`,
+      );
+    }
     const summary = (
       (await callGateway(opts, "/api/ops/set.summary", { method: "POST" })) as {
         result: SetSummary;
