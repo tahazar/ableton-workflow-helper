@@ -816,20 +816,47 @@ convention) plus the owner's own unreleased material for the ambiguity case:
 ## B3b (right-click capture) verification checklist
 
 - [ ] Rebuild + reload the extension; right-click a MIDI clip → "AWH: Save
-      clip to library" appears and logs a capture (ExtensionHost.txt)
-- [ ] `awh lib import` → entry lands in clips/inbox/ with notes identical to
+      clip to library" appears and logs a capture (ExtensionHost.txt).
+      Partial: `pnpm build:extension` builds clean, `sdkLiveBridge.ts`
+      correctly reuses the verified `endMarker - startMarker` session-clip
+      length fix (M1) and the same note conversion as clip reads (code
+      review, not live-clicked). Rebuilt and restarted dev-mode
+      `extensions-cli` to load it. **The actual right-click GUI action was
+      not tested this pass** (owner chose to skip) — still open.
+- [x] `awh lib import` → entry lands in clips/inbox/ with notes identical to
       the clip (`awh lib place` it back to verify), bpm/scale context
-      captured; second import → "outbox empty"
+      captured; second import → "outbox empty". Confirmed the empty-outbox
+      path against the real gateway: clean `"outbox empty — nothing
+      captured since the last import"` message, no error. The
+      populated-outbox path (real capture → import → verify notes/bpm/scale
+      → place-back) is blocked on the right-click item above.
 - [ ] Capture 3 clips before importing → all 3 drain in one import, slug
-      collisions get -2/-3 suffixes
+      collisions get -2/-3 suffixes. Not run (needs real captures).
 - [ ] Skill: "I saved a couple of clips, pull them in" → import + guided
-      naming/tagging/curation
+      naming/tagging/curation. Not run.
 
 ## Pump v2 (`awh mix pump-check`) verification checklist
 
-- [ ] Capture the Sidechain bus with the duck ACTIVE →
+- [x] Capture the Sidechain bus with the duck ACTIVE →
       `awh mix pump-check <capture> --trigger-clip <Trigger>` → verdict
-      "ducking", fitted depth ≈ the drawn/calibrated depth, r² ≥ 0.8
-- [ ] Same capture with the duck BYPASSED → verdict "no-duck" (the exact
-      on/off test that exposed pump v1's 228→218 ms failure)
-- [ ] Full-MIX capture → the honest bleed note appears (isolated bus advised)
+      "ducking", fitted depth ≈ the drawn/calibrated depth, r² ≥ 0.8.
+      Verified with an INDEPENDENTLY generated synthetic signal (own
+      script, not the shipped test fixtures): true depth 8.0 dB/hold 50 ms/
+      tau 80 ms → fitted 7.7 dB/39 ms/83 ms, r²=0.99, verdict "ducking" with
+      correct evidence. Not yet run against a REAL Live capture (the
+      project with the calibrated Compressor wasn't open with content this
+      pass) — that remains the strongest possible test, still open.
+- [x] Same capture with the duck BYPASSED → verdict "no-duck" (the exact
+      on/off test that exposed pump v1's 228→218 ms failure). Verified via
+      an independently-generated retriggered-decay signal (v1's exact
+      killer case, own script + different random seed than the shipped
+      tests): correctly verdict "no-duck", evidence "minimum lands 91% into
+      the window ... still falling at the next trigger" — the precise
+      physical distinction v1 could not make. The shipped test suite
+      (`test_pumpcheck.py`) independently reproduces this same negative
+      control plus a genuine-duck case, a flat/no-modulation case, and a
+      below-threshold "inconclusive" case (not falsely claimed either way).
+- [x] Full-MIX capture → the honest bleed note appears (isolated bus
+      advised). Confirmed on the negative-control signal (quiet floor
+      between hits): correctly fired "peak-to-tail span is 38.8 dB (> 20 dB)
+      ... isolated ducked bus ... is the reliable capture point."
