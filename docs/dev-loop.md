@@ -401,6 +401,17 @@ python3 -m venv .venv
 cd analysis && ../.venv/bin/pytest -q && cd ..   # engine self-test
 ```
 
+B1 (`awh clip from-audio`) needs one more one-time step — Basic Pitch on the
+ONNX backend (not TensorFlow). See `analysis/README.md` for why the plain
+`pip install basic-pitch` is wrong here (unconditional TF pull on Linux) and
+the full license audit; the short version:
+
+```sh
+.venv/bin/pip install "basic-pitch==0.4.0" --no-deps
+.venv/bin/pip install onnxruntime librosa "mir_eval>=0.6" "pretty_midi>=0.2.9" \
+    "resampy>=0.2.2,<0.4.3" scikit-learn typing_extensions
+```
+
 M4L capture tap: follow `m4l/README.md` (Max Audio Effect on the master,
 paste/build the patch, save). Suite includes Max.
 
@@ -860,3 +871,40 @@ convention) plus the owner's own unreleased material for the ambiguity case:
       advised). Confirmed on the negative-control signal (quiet floor
       between hits): correctly fired "peak-to-tail span is 38.8 dB (> 20 dB)
       ... isolated ducked bus ... is the reliable capture point."
+
+## B1 (audio-to-MIDI, `awh clip from-audio`) owner validation checklist
+
+Built + smoke-tested against `awh serve-fake` (synthetic sine WAVs, a real
+gateway write, `--dry-run`, and the zero-notes path — see the build session's
+report for exact commands/output). The owner still needs to validate against
+REAL Live and REAL recorded material — synthetic sine waves prove the
+plumbing, not transcription quality on an actual take:
+
+- [ ] Real vocal/hummed take → `awh clip from-audio <recording> track:N` →
+      the resulting MIDI clip's melody is recognizably the same shape as the
+      recording when played back in Live (not necessarily note-perfect —
+      that's the honest expectation, not the bug bar).
+- [ ] `--bpm` omitted → confirm it actually reads the OPEN Set's real tempo
+      (not just the fake gateway's fixed value) and the note timing lines up
+      with the Set's grid when played against other tracks.
+- [ ] `--quantize 1/16` (or another grid) on a slightly-off-grid human take →
+      notes snap to the grid and still sound musically right — no notes
+      audibly forced into the wrong bar from a bad snap.
+- [ ] Explicit occupied slot target (`track:N/slot:M` with a pre-existing
+      clip) → clip is overwritten in place, not duplicated or skipped; if the
+      transcription is longer than the existing clip, confirm the printed
+      "clamped" note matches what actually got dropped.
+- [ ] Bare track target with NO empty session slots → confirm the error
+      message is clear and doesn't half-write anything.
+- [ ] A genuinely quiet/silent recording → "no notes detected" prints, exit
+      0, nothing created — confirm no phantom clip appears in the Set.
+- [ ] Skill: "turn this hummed idea into a MIDI clip" → Claude follows the
+      Typical Flows entry (gets the file, doesn't hand-invent pitches, quotes
+      the note count/pitch range, states it's an estimate) rather than
+      reaching for `clip create` or fabricating notation.
+- [ ] Real timing check: total wall-clock for a typical 8-16 bar musical
+      idea (not the 1.5-2s synthetic test fixtures) — Basic Pitch inference
+      is CPU-bound; confirm it's tolerable in the actual workflow (no
+      progress output during the model's own `Predicting MIDI for...` phase
+      since that's swallowed to keep `--json` parseable — worth a "this may
+      take a few seconds" note in the non-JSON path if it turns out to drag).

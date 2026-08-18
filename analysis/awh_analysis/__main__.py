@@ -9,7 +9,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import ab, duck, pumpcheck, ref, report, targets
+from . import a2m, ab, duck, pumpcheck, ref, report, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -316,6 +316,28 @@ def _cmd_ref(args: argparse.Namespace) -> int:
 
 
 
+def _cmd_a2m(args: argparse.Namespace) -> int:
+    result = a2m.transcribe(
+        args.file,
+        onset_thresh=args.onset_thresh,
+        frame_thresh=args.frame_thresh,
+        min_note_len_ms=args.min_len,
+        min_freq=args.min_freq,
+        max_freq=args.max_freq,
+        melodia_trim=not args.no_melodia_trim,
+    )
+    if args.json:
+        _print_json(result)
+    else:
+        print(f"{result['n_notes']} notes ({result['model']})")
+        for n in result["notes"]:
+            print(
+                f"  {n['start_s']:7.3f}s +{n['dur_s']:6.3f}s  "
+                f"pitch={n['pitch']:3d}  vel={n['velocity']:3d}"
+            )
+    return 0
+
+
 def _cmd_onsets(args: argparse.Namespace) -> int:
     from . import audio
 
@@ -397,6 +419,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_ref.add_argument("--json", action="store_true")
     p_ref.set_defaults(func=_cmd_ref)
 
+    p_a2m = sub.add_parser("a2m", help="Melodic audio-to-MIDI transcription (Basic Pitch, ONNX)")
+    p_a2m.add_argument("file")
+    p_a2m.add_argument("--onset-thresh", type=float, default=0.5,
+                       help="onset detection sensitivity (Basic Pitch default 0.5)")
+    p_a2m.add_argument("--frame-thresh", type=float, default=0.3,
+                       help="frame/pitch confidence threshold (Basic Pitch default 0.3)")
+    p_a2m.add_argument("--min-len", type=float, default=127.70,
+                       help="minimum note length in ms (Basic Pitch default 127.70)")
+    p_a2m.add_argument("--min-freq", type=float, default=None,
+                       help="ignore pitches below this frequency in Hz")
+    p_a2m.add_argument("--max-freq", type=float, default=None,
+                       help="ignore pitches above this frequency in Hz")
+    p_a2m.add_argument("--no-melodia-trim", action="store_true",
+                       help="disable the melodia post-processing trick (default: on)")
+    p_a2m.add_argument("--json", action="store_true")
+    p_a2m.set_defaults(func=_cmd_a2m)
+
     p_on = sub.add_parser("onsets", help="Detect drum onset times in an audio capture")
     p_on.add_argument("file")
     p_on.add_argument("--min-gap-ms", type=float, default=80.0)
@@ -419,7 +458,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except (ValueError, FileNotFoundError, OSError, sf.SoundFileError) as exc:
+    except (ValueError, FileNotFoundError, OSError, sf.SoundFileError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

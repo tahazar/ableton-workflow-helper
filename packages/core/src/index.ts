@@ -168,3 +168,11 @@ export {
   type VoicedChord,
   type VoicingOptions,
 } from "./harmony/voicing.js";
+export {
+  clampNotesToLength,
+  clipLengthBeats,
+  parseQuantizeGrid,
+  quantizeNotes,
+  secondsToBeats,
+  QUANTIZE_GRIDS,
+} from "./a2m/quantize.js";
