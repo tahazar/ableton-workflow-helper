@@ -232,3 +232,24 @@ describe("audio clips", () => {
     ).rejects.toThrowError(/not an audio track/);
   });
 });
+
+describe("library.outbox", () => {
+  it("drains right-click captures once (drain clears)", async () => {
+    const bridge = new FakeLiveBridge();
+    const registry = buildOpRegistry();
+    const outboxOp = registry.get("library.outbox")!;
+    bridge.addOutboxEntry({
+      name: "Captured Hats",
+      notes: [{ pitch: 42, start: 0, duration: 0.25, velocity: 90 }],
+      lengthBeats: 4,
+      looping: true,
+      tempo: 128,
+      scale: { rootNote: 9, name: "Minor", active: true },
+      capturedAt: "2026-08-18T00:00:00.000Z",
+    });
+    const first = (await outboxOp.handler({}, { bridge })) as unknown[];
+    expect(first).toHaveLength(1);
+    const second = (await outboxOp.handler({}, { bridge })) as unknown[];
+    expect(second).toHaveLength(0);
+  });
+});

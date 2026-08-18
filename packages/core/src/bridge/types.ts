@@ -187,6 +187,21 @@ export interface MixerArgs {
 // The bridge
 // ---------------------------------------------------------------------------
 
+/**
+ * A clip captured from Live's UI via the right-click "save to library"
+ * action (B3b). Buffered extension-side (storageDirectory outbox) because
+ * the extension sandbox cannot write into the repo; `awh lib import` drains.
+ */
+export interface OutboxEntry {
+  name: string;
+  notes: NoteSpec[];
+  lengthBeats: number;
+  looping: boolean;
+  tempo: number;
+  scale: { rootNote: number; name: string; active: boolean } | null;
+  capturedAt: string;
+}
+
 export interface LiveBridge {
   describe(): Promise<BridgeInfo>;
 
@@ -216,6 +231,9 @@ export interface LiveBridge {
     startBeat: number,
     endBeat: number,
   ): Promise<{ audioPath: string }>;
+
+  /** Drain (return + clear) right-click library captures. See OutboxEntry. */
+  drainOutbox(): Promise<OutboxEntry[]>;
 
   // scenes
   createScene(index?: number): Promise<{ path: string }>;
