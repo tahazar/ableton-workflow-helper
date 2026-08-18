@@ -799,8 +799,8 @@ convention) plus the owner's own unreleased material for the ambiguity case:
       gives the natural-minor diatonic (minor) v instead — with zero
       indication anything unusual happened. The capability to get the
       "correct" major V DOES exist (`--key "<root> harmonic-minor"`), it's
-      just non-obvious; worth a one-line SKILL.md callout for this specific
-      idiom since it's likely the single most common minor-key request.
+      just non-obvious. Added a SKILL.md callout for this specific idiom
+      since it's likely the single most common minor-key request.
 - [ ] `--key "F minor"` overrides an inactive Set scale; helpful error
       when neither is available. Confirmed the override half (every test
       above used `--key` against the fake Set's inactive/default scale and

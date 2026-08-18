@@ -209,6 +209,11 @@ awh chords <target> --progression "i-VI-III-VII" [--key "A minor"]
   --key): qualities come from stacking the scale, so everything stays
   in-key; `7`, `sus2/4`, `dim/aug`, and `b/#` borrowing supported. The
   output lists the voiced pitches — read them back to the owner.
+- CASE IS COSMETIC — `V` and `v` produce identical pitches; quality is
+  100% scale-derived, never picked by case. This means the very common
+  minor-key cadence `i-iv-V-i` (expecting a borrowed MAJOR dominant) gives
+  the natural-minor diatonic (minor) v instead, silently. For that idiom,
+  use `--key "<root> harmonic-minor"` instead — it correctly makes V major.
 - Voice leading is on by default (minimal movement between chords);
   `spread` widens with the root low. "Chords too muddy" -> raise --center;
   "too thin" -> --bass adds the root an octave down.
