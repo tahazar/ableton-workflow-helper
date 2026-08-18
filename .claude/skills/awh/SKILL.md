@@ -193,6 +193,29 @@ awh ref sections read <trackPath> [-o f]  # owner's corrections -> JSON
   corrects -> read -> use the corrected bars to shape an `awh sections`
   plan (bars per section come straight from the reference map).
 
+## Scaffolding + chords (`awh new` / `awh chords`) — start from YOUR template
+
+```sh
+awh new project <name> [--template dir]  # copy the owner's template project
+                                         # (disk only; they open it in Live)
+awh new populate [scaffold.yaml]         # then: tempo, named tracks, starter
+                                         # clips from the library, a chord bed
+awh chords <target> --progression "i-VI-III-VII" [--key "A minor"]
+    [--bars 8] [--voicing close|spread] [--rhythm whole|half|quarters|offbeat-stabs]
+    [--bass] [--at-bar N]                # CO-WRITE: in-scale chord clip
+```
+
+- Progressions are roman numerals resolved against the SET's scale (or
+  --key): qualities come from stacking the scale, so everything stays
+  in-key; `7`, `sus2/4`, `dim/aug`, and `b/#` borrowing supported. The
+  output lists the voiced pitches — read them back to the owner.
+- Voice leading is on by default (minimal movement between chords);
+  `spread` widens with the root low. "Chords too muddy" -> raise --center;
+  "too thin" -> --bass adds the root an octave down.
+- The scaffold (library/templates/scaffold.yaml) is the owner's own
+  recipe — starters reference library slugs, so `new populate` places
+  THEIR material, not invented content.
+
 ## Knowledge base (`awh kb` / `awh distill`) — read before you reason
 
 `knowledge/<topic>/<slug>.md`: tiered (verified/sourced/draft), executable-
@@ -421,6 +444,18 @@ MIDI "Trigger" track. Always start from the fit, then pick a strategy:
    tightening the kick's own decay.
 Volume-automation ducking is NOT possible via the gateway (no automation
 API) — say so if asked; don't improvise workarounds into real projects.
+
+**Start a new track / add a chord bed** ("new project", "start something
+in F minor", "give me chords under this"):
+1. New project: `awh new project <name>` (their template; if it errors about
+   a missing template, walk them through copying their starting-point
+   project folder to library/templates/project once). They open it in Live;
+   then `awh new populate` applies their scaffold — show what it did.
+2. Chords: `awh status` for the scale, then `awh chords <target>
+   --progression <spec>` — pick progressions that fit the genre (the KB's
+   arrangement/rhythm entries may name idiomatic ones; cite if used).
+   Read the voiced pitches back; offer --voicing/--rhythm variants rather
+   than re-guessing.
 
 **Answer from / add to the knowledge base** ("what do we know about X",
 "how does <artist> do Y", "remember this", "save what we learned today"):
