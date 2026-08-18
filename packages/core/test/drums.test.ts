@@ -1,17 +1,30 @@
 import { describe, expect, it } from "vitest";
 import { makeRng } from "../src/transforms/rng.js";
+import { sortNotes } from "../src/transforms/types.js";
 import { GM_DRUM_KIT, mapPadRoles, roleOfNote } from "../src/drums/roles.js";
 import {
+  ACCENT,
+  GHOST,
+  HAT_OFF16,
+  HOUSE_STYLE_SPEC,
+  NORMAL,
+  TECHNO_STYLE_SPEC,
   TRAP_KICK_CELLS,
   TRAP_STYLE_SPEC,
   generateDrumPattern,
   generateDrumPatternDetailed,
+  isNearGrid,
   listDrumStyles,
   listDrumVariants,
+  randVelocity,
 } from "../src/drums/grammars.js";
 import { drumFill, humanizeDrums, varyDrums } from "../src/drums/fills.js";
-import { parseDrumStyleSpec, type TrapFamilyStyleSpec } from "../src/drums/styleSpec.js";
-import type { DrumContext, DrumKit } from "../src/drums/types.js";
+import {
+  parseDrumStyleSpec,
+  type HouseFamilyStyleSpec,
+  type TrapFamilyStyleSpec,
+} from "../src/drums/styleSpec.js";
+import type { DrumContext, DrumKit, DrumRole } from "../src/drums/types.js";
 import type { NoteSpec } from "../src/bridge/types.js";
 
 const ctx = (overrides: Partial<DrumContext> = {}): DrumContext => ({
@@ -590,5 +603,465 @@ describe("varyDrums", () => {
     const a = varyDrums(source, FULL_KIT, ctx({ bars: 2, rng: makeRng(20) }), { amount: 0.6 });
     const b = varyDrums(source, FULL_KIT, ctx({ bars: 2, rng: makeRng(20) }), { amount: 0.6 });
     expect(a).toEqual(b);
+  });
+});
+
+describe("parseDrumStyleSpec (B4.1 house family)", () => {
+  const validHouseYaml = `
+name: custom-house
+family: house
+kickBeats: four-floor
+backbeat: [clap]
+backbeatMinDensity: 0.2
+openHatOffbeats: 0.4
+hatGrid:
+  low: offbeat-8ths
+  high: 16ths
+  threshold: 0.55
+ride:
+  minDensity: 0.6
+ghostRoles: [shaker]
+ghostChance: 0.5
+rumbleKicks:
+  minDensity: 0.4
+  probability: 0.3
+swingDelay: 0.05
+`;
+
+  it("round-trips a fully-specified house document", () => {
+    const spec = parseDrumStyleSpec(validHouseYaml);
+    expect(spec).toEqual({
+      name: "custom-house",
+      family: "house",
+      kickBeats: "four-floor",
+      backbeat: ["clap"],
+      backbeatMinDensity: 0.2,
+      openHatOffbeats: 0.4,
+      hatGrid: { low: "offbeat-8ths", high: "16ths", threshold: 0.55 },
+      ride: { minDensity: 0.6 },
+      ghostRoles: ["shaker"],
+      ghostChance: 0.5,
+      rumbleKicks: { minDensity: 0.4, probability: 0.3 },
+      swingDelay: 0.05,
+    });
+  });
+
+  it("fills in the documented defaults when optional fields are omitted", () => {
+    const spec = parseDrumStyleSpec(`
+name: minimal-house
+family: house
+`);
+    expect(spec.name).toBe("minimal-house");
+    expect(spec.family).toBe("house");
+    expect((spec as HouseFamilyStyleSpec).kickBeats).toBeUndefined();
+    expect((spec as HouseFamilyStyleSpec).backbeat).toBeUndefined();
+    expect((spec as HouseFamilyStyleSpec).backbeatMinDensity).toBeUndefined();
+    expect((spec as HouseFamilyStyleSpec).openHatOffbeats).toBeUndefined();
+    expect((spec as HouseFamilyStyleSpec).hatGrid).toBeUndefined();
+    expect((spec as HouseFamilyStyleSpec).ride).toBeUndefined();
+    expect((spec as HouseFamilyStyleSpec).ghostRoles).toBeUndefined();
+    expect((spec as HouseFamilyStyleSpec).ghostChance).toBeUndefined();
+    expect((spec as HouseFamilyStyleSpec).rumbleKicks).toBeUndefined();
+    expect((spec as HouseFamilyStyleSpec).swingDelay).toBeUndefined();
+  });
+
+  it("still parses trap specs unchanged (family dispatch)", () => {
+    const spec = parseDrumStyleSpec(`
+name: still-trap
+family: trap
+kickCells:
+  - name: a
+    offsets: [0]
+`);
+    expect(spec.family).toBe("trap");
+    expect((spec as TrapFamilyStyleSpec).kickCells).toEqual([{ name: "a", offsets: [0] }]);
+  });
+
+  it("rejects an unknown top-level key on a house spec (typo protection)", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: house
+kcikBeats: four-floor
+`),
+    ).toThrowError(/unknown field "kcikBeats"/);
+  });
+
+  it("rejects an invalid kickBeats value", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: house
+kickBeats: two-floor
+`),
+    ).toThrowError(/"kickBeats"/);
+  });
+
+  it("rejects an invalid backbeat role", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: house
+backbeat: [cowbell]
+`),
+    ).toThrowError(/backbeat\[0\]/);
+  });
+
+  it("rejects openHatOffbeats out of [0, 1] range", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: house
+openHatOffbeats: 1.5
+`),
+    ).toThrowError(/"openHatOffbeats"/);
+  });
+
+  it("rejects an unknown hatGrid field", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: house
+hatGrid:
+  low: 8ths
+  hihg: 16ths
+`),
+    ).toThrowError(/hatGrid: unknown field "hihg"/);
+  });
+
+  it("rejects an invalid hatGrid.low value", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: house
+hatGrid:
+  low: 32nds
+  high: 16ths
+`),
+    ).toThrowError(/hatGrid\.low/);
+  });
+
+  it("rejects ride missing minDensity", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: house
+ride: {}
+`),
+    ).toThrowError(/ride\.minDensity/);
+  });
+
+  it("rejects rumbleKicks with an unknown field", () => {
+    expect(() =>
+      parseDrumStyleSpec(`
+name: x
+family: house
+rumbleKicks:
+  minDensity: 0.4
+  probability: 0.3
+  extra: 1
+`),
+    ).toThrowError(/rumbleKicks: unknown field "extra"/);
+  });
+
+  it("accepts ride: null and rumbleKicks: null explicitly", () => {
+    const spec = parseDrumStyleSpec(`
+name: x
+family: house
+ride: null
+rumbleKicks: null
+`) as HouseFamilyStyleSpec;
+    expect(spec.ride).toBeNull();
+    expect(spec.rumbleKicks).toBeNull();
+  });
+});
+
+describe("data-driven house-family StyleSpec generation (B4.1)", () => {
+  // -------------------------------------------------------------------------
+  // REGRESSION: frozen copies of the pre-B4.1 houseBar/technoBar generators,
+  // verbatim, so the new houseFamilyPlan-routed built-ins can be proven
+  // byte-identical through the public API for a spread of seeds/densities.
+  // -------------------------------------------------------------------------
+  function referenceHouseBar(
+    kit: DrumKit,
+    beatsPerBar: number,
+    density: number,
+    rng: () => number,
+  ): NoteSpec[] {
+    const notes: NoteSpec[] = [];
+    const addHit = (role: DrumRole, start: number, velocity: number, probability?: number) => {
+      const pitch = kit[role];
+      if (pitch === undefined) return;
+      const note: NoteSpec = { pitch, start, duration: 0.25, velocity };
+      if (probability !== undefined) note.probability = probability;
+      notes.push(note);
+    };
+
+    for (let b = 0; b < beatsPerBar; b++) {
+      addHit("kick", b, randVelocity(rng, ACCENT));
+      if (b % 2 === 1) {
+        addHit("clap", b, randVelocity(rng, NORMAL));
+        addHit("snare", b, randVelocity(rng, NORMAL));
+      }
+      addHit("hat-open", b + 0.5, randVelocity(rng, NORMAL));
+    }
+
+    if (density < 0.5) {
+      for (let pos = 0; pos < beatsPerBar; pos += 0.5) {
+        addHit("hat-closed", pos, randVelocity(rng, NORMAL));
+      }
+    } else {
+      for (let pos = 0; pos < beatsPerBar; pos += 0.25) {
+        const onEighth = isNearGrid(pos, 0.5);
+        addHit("hat-closed", pos, randVelocity(rng, onEighth ? NORMAL : HAT_OFF16));
+      }
+    }
+
+    if (density > 0.3) {
+      const ghostRole: DrumRole | undefined =
+        kit.perc !== undefined ? "perc" : kit.shaker !== undefined ? "shaker" : undefined;
+      if (ghostRole !== undefined) {
+        for (let pos = 0; pos < beatsPerBar; pos += 0.25) {
+          if (rng() < 0.15 * density) {
+            addHit(ghostRole, pos, randVelocity(rng, GHOST), 0.3 + rng() * 0.3);
+          }
+        }
+      }
+    }
+
+    return notes;
+  }
+
+  function referenceTechnoBar(
+    kit: DrumKit,
+    beatsPerBar: number,
+    density: number,
+    rng: () => number,
+  ): NoteSpec[] {
+    const notes: NoteSpec[] = [];
+    const addHit = (role: DrumRole, start: number, velocity: number, probability?: number) => {
+      const pitch = kit[role];
+      if (pitch === undefined) return;
+      const note: NoteSpec = { pitch, start, duration: 0.25, velocity };
+      if (probability !== undefined) note.probability = probability;
+      notes.push(note);
+    };
+
+    for (let b = 0; b < beatsPerBar; b++) {
+      addHit("kick", b, randVelocity(rng, ACCENT));
+    }
+
+    if (density >= 0.6) {
+      for (let pos = 0; pos < beatsPerBar; pos += 0.25) {
+        addHit("hat-closed", pos, randVelocity(rng, NORMAL));
+      }
+    } else {
+      for (let b = 0; b < beatsPerBar; b++) {
+        addHit("hat-closed", b + 0.5, randVelocity(rng, NORMAL));
+      }
+    }
+
+    if (density >= 0.5) {
+      for (let pos = 0; pos < beatsPerBar; pos += 0.5) {
+        addHit("ride", pos, randVelocity(rng, NORMAL));
+      }
+    }
+
+    if (density >= 0.4) {
+      for (let b = 0; b < beatsPerBar; b++) {
+        if (b % 2 === 1) addHit("clap", b, randVelocity(rng, NORMAL));
+      }
+    }
+
+    if (density >= 0.5) {
+      for (let b = 0; b < beatsPerBar; b++) {
+        if (rng() < 0.5) {
+          addHit("kick", b + 0.75, 45, 0.4);
+        }
+      }
+    }
+
+    if (density >= 0.3) {
+      for (let b = 0; b < beatsPerBar; b++) {
+        if (rng() < 0.3) {
+          addHit("hat-open", b + 0.5, randVelocity(rng, NORMAL));
+        }
+      }
+    }
+
+    return notes;
+  }
+
+  function referenceGenerate(
+    barFn: (kit: DrumKit, beatsPerBar: number, density: number, rng: () => number) => NoteSpec[],
+    kit: DrumKit,
+    c: DrumContext,
+  ): NoteSpec[] {
+    const notes: NoteSpec[] = [];
+    for (let bar = 0; bar < c.bars; bar++) {
+      const barOffset = bar * c.beatsPerBar;
+      for (const note of barFn(kit, c.beatsPerBar, c.density, c.rng)) {
+        notes.push({ ...note, start: note.start + barOffset });
+      }
+    }
+    return sortNotes(notes);
+  }
+
+  it("REGRESSION: built-in house is byte-identical to the pre-B4.1 generator across seeds/densities", () => {
+    for (const seed of [1, 7, 9]) {
+      for (const density of [0.3, 0.5, 0.7]) {
+        const actual = generateDrumPattern(
+          "house",
+          FULL_KIT,
+          ctx({ bars: 3, density, rng: makeRng(seed) }),
+        );
+        const expected = referenceGenerate(
+          referenceHouseBar,
+          FULL_KIT,
+          ctx({ bars: 3, density, rng: makeRng(seed) }),
+        );
+        expect(actual).toEqual(expected);
+      }
+    }
+  });
+
+  it("REGRESSION: built-in techno is byte-identical to the pre-B4.1 generator across seeds/densities", () => {
+    for (const seed of [1, 7, 9]) {
+      for (const density of [0.3, 0.5, 0.7]) {
+        const actual = generateDrumPattern(
+          "techno",
+          FULL_KIT,
+          ctx({ bars: 3, density, rng: makeRng(seed) }),
+        );
+        const expected = referenceGenerate(
+          referenceTechnoBar,
+          FULL_KIT,
+          ctx({ bars: 3, density, rng: makeRng(seed) }),
+        );
+        expect(actual).toEqual(expected);
+      }
+    }
+  });
+
+  it("REGRESSION: the built-in house/techno styles are byte-identical via the default path and via their specs", () => {
+    for (const seed of [1, 7, 42]) {
+      const houseViaStyle = generateDrumPatternDetailed("house", FULL_KIT, ctx({ bars: 5, rng: makeRng(seed) }));
+      const houseViaSpec = generateDrumPatternDetailed(
+        "house-via-spec",
+        FULL_KIT,
+        ctx({ bars: 5, rng: makeRng(seed) }),
+        { styleSpec: HOUSE_STYLE_SPEC },
+      );
+      expect(houseViaSpec.notes).toEqual(houseViaStyle.notes);
+
+      const technoViaStyle = generateDrumPatternDetailed("techno", FULL_KIT, ctx({ bars: 5, rng: makeRng(seed) }));
+      const technoViaSpec = generateDrumPatternDetailed(
+        "techno-via-spec",
+        FULL_KIT,
+        ctx({ bars: 5, rng: makeRng(seed) }),
+        { styleSpec: TECHNO_STYLE_SPEC },
+      );
+      expect(technoViaSpec.notes).toEqual(technoViaStyle.notes);
+    }
+  });
+
+  it("listDrumVariants returns [] for a house-family spec", () => {
+    expect(listDrumVariants("house", HOUSE_STYLE_SPEC)).toEqual([]);
+    expect(listDrumVariants("techno", TECHNO_STYLE_SPEC)).toEqual([]);
+  });
+
+  it("custom spec: backbeat [] emits no claps or snares", () => {
+    const spec: HouseFamilyStyleSpec = { ...HOUSE_STYLE_SPEC, name: "no-backbeat", backbeat: [] };
+    const { notes } = generateDrumPatternDetailed("no-backbeat", FULL_KIT, ctx({ bars: 2 }), {
+      styleSpec: spec,
+    });
+    expect(notes.some((n) => n.pitch === FULL_KIT.clap || n.pitch === FULL_KIT.snare)).toBe(false);
+  });
+
+  it("custom spec: openHatOffbeats 0 emits no open hats", () => {
+    const spec: HouseFamilyStyleSpec = { ...HOUSE_STYLE_SPEC, name: "no-open-hat", openHatOffbeats: 0 };
+    const { notes } = generateDrumPatternDetailed("no-open-hat", FULL_KIT, ctx({ bars: 2 }), {
+      styleSpec: spec,
+    });
+    expect(notes.some((n) => n.pitch === FULL_KIT["hat-open"])).toBe(false);
+  });
+
+  it("custom spec: hatGrid low offbeat-8ths produces only offbeat closed hats below threshold", () => {
+    const spec: HouseFamilyStyleSpec = {
+      name: "offbeat-hats",
+      family: "house",
+      hatGrid: { low: "offbeat-8ths", high: "16ths", threshold: 0.9 },
+    };
+    const { notes } = generateDrumPatternDetailed("offbeat-hats", FULL_KIT, ctx({ bars: 1, density: 0.2 }), {
+      styleSpec: spec,
+    });
+    const hatStarts = notes
+      .filter((n) => n.pitch === FULL_KIT["hat-closed"])
+      .map((n) => n.start)
+      .sort((a, b) => a - b);
+    expect(hatStarts).toEqual([0.5, 1.5, 2.5, 3.5]);
+  });
+
+  it("custom spec: ride fires only once density crosses minDensity", () => {
+    const spec: HouseFamilyStyleSpec = { name: "rideable", family: "house", ride: { minDensity: 0.6 } };
+    const below = generateDrumPatternDetailed("rideable", FULL_KIT, ctx({ bars: 1, density: 0.5 }), {
+      styleSpec: spec,
+    });
+    const above = generateDrumPatternDetailed("rideable", FULL_KIT, ctx({ bars: 1, density: 0.7 }), {
+      styleSpec: spec,
+    });
+    expect(below.notes.some((n) => n.pitch === FULL_KIT.ride)).toBe(false);
+    expect(above.notes.some((n) => n.pitch === FULL_KIT.ride)).toBe(true);
+  });
+
+  it("custom spec: swingDelay shifts off-16th closed hats", () => {
+    const straightSpec: HouseFamilyStyleSpec = {
+      name: "straight",
+      family: "house",
+      hatGrid: { low: "16ths", high: "16ths", threshold: 0 },
+      swingDelay: 0,
+    };
+    const swungSpec: HouseFamilyStyleSpec = { ...straightSpec, name: "swung", swingDelay: 0.08 };
+    const straight = generateDrumPatternDetailed("straight", FULL_KIT, ctx({ bars: 1, density: 0.5 }), {
+      styleSpec: straightSpec,
+    });
+    const swung = generateDrumPatternDetailed("swung", FULL_KIT, ctx({ bars: 1, density: 0.5 }), {
+      styleSpec: swungSpec,
+    });
+    const off16Starts = (notes: NoteSpec[]) =>
+      notes
+        .filter((n) => n.pitch === FULL_KIT["hat-closed"] && !isNearGrid(n.start, 0.5))
+        .map((n) => n.start)
+        .sort((a, b) => a - b);
+    const straightOff16 = off16Starts(straight.notes);
+    const swungOff16 = off16Starts(swung.notes);
+    expect(straightOff16.length).toBeGreaterThan(0);
+    expect(straightOff16.length).toBe(swungOff16.length);
+    for (let i = 0; i < straightOff16.length; i++) {
+      expect(swungOff16[i]).toBeCloseTo(straightOff16[i]! + 0.08, 6);
+    }
+  });
+
+  it("custom spec: deterministic per seed", () => {
+    const spec: HouseFamilyStyleSpec = { ...HOUSE_STYLE_SPEC, name: "det-house" };
+    const a = generateDrumPattern("det-house", FULL_KIT, ctx({ bars: 2, rng: makeRng(21) }), { styleSpec: spec });
+    const b = generateDrumPattern("det-house", FULL_KIT, ctx({ bars: 2, rng: makeRng(21) }), { styleSpec: spec });
+    expect(a).toEqual(b);
+  });
+
+  it("end-to-end via generateDrumPatternDetailed reports hatBase in meta", () => {
+    const spec: HouseFamilyStyleSpec = {
+      name: "reported-house",
+      family: "house",
+      hatGrid: { low: "8ths", high: "16ths", threshold: 0.5 },
+    };
+    const sparse = generateDrumPatternDetailed("reported-house", FULL_KIT, ctx({ bars: 1, density: 0.2 }), {
+      styleSpec: spec,
+    });
+    const dense = generateDrumPatternDetailed("reported-house", FULL_KIT, ctx({ bars: 1, density: 0.8 }), {
+      styleSpec: spec,
+    });
+    expect(sparse.meta.hatBase).toBe("8ths");
+    expect(dense.meta.hatBase).toBe("16ths");
   });
 });
