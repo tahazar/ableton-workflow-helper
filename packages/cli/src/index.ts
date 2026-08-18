@@ -12,6 +12,7 @@ import { spawn } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
 import { Command } from "commander";
 import { TAP_PORT, sendToTap } from "./osc.js";
+import { DUCK_PORT, DUCK_REPLY_PORT, pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from "./duck.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   listForms,
@@ -2148,6 +2149,59 @@ function triggerArgs(t: { seconds: number[]; cycle?: number }): string[] {
   return args;
 }
 
+/**
+ * Resolve trigger positions in raw BEATS (not seconds) plus the pattern's
+ * loop length in beats — what the M4L Ducker needs (it runs its own
+ * transport-beat math, see m4l/README.md). Distinct from
+ * resolveTriggerSeconds, which the analysis-engine flows use instead.
+ */
+async function resolveDuckTriggerBeats(
+  opts: GlobalOpts,
+  cmdOpts: { triggerClip?: string; pattern?: string; length?: string },
+): Promise<DuckTriggerSet> {
+  if (!cmdOpts.triggerClip && !cmdOpts.pattern) {
+    throw new Error("pass --trigger-clip <path> (the Trigger MIDI clip) or --pattern <beats> --length <beats>");
+  }
+  if (cmdOpts.triggerClip) {
+    const detail = (await op(opts, "clip.get", { path: cmdOpts.triggerClip })) as ClipDetail;
+    if (detail.kind !== "midi") {
+      throw new Error(`${cmdOpts.triggerClip} is not a MIDI clip`);
+    }
+    const beats = [...new Set((detail.notes ?? []).map((n) => n.start))].sort((a, b) => a - b);
+    return { patternLengthBeats: detail.duration, beats };
+  }
+  if (!cmdOpts.length) {
+    throw new Error("--pattern requires --length <beats> (the pattern's loop length)");
+  }
+  const beats = cmdOpts.pattern!.trim().length
+    ? [...new Set(cmdOpts.pattern!.split(",").map((b) => Number(b.trim())))].sort((a, b) => a - b)
+    : [];
+  return { patternLengthBeats: Number(cmdOpts.length), beats };
+}
+
+/** Shape source for `duck push`: --fit <path> (duck-fit --json output) or explicit flags. */
+function resolveDuckShape(cmdOpts: {
+  fit?: string;
+  depth?: string;
+  release?: string;
+  attack?: string;
+  hold?: string;
+}): DuckShape {
+  if (cmdOpts.fit) {
+    const fit = JSON.parse(readFileSync(cmdOpts.fit, "utf8")) as unknown;
+    return shapeFromFitJson(fit);
+  }
+  if (cmdOpts.depth === undefined || cmdOpts.release === undefined) {
+    throw new Error("pass --fit <duck-fit.json> or --depth <dB> --release <ms>");
+  }
+  return {
+    depthDb: Number(cmdOpts.depth),
+    releaseMs: Number(cmdOpts.release),
+    attackMs: cmdOpts.attack !== undefined ? Number(cmdOpts.attack) : 2,
+    holdMs: cmdOpts.hold !== undefined ? Number(cmdOpts.hold) : 0,
+  };
+}
+
 /** Drive the M4L tap through one loop-record-play-stop cycle. */
 async function captureSpan(
   opts: GlobalOpts,
@@ -2195,8 +2249,9 @@ const duckCmd = mix
   .command("duck")
   .description(
     "Sidechain ducking toolkit: fit the ideal envelope to your drums, set up an " +
-      "automatic stock-Compressor duck, measure/calibrate the result. ShaperBox " +
-      "hand-drawing is one strategy; the compressor path is the automatic one.",
+      "automatic stock-Compressor duck, push it straight to the AWH M4L Ducker " +
+      "(full-auto), or measure/calibrate the result. ShaperBox hand-drawing is one " +
+      "strategy among several — see `awh mix duck push` for the no-routing-clicks one.",
   );
 
 duckCmd
@@ -2399,6 +2454,85 @@ duckCmd
             ? "within tolerance — audition it"
             : "NOT within tolerance — the compressor may not reach this depth on this material; " +
               "consider the ShaperBox strategy or a louder trigger source",
+        ].join("\n"),
+      );
+    },
+  );
+
+duckCmd
+  .command("push")
+  .description(
+    "FULL-AUTO strategy: push the fitted duck envelope to the AWH Ducker M4L device " +
+      "(m4l/) over OSC — transport-synced, no compressor/ShaperBox routing needed. " +
+      "The device must already be placed once by hand on the Sidechain bus (m4l/README.md).",
+  )
+  .option("--fit <path>", "duck-fit JSON file (`awh mix duck fit ... --json > fit.json`)")
+  .option("--depth <db>", "explicit duck depth in dB (alternative to --fit)")
+  .option("--release <ms>", "explicit release time in ms (required with --depth)")
+  .option("--attack <ms>", "explicit attack time in ms", "2")
+  .option("--hold <ms>", "explicit hold time in ms", "0")
+  .option("--trigger-clip <clipPath>", "the Trigger MIDI clip (note starts + loop length, in BEATS)")
+  .option("--pattern <beats>", "manual comma-separated trigger positions in BEATS")
+  .option("--length <beats>", "pattern loop length in BEATS (required with --pattern)")
+  .option("--off", "bypass the Ducker (ping + /awh/duck/on 0) — ignores shape/trigger options")
+  .option("--duck-port <port>", "Ducker OSC port", String(DUCK_PORT))
+  .option("--duck-reply-port <port>", "Ducker OSC reply port", String(DUCK_REPLY_PORT))
+  .action(
+    async (cmdOpts: {
+      fit?: string;
+      depth?: string;
+      release?: string;
+      attack?: string;
+      hold?: string;
+      triggerClip?: string;
+      pattern?: string;
+      length?: string;
+      off?: boolean;
+      duckPort: string;
+      duckReplyPort: string;
+    }) => {
+      const opts = program.opts<GlobalOpts>();
+      const port = Number(cmdOpts.duckPort);
+      const replyPort = Number(cmdOpts.duckReplyPort);
+
+      if (cmdOpts.off) {
+        const result = await pushDuck({ port, replyPort, off: true });
+        output(opts, result, () => `Ducker bypassed (${result.version ? `v${result.version}, ` : ""}port ${port})`);
+        return;
+      }
+
+      if (!cmdOpts.fit && cmdOpts.depth === undefined) {
+        throw new Error("pass --fit <duck-fit.json> or --depth <dB> --release <ms>");
+      }
+      if (!cmdOpts.triggerClip && !cmdOpts.pattern) {
+        throw new Error("pass --trigger-clip <clip path> or --pattern <beats> --length <beats>");
+      }
+
+      const shape = resolveDuckShape(cmdOpts);
+      const triggers = await resolveDuckTriggerBeats(opts, cmdOpts);
+
+      // Zero triggers is a STATE, not an error (docs/lessons-learned.md rule
+      // 5): a duck with nothing to trigger on is a documented no-op — say
+      // so, send nothing (not even a ping), exit 0.
+      if (triggers.beats.length === 0) {
+        output(opts, { sent: false, reason: "no triggers" }, () =>
+          "no trigger positions found (empty Trigger clip / empty --pattern) — " +
+            "nothing to duck; sent nothing to the Ducker",
+        );
+        return;
+      }
+
+      const result = await pushDuck({ port, replyPort, shape, triggers });
+      output(opts, result, () =>
+        [
+          `Ducker updated (v${result.version}, port ${port}):`,
+          `  triggers   ${result.triggerCount} at pattern length ${result.patternLengthBeats} beats`,
+          `  shape      depth ${shape.depthDb.toFixed(1)} dB, attack ${shape.attackMs.toFixed(0)} ms, ` +
+            `hold ${shape.holdMs.toFixed(0)} ms, release ${shape.releaseMs.toFixed(0)} ms`,
+          `  state      on`,
+          "",
+          "Verify: `awh mix duck measure <SidechainBusCapture> --trigger-clip ...` " +
+            "on a capture of the Sidechain bus post-Ducker.",
         ].join("\n"),
       );
     },

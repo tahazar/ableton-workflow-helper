@@ -98,6 +98,28 @@ built/frozen to `.amxd` in Max on the owner's machine (Suite includes Max);
 `m4l/README.md` documents the freeze + a manual patching fallback if the
 generated patch fights Max's validator.
 
+## M4L Ducker OSC protocol (localhost UDP/OSC)
+
+The full-auto duck strategy (Duck strategies, below): a transport-synced
+gain-envelope AUDIO EFFECT device, sitting on the Sidechain bus, that fires
+a programmed attack/hold/release dip whenever Live's playhead crosses one
+of the pushed trigger beats — modulo a pattern length, so it loops with
+the Trigger clip. Device listens on **9722**, replies to **9723**:
+
+| Message | Action |
+|---|---|
+| `/awh/duck/ping` | reply `/awh/duck/pong <version>` |
+| `/awh/duck/shape <attackMs> <holdMs> <releaseMs> <depthDb>` | set the envelope (`depthDb` is a positive number — dB of gain reduction at the trough) |
+| `/awh/duck/triggers <patternLengthBeats> <beat0> <beat1> ...` | trigger positions in BEATS within one loop of the pattern |
+| `/awh/duck/on <0\|1>` | enable / bypass (bypass = unity gain, snapped instantly) |
+| `/awh/duck/status` | reply `/awh/duck/status <on> <attackMs> <holdMs> <releaseMs> <depthDb> <nTriggers>` |
+
+`awh mix duck push` = ping (device-loaded check, ~1 s timeout) → triggers →
+shape → on 1. `--off` = ping → on 0. Source: `m4l/AWH Ducker.maxpat`
+(built/frozen the same way as the capture tap); `m4l/README.md` has the
+full protocol table plus a manual-patching fallback and the transport-
+polling/envelope-firing algorithm in prose.
+
 ## Pump v2 — trigger-locked detection (BUILT: `awh mix pump-check`)
 
 The owner's template (`knowledge/setup/sidechain-template.md` — read it)
@@ -143,10 +165,16 @@ envelope). Realization strategies (owner decision: ShaperBox is ONE option):
   scales are unmapped) until the target depth is hit. Raw↔display
   mappings observed during validation get recorded to knowledge/.
 - **Volume automation**: not writable via the Extensions SDK (no
-  automation/clip-envelope API — ADR-001). Future full-auto option: an AWH
-  M4L "Ducker" device (transport-synced gain envelope, curve + trigger
-  pattern pushed over OSC like the capture tap — no routing clicks at
-  all); or the parked offline-.als envelope-injection experiment.
+  automation/clip-envelope API — ADR-001); the parked offline-.als
+  envelope-injection experiment is the only path to it directly.
+- **AWH M4L Ducker** (BUILT — `awh mix duck push`): the full-auto option.
+  `m4l/AWH Ducker.maxpat` is a transport-synced gain-envelope device —
+  curve + trigger pattern pushed over OSC exactly like the capture tap, no
+  routing clicks at all. It still needs the owner to place it ONCE by hand
+  on the Sidechain bus (the SDK cannot insert M4L devices — same limit as
+  every other strategy here); after that, `duck fit --json > fit.json` →
+  `duck push --fit fit.json --trigger-clip <Trigger clip>` drives it
+  entirely from the CLI. Protocol: see "M4L Ducker OSC protocol" below.
 
 ## Non-goals (honest scope, per research)
 

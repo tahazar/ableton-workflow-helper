@@ -502,8 +502,18 @@ MIDI "Trigger" track. Always start from the fit, then pick a strategy:
    sharp-corner points for dip/hold, smooth for release; Favorites /
    LFO copy-paste for reuse. Preset FILES cannot be generated — never
    offer to write one.
-4. VERIFY (either): `awh mix duck measure <SidechainBusCapture>
-   --trigger-clip ...` (achieved depth) or an on/off `awh mix ab` pair.
+4. M4L DUCKER strategy (full-auto, no routing clicks): needs the AWH
+   Ducker device placed ONCE by hand on the Sidechain bus (m4l/README.md —
+   this one manual step remains, the SDK cannot insert M4L devices).
+   `awh mix duck fit <drumsCapture> --trigger-clip <Trigger clip> --json >
+   fit.json` then `awh mix duck push --fit fit.json --trigger-clip
+   <Trigger clip>` — pings the device, pushes the envelope + trigger
+   pattern over OSC, and turns it on. `--off` bypasses it (unity gain).
+   No Trigger clip? `--pattern "0,1,2,3" --length 4` (raw beats). An empty
+   Trigger clip is a no-op — it says so and sends nothing, not an error.
+5. VERIFY (any strategy): `awh mix duck measure <SidechainBusCapture>
+   --trigger-clip ...` (achieved depth) or an on/off `awh mix ab` pair
+   (for the M4L Ducker, "on/off" = `duck push` / `duck push --off`).
    If the measured kick tail forces a groove-killing duck, suggest
    tightening the kick's own decay.
 Volume-automation ducking is NOT possible via the gateway (no automation
