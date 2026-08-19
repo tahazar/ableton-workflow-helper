@@ -79,6 +79,39 @@
 - Risk: the RWKV-PEFT training stack on macOS (DeepSpeed). Fallback:
   tune in this container (CPU, small model) and ship the state file back.
 
+### ML-2 corpus plan (owner asked: "not a lot of clips — public data?")
+
+State tuning is the few-shot-friendly method, but the corpus defines the
+deliverable: public data gives GENRE ADAPTATION (a bass-music-leaning
+prior), only the owner's material gives personalization. Two stages:
+
+1. **Back-catalog harvest (the corpus the owner already owns).** Every
+   past Ableton project is full of MIDI clips; `.als` is gzipped XML —
+   structurally what the `.alc` work already parses. Build
+   `awh lib harvest <projects-dir>`: walk the project history offline,
+   extract every MIDI clip into the library (dedup by note-content hash,
+   tag with source project). Plausibly hundreds of clips with zero manual
+   capture, and valuable far beyond ML (personal motif library for
+   `drop respond`, pattern mining). Build this FIRST — it pays even if
+   ML-2 never ships.
+2. **Public data, tiered honestly:**
+   - Producer MIDI packs (free + owned Splice/Cymatics/etc.): BEST
+     license fit — royalty-free for use in the owner's productions;
+     training a private production tool sits closest to intended use.
+   - Lakh / GigaMIDI: research-terms gray zone (GigaMIDI is also the
+     pretraining data — only a genre-filtered subset would add anything).
+     Knowing use only, nothing derived gets distributed.
+   - Song-transcription rips (BitMidi-style): NO — clear copyrights, no
+     license.
+
+Sequence: tune a GENRE state on packs + harvest, then continue from it on
+the personal corpus as B3b captures grow it; re-tune cheaply whenever the
+corpus doubles. Eval unchanged (blind A/B vs base, park on no audible
+win). Tuned state files are PRIVATE artifacts — gitignored, never in the
+repo — because their training data carries no redistribution rights.
+Pre-req spike: prove the RWKV-PEFT state-tuning loop runs at all on
+container CPU (DeepSpeed friction) before promising timelines.
+
 ## Licensing position
 
 - Code + weights: MIT end to end (MIDI-RWKV repo, forks, miditok,
