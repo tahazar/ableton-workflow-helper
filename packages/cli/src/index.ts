@@ -13,6 +13,16 @@ import { basename, dirname, join, resolve } from "node:path";
 import { Command } from "commander";
 import { TAP_PORT, sendToTap } from "./osc.js";
 import { DUCK_PORT, DUCK_REPLY_PORT, pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from "./duck.js";
+import {
+  RECIPE_SLUG_PREFIX,
+  applyRecipePlan,
+  loadRecipeFromEntry,
+  planRecipeApply,
+  setDeviceParam as opSetDeviceParam,
+  summarizeRecipeEntries,
+  type OpCaller,
+  type RecipePlan,
+} from "./op.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import {
   listForms,
@@ -70,15 +80,20 @@ import {
   listPhraseStyles,
   listPhraseVariants,
   parsePhraseSpec,
+  parseOperatorRecipe,
+  parsePath,
+  formatPath,
   sortNotes,
   type PhraseSpec,
   type ResponseRecipeName,
   type DrumStyleSpec,
   type ClipDetail,
   type ClipEntry,
+  type DeviceDetail,
   type DrumContext,
   type DrumKit,
   type NoteSpec,
+  type OperatorRecipe,
   type PackItem,
   type SetSummary,
   type TransformContext,
@@ -2650,7 +2665,9 @@ mix
  * Typed wrapper for device.param — op() args are `unknown`, so a wrong field
  * name compiles fine and only fails at runtime inside Live (the {name} vs
  * {param} bug found in live verification). Repeat-use ops get typed wrappers;
- * see docs/lessons-learned.md.
+ * see docs/lessons-learned.md. Delegates to op.ts's caller-based version
+ * (packages/cli/src/op.ts) — the SAME wrapper the `awh op` (B2) engine uses,
+ * just bound to this file's opts-based `op()` gateway caller.
  */
 async function setDeviceParam(
   opts: GlobalOpts,
@@ -2658,7 +2675,7 @@ async function setDeviceParam(
   param: string,
   value: number,
 ): Promise<void> {
-  await op(opts, "device.param", { path, param, value });
+  await opSetDeviceParam((name, args) => op(opts, name, args), path, param, value);
 }
 
 /** Resolve trigger positions (seconds) from the Trigger MIDI clip or manual beats. */
@@ -3140,6 +3157,413 @@ mix
       const summary = (await op(opts, "set.summary")) as SetSummary;
       output(opts, { file: outPath, seconds }, () =>
         `captured -> ${outPath}\nanalyze with: awh mix report ${outPath} --bpm ${summary.tempo}`,
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Operator assistant (B2): recipe knowledge base + audio-sample sound
+// matching. docs/design/operator-assistant.md. Engine lives in op.ts
+// (validate-first apply flow) + analysis/awh_analysis/opmatch.py.
+// ---------------------------------------------------------------------------
+
+interface OpMatchF0 {
+  hz: number | null;
+  drift_semitones: number | null;
+  voiced_fraction: number;
+}
+interface OpMatchAdsr {
+  attack_s: number;
+  decay_s: number;
+  sustain_db: number;
+  sustain_s: number;
+  release_s: number;
+  peak_db: number;
+  floor_db: number;
+  has_sustain: boolean;
+  r_squared: number;
+}
+interface OpMatchCentroid {
+  direction: "rising" | "falling" | "flat";
+  start_hz: number | null;
+  end_hz: number | null;
+  slope_hz_per_s: number;
+}
+interface OpMatchAnalysis {
+  file: string;
+  duration_s: number;
+  samplerate: number;
+  f0: OpMatchF0;
+  adsr: OpMatchAdsr;
+  centroid: OpMatchCentroid;
+  harmonic_vector: number[];
+  harmonic_amplitudes: number[];
+  harmonicity_ratio: number;
+  partial_deviation_semitones: number | null;
+  noise_floor_ratio: number;
+}
+interface OpMatchProposal {
+  oscillator: { waveform: string; residual: number; note: string };
+  envelope: { attack_s: number; decay_s: number; sustain_db: number; release_s: number; fit_r_squared: number };
+  filter: { direction: string; note: string };
+  drawThesePartials: number[];
+  addressable: Record<string, number>;
+  addressable_caveat: string;
+}
+interface OpMatchResult {
+  analysis: OpMatchAnalysis;
+  tier: 1 | 2 | 3;
+  reasons: string[];
+  proposal: OpMatchProposal | null;
+  summary: string;
+}
+interface OpCompareResult {
+  log_spectrogram_l2: number;
+  harmonic_cosine: number | null;
+  score: number;
+}
+
+/** Resolve an `op apply`/`op match --apply` recipe-name argument to its
+ *  `operator-recipe-<name>` knowledge entry, same slug-prefix convention as
+ *  resolvePhraseSpec's `phrase-style-<name>`. */
+async function loadOperatorRecipeEntry(name: string) {
+  const slug = name.startsWith(RECIPE_SLUG_PREFIX) ? name : `${RECIPE_SLUG_PREFIX}${name}`;
+  try {
+    return await knowledgeStore().loadEntry(slug);
+  } catch {
+    throw new Error(
+      `unknown operator recipe "${name}" — run \`awh op recipes\` to list them (slug "${slug}" not found)`,
+    );
+  }
+}
+
+/** A device path's owning track path (its root segment). */
+function deviceTrackPath(devicePath: string): string {
+  const segments = parsePath(devicePath);
+  const root = segments[0];
+  if (!root) throw new Error(`bad device path: ${devicePath}`);
+  return formatPath([root]);
+}
+
+function renderRecipeWriteLines(results: { param: string; target: number; actual: number; matched: boolean }[]): string[] {
+  return results.map(
+    (r) => `  ${r.param}: -> ${r.target}${r.matched ? "" : `  ** actual ${r.actual} (MISMATCH)`}`,
+  );
+}
+
+function renderOpMatchText(result: OpMatchResult): string {
+  const a = result.analysis;
+  const lines = [
+    `tier ${result.tier}: ${result.summary}`,
+    "",
+    `f0: ${a.f0.hz !== null ? `${a.f0.hz.toFixed(1)} Hz` : "n/a"}  ` +
+      `harmonicity ${a.harmonicity_ratio.toFixed(2)}  ` +
+      `partial deviation ${a.partial_deviation_semitones !== null ? `${a.partial_deviation_semitones.toFixed(2)} semitones` : "n/a"}  ` +
+      `noise floor ratio ${a.noise_floor_ratio.toFixed(2)}`,
+  ];
+  if (result.tier === 3) {
+    lines.push("", "reasons:", ...result.reasons.map((r) => `  - ${r}`));
+    return lines.join("\n");
+  }
+  const p = result.proposal!;
+  lines.push(
+    "",
+    `oscillator: ${p.oscillator.waveform} (residual ${p.oscillator.residual.toFixed(2)})`,
+    `envelope target: attack ${(p.envelope.attack_s * 1000).toFixed(0)}ms  ` +
+      `decay ${(p.envelope.decay_s * 1000).toFixed(0)}ms  sustain ${p.envelope.sustain_db.toFixed(1)}dB  ` +
+      `release ${(p.envelope.release_s * 1000).toFixed(0)}ms  (fit r^2=${p.envelope.fit_r_squared.toFixed(2)})`,
+    `filter: ${p.filter.direction}`,
+    "",
+    "drawThesePartials (16 normalized amplitudes — hand-draw in Operator's " +
+      "harmonics editor if the stock-wave residual above is high):",
+    "  " + p.drawThesePartials.map((v) => v.toFixed(2)).join(", "),
+    "",
+    `addressable (raw device.param values, HEURISTIC): ` +
+      (Object.keys(p.addressable).length === 0
+        ? "(none — advisory only)"
+        : Object.entries(p.addressable).map(([k, v]) => `${k}=${v.toFixed(3)}`).join(", ")),
+    p.addressable_caveat,
+  );
+  return lines.join("\n");
+}
+
+const opGroup = program
+  .command("op")
+  .description("Operator assistant (B2): recipes + audio-sample sound matching");
+
+opGroup
+  .command("recipes")
+  .description("List operator-recipe-* knowledge entries")
+  .action(async () => {
+    const opts = program.opts<GlobalOpts>();
+    const entries = await knowledgeStore().listEntries();
+    const recipes = summarizeRecipeEntries(entries);
+    output(opts, recipes, () =>
+      recipes.length === 0
+        ? "no operator recipes yet — knowledge/sound-design/operator-recipe-*.md " +
+          "(see docs/design/operator-assistant.md)"
+        : recipes
+            .map(
+              (r) =>
+                `${r.slug.padEnd(30)} [${r.tier}] ${String(r.paramCount).padStart(3)} params` +
+                `${r.hasPlayNotes ? "  (playNotes)" : ""}  ${r.title}`,
+            )
+            .join("\n"),
+    );
+  });
+
+opGroup
+  .command("apply <recipe> <devicePath>")
+  .description(
+    "Apply a recipe's params to a live device: validates every param NAME " +
+      "against device.get FIRST (fails loudly, writes nothing, on any unknown " +
+      "name), then writes and reads back every param to report mismatches.",
+  )
+  .option("--dry-run", "print the planned moves without writing anything")
+  .option("--audition", "write the recipe's playNotes to an empty session slot on the device's track")
+  .option("--sig <beatsPerBar>", "beats per bar for --audition notation", "4")
+  .action(
+    async (
+      recipeName: string,
+      devicePath: string,
+      cmdOpts: { dryRun?: boolean; audition?: boolean; sig: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const entry = await loadOperatorRecipeEntry(recipeName);
+      const recipe = loadRecipeFromEntry(entry);
+      const detail = (await op(opts, "device.get", { path: devicePath })) as DeviceDetail;
+      const plan: RecipePlan = planRecipeApply(detail, recipe, devicePath);
+
+      if (plan.unknownParams.length > 0) {
+        throw new Error(
+          `recipe "${recipe.name}" [${entry.tier}] references params not on ${devicePath} ` +
+            `(${detail.name}): ${plan.unknownParams.join(", ")}\n` +
+            `known params: ${plan.knownParamNames.join(", ")}`,
+        );
+      }
+
+      if (cmdOpts.dryRun) {
+        output(opts, { plan }, () =>
+          [
+            `${recipe.name} [${entry.tier}] -> ${devicePath} (${detail.name}) — DRY RUN, nothing written`,
+            ...plan.moves.map((m) => `  ${m.param}: ${m.from} -> ${m.to}`),
+          ].join("\n"),
+        );
+        return;
+      }
+
+      const caller: OpCaller = (name, args) => op(opts, name, args);
+      const results = await applyRecipePlan(caller, plan);
+      const mismatches = results.filter((r) => !r.matched);
+
+      let auditionLine = "";
+      if (cmdOpts.audition) {
+        if (!recipe.playNotes) {
+          auditionLine = "\n--audition: recipe has no playNotes to write";
+        } else {
+          const beatsPerBar = Number(cmdOpts.sig);
+          const parsed = parseNotation(recipe.playNotes, { beatsPerBar });
+          const trackPath = deviceTrackPath(devicePath);
+          const summary = (await op(opts, "set.summary")) as SetSummary;
+          const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
+          if (!track) {
+            auditionLine = `\n--audition: track not found: ${trackPath}`;
+          } else {
+            const occupied = new Set(
+              track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+            );
+            const free = Array.from({ length: track.slotCount }, (_, i) => i).find((i) => !occupied.has(i));
+            if (free === undefined) {
+              auditionLine = `\n--audition: no empty session slot on ${trackPath} — pick one manually`;
+            } else {
+              const slotPath = `${trackPath}/slot:${free}`;
+              await op(opts, "clip.create-midi", {
+                target: { type: "session", slotPath },
+                lengthBeats: parsed.suggestedLengthBeats,
+                notes: parsed.notes,
+                name: `${recipe.name} audition`,
+              });
+              auditionLine = `\naudition clip -> ${slotPath} (press play in Live to hear it)`;
+            }
+          }
+        }
+      }
+
+      output(opts, { plan, results, mismatches }, () =>
+        [
+          `${recipe.name} [${entry.tier}] -> ${devicePath} (${detail.name})`,
+          ...renderRecipeWriteLines(results),
+          mismatches.length === 0
+            ? "all params verified by read-back"
+            : `${mismatches.length} param(s) did not verify — read-back value differs from what was written`,
+        ].join("\n") + auditionLine,
+      );
+    },
+  );
+
+opGroup
+  .command("match <sample>")
+  .description(
+    "Analyze an audio sample and propose an Operator patch, tiered by " +
+      "reachability (tier 3 = outside Operator's reachable set — a normal " +
+      "result, not an error).",
+  )
+  .option("--apply <devicePath>", "push the addressable subset of the proposal to a live device")
+  .action(async (sample: string, cmdOpts: { apply?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const result = (await runAnalysisJson(["opmatch", sample])) as unknown as OpMatchResult;
+
+    if (!cmdOpts.apply) {
+      output(opts, result, () => renderOpMatchText(result));
+      return;
+    }
+
+    if (result.tier === 3) {
+      output(opts, result, () => `${renderOpMatchText(result)}\n\n--apply: tier-3 refusal — nothing to apply.`);
+      return;
+    }
+
+    const proposal = result.proposal!;
+    if (Object.keys(proposal.addressable).length === 0) {
+      output(opts, result, () =>
+        `${renderOpMatchText(result)}\n\n--apply: nothing addressable in this proposal (advisory only) — nothing written.`,
+      );
+      return;
+    }
+
+    const devicePath = cmdOpts.apply;
+    const detail = (await op(opts, "device.get", { path: devicePath })) as DeviceDetail;
+    const syntheticRecipe: OperatorRecipe = {
+      name: `${basename(sample)} match`,
+      device: detail.name,
+      params: proposal.addressable,
+    };
+    const plan: RecipePlan = planRecipeApply(detail, syntheticRecipe, devicePath);
+    if (plan.unknownParams.length > 0) {
+      throw new Error(
+        `proposal references params not on ${devicePath} (${detail.name}): ${plan.unknownParams.join(", ")}\n` +
+          `known params: ${plan.knownParamNames.join(", ")}`,
+      );
+    }
+    const caller: OpCaller = (name, args) => op(opts, name, args);
+    const results = await applyRecipePlan(caller, plan);
+    const mismatches = results.filter((r) => !r.matched);
+
+    output(opts, { ...result, applied: { devicePath, results, mismatches } }, () =>
+      [
+        renderOpMatchText(result),
+        "",
+        `applied addressable subset -> ${devicePath} (${detail.name}):`,
+        ...renderRecipeWriteLines(results),
+        "",
+        "drawThesePartials (always yours to hand-draw, even applied):",
+        "  " + proposal.drawThesePartials.map((v) => v.toFixed(2)).join(", "),
+      ].join("\n"),
+    );
+  });
+
+opGroup
+  .command("verify <ref> <devicePath>")
+  .description(
+    "Closed-loop verification: writes an audition note (at the reference's " +
+      "own detected pitch) onto the device's track, captures it via the M4L " +
+      "tap, and reports a spectral-distance score against the reference. " +
+      "Requires the AWH Capture Tap device (m4l/README.md) — NOT auto-iterated: " +
+      "report, owner tweaks, re-verify.",
+  )
+  .option("--from-bar <bar>", "arrangement position to write/play the audition note", "1")
+  .option("--bars <bars>", "capture span length in bars (default: enough to cover the reference)")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--tap-port <port>", "capture tap OSC port", String(TAP_PORT))
+  .option("--out <file>", "capture destination (default: a scratch file under .dev/)")
+  .action(
+    async (
+      ref: string,
+      devicePath: string,
+      cmdOpts: { fromBar: string; bars?: string; sig: string; tapPort: string; out?: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const detail = (await op(opts, "device.get", { path: devicePath })) as DeviceDetail;
+
+      const refAnalysis = (await runAnalysisJson(["opmatch", ref])) as unknown as OpMatchResult;
+      const hz = refAnalysis.analysis.f0.hz;
+      if (hz === null) {
+        throw new Error(
+          `${ref} has no stable pitch to audition — op verify needs a tonal reference ` +
+            `(run \`awh op match ${ref}\` for the full analysis)`,
+        );
+      }
+      const midiPitch = Math.max(0, Math.min(127, Math.round(69 + 12 * Math.log2(hz / 440))));
+
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const beatsPerBar = Number(cmdOpts.sig);
+      const trackPath = deviceTrackPath(devicePath);
+      const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
+      if (!track) throw new Error(`track not found: ${trackPath}`);
+
+      const fromBar = Number(cmdOpts.fromBar);
+      const startBeat = (fromBar - 1) * beatsPerBar;
+      const noteLengthBeats = Math.max(
+        beatsPerBar,
+        clipLengthBeats(secondsToBeats(refAnalysis.analysis.duration_s, summary.tempo), beatsPerBar),
+      );
+      const bars = cmdOpts.bars ? Math.ceil(Number(cmdOpts.bars)) : noteLengthBeats / beatsPerBar;
+      const endBeat = startBeat + bars * beatsPerBar;
+
+      const overlap = track.arrangementClips.find(
+        (c) => startBeat < (c.endTime ?? 0) && endBeat > (c.startTime ?? 0),
+      );
+      const notes: NoteSpec[] = [{ pitch: midiPitch, start: 0, duration: noteLengthBeats, velocity: 100 }];
+      if (overlap) {
+        if (overlap.kind !== "midi") {
+          throw new Error(`${overlap.path} at bar ${fromBar} is an audio clip — pick a different --from-bar`);
+        }
+        const clamped = clampNotesToLength(notes, overlap.duration);
+        await op(opts, "clip.notes", { path: overlap.path, notes: clamped });
+        await op(opts, "clip.update", { path: overlap.path, name: "op verify audition" });
+      } else {
+        await op(opts, "clip.create-midi", {
+          target: { type: "arrangement", trackPath, startBeat },
+          lengthBeats: noteLengthBeats,
+          notes,
+          name: "op verify audition",
+        });
+      }
+
+      const out =
+        cmdOpts.out ??
+        join(repoRoot(), ".dev", "op-verify", `${slugify(basename(ref).replace(/\.[^.]+$/, "") || "capture")}.wav`);
+      await mkdir(dirname(out), { recursive: true });
+
+      let captured: number;
+      try {
+        captured = await captureSpan(opts, {
+          fromBar,
+          bars,
+          beatsPerBar,
+          tapPort: Number(cmdOpts.tapPort),
+          out,
+          tailS: 0.3,
+        });
+      } catch (err) {
+        throw new Error(
+          `op verify requires the AWH Capture Tap M4L device (m4l/README.md) — ${(err as Error).message}`,
+        );
+      }
+
+      const compareResult = (await runAnalysisJson(["opcompare", ref, out])) as unknown as OpCompareResult;
+      output(
+        opts,
+        { devicePath, deviceName: detail.name, capture: out, seconds: captured, compare: compareResult },
+        () =>
+          [
+            `${detail.name} @ ${devicePath} vs ${ref}`,
+            `audition note: pitch ${midiPitch} (from ${ref}'s detected f0 ${hz.toFixed(1)} Hz)`,
+            `captured -> ${out} (${captured.toFixed(1)}s)`,
+            `log-spectrogram L2: ${compareResult.log_spectrogram_l2.toFixed(3)}`,
+            `harmonic cosine: ${compareResult.harmonic_cosine !== null ? compareResult.harmonic_cosine.toFixed(3) : "n/a"}`,
+            `score: ${compareResult.score.toFixed(3)} (1.0 = identical — ears decide the rest)`,
+          ].join("\n"),
       );
     },
   );

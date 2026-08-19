@@ -1,6 +1,6 @@
 # Design: Operator assistant (B2 — recipes + sound matching)
 
-- Status: in build (2026-08-19). Prerequisite CONFIRMED:
+- Status: built (pending owner validation) (2026-08-19). Prerequisite CONFIRMED:
   `knowledge/setup/device-parameter-surface.md` — Operator exposes 195
   fully-named params via `device.get`, and `device.param` writes are
   verified to genuinely move them. Owner greenlit both halves: a recipe
