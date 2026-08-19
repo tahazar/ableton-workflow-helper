@@ -116,9 +116,21 @@ is unsupervised next-token training — the corpus is just a folder of MIDI
 files the owner has rights to. Harvest tags (source project, tempo, key
 guess) are automatic library-browsing metadata, not a curation task.
 
-Sequence: tune a GENRE state on packs + harvest, then continue from it on
-the personal corpus as B3b captures grow it; re-tune cheaply whenever the
-corpus doubles. Eval unchanged (blind A/B vs base, park on no audible
+**RECALIBRATION (owner discussion, 2026-08-18): ML-2 is PARKED.** The
+owner's packs are audio (no MIDI), their project count is small, and no
+open MIDI dataset specializes in electronic/bass melodies (closest:
+Hooktheory lead-sheet annotations' EDM subset — transcription gray zone;
+Tegridy/GigaMIDI genre filters — same gray). A genre state tuned on a
+thin gray corpus would flavor 38M-param filler, not create craft. Revisit
+when the personal corpus exists (B3b captures + new projects + free MIDI
+packs accumulating). The data-grounded work moved to the clean-license
+lane instead: Patchbanks/WaivOps CC BY 4.0 drum datasets, mined for
+aggregate rhythm statistics feeding drum StyleSpecs (see
+`awh drums mine` and the measurement-mining KB entries).
+
+Sequence when un-parked: tune a GENRE state on packs + harvest, then
+continue from it on the personal corpus as B3b captures grow it; re-tune
+cheaply whenever the corpus doubles. Eval unchanged (blind A/B vs base, park on no audible
 win). Tuned state files are PRIVATE artifacts — gitignored, never in the
 repo — because their training data carries no redistribution rights.
 Pre-req spike: prove the RWKV-PEFT state-tuning loop runs at all on
