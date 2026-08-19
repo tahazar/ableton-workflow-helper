@@ -1140,15 +1140,32 @@ Five minutes on the dev machine during any Live session. Both probes use
 the same two commands; the goal is recording what the SDK actually exposes
 so the plugin-parameter question stops being folklore.
 
-- [ ] Operator (native, the original B2 probe): insert an Operator by
+- [x] Operator (native, the original B2 probe): insert an Operator by
       hand, then `awh call device.get '{"path": "track:N/device:M"}'` —
       save the JSON parameter dump. Which of its parameters appear, and
-      are the oscillator/envelope params addressable?
-- [ ] Serum (VST3): with a Serum instance loaded, run the same
+      are the oscillator/envelope params addressable? Confirmed: **195
+      real, fully-named parameters** (`Osc-A Coarse`, `Ae Attack`,
+      `Algorithm`, every oscillator/envelope/filter control). Confirmed
+      `device.param` genuinely moves one (Volume 0.4 → 0.7, read back 0.7),
+      not just lists it. Inserted via `device.insert` on a disposable temp
+      track, deleted after.
+- [x] Serum (VST3): with a Serum instance loaded, run the same
       `device.get` dump. Record: how many parameters Live exposes, are
-      they real names ("Filter Cutoff") or opaque ("Param 37"), do the
-      macros appear, and does `awh call device.param` on one of them
-      (e.g. a macro, raw 0..1) audibly move it?
-- [ ] Drop both dumps + findings into a `knowledge/setup/` entry
+      they real names or opaque, do the macros appear, and does
+      `awh call device.param` on one of them audibly move it? **Found the
+      real answer, and it upends the working assumption**: Serum 2 exposes
+      exactly **1 param (`Device On`)** — but a second 3rd-party VST probed
+      alongside it (OTT) exposed **20 fully-named real params**
+      (`Depth`, `Thresh L/M/H`, `Gain L/M/H`, ...). The plugin-parameter
+      surface is PLUGIN-SPECIFIC, not a native-vs-3rd-party split — "3rd
+      party = opaque" was a coincidence of which plugins had been probed
+      before (ShaperBox 3, the M4L Ducker), not a rule. Leading hypothesis
+      for Serum specifically: its host-automation surface is limited to
+      whatever's mapped to its own internal macro knobs, and this instance
+      had none assigned — unconfirmed; mapping 2-3 macros by hand and
+      re-probing is the natural follow-up, noted in the knowledge entry as
+      still open.
+- [x] Drop both dumps + findings into a `knowledge/setup/` entry
       (plugin-parameter surface — what's addressable from the CLI), same
-      spirit as `compressor-raw-display-mapping`.
+      spirit as `compressor-raw-display-mapping`. Done:
+      `knowledge/setup/device-parameter-surface.md` (tier verified).
