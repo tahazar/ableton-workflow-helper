@@ -95,14 +95,26 @@ prior), only the owner's material gives personalization. Two stages:
    `drop respond`, pattern mining). Build this FIRST — it pays even if
    ML-2 never ships.
 2. **Public data, tiered honestly:**
-   - Producer MIDI packs (free + owned Splice/Cymatics/etc.): BEST
-     license fit — royalty-free for use in the owner's productions;
-     training a private production tool sits closest to intended use.
+   - Free MIDI packs (Cymatics etc. — the owner's packs are AUDIO, so
+     MIDI packs are a separate free download): BEST license fit —
+     royalty-free for use in the owner's productions; training a private
+     production tool sits closest to intended use. Real MIDI, zero
+     verification labor.
    - Lakh / GigaMIDI: research-terms gray zone (GigaMIDI is also the
      pretraining data — only a genre-filtered subset would add anything).
      Knowing use only, nothing derived gets distributed.
    - Song-transcription rips (BitMidi-style): NO — clear copyrights, no
      license.
+   - Bulk-transcribing the owner's AUDIO packs via B1: REJECTED for the
+     training corpus (owner concurred). In a small corpus every noisy
+     clip carries weight, and auto-gates can't fully catch growl/wobble
+     transcription garbage — a smaller clean corpus beats a bigger dirty
+     one. B1 stays what it is: an on-demand single-file tool.
+
+No labeling/verification labor exists anywhere in this plan: state tuning
+is unsupervised next-token training — the corpus is just a folder of MIDI
+files the owner has rights to. Harvest tags (source project, tempo, key
+guess) are automatic library-browsing metadata, not a curation task.
 
 Sequence: tune a GENRE state on packs + harvest, then continue from it on
 the personal corpus as B3b captures grow it; re-tune cheaply whenever the
