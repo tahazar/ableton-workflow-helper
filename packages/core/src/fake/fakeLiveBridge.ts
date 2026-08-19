@@ -74,8 +74,8 @@ interface FakeTrack {
   mixer: { volume: FakeParam; pan: FakeParam; sends: FakeParam[] };
 }
 
-function param(name: string, value: number, min = 0, max = 1): FakeParam {
-  return { name, value, min, max, defaultValue: value, isQuantized: false };
+function param(name: string, value: number, min = 0, max = 1, isQuantized = false): FakeParam {
+  return { name, value, min, max, defaultValue: value, isQuantized };
 }
 
 function makeTrack(kind: FakeTrack["kind"], name: string, slots: number): FakeTrack {
@@ -97,6 +97,48 @@ function makeTrack(kind: FakeTrack["kind"], name: string, slots: number): FakeTr
   };
 }
 
+/**
+ * B2 (Operator assistant): a representative ~25-param subset of Operator's
+ * real 195-param surface (knowledge/setup/device-parameter-surface.md),
+ * matching its real naming style ("Osc-A Coarse", "Ae Attack", "Algorithm")
+ * so `awh op apply`/`op match --apply` are exercised offline against real
+ * names, not invented placeholders. Not exhaustive — enough to validate the
+ * name-matching, write, and read-back flow.
+ */
+function makeOperatorDevice(name: string): FakeDevice {
+  return {
+    name,
+    kind: "device",
+    params: [
+      param("Device On", 1, 0, 1),
+      param("Algorithm", 0.09, 0, 1, true),
+      param("Volume", 0.85, 0, 1),
+      param("Osc-A Coarse", 0.5, 0, 1),
+      param("Osc-A Fine", 0.5, 0, 1),
+      param("Osc-A Level", 0.7, 0, 1),
+      param("Osc-A Wave", 0, 0, 1, true),
+      param("Osc-B Coarse", 0.5, 0, 1),
+      param("Osc-B Fine", 0.5, 0, 1),
+      param("Osc-B Level", 0, 0, 1),
+      param("Osc-B Wave", 0, 0, 1, true),
+      param("Ae Attack", 0.0, 0, 1),
+      param("Ae Decay", 0.3, 0, 1),
+      param("Ae Sustain", 0.7, 0, 1),
+      param("Ae Release", 0.3, 0, 1),
+      param("Be Attack", 0.0, 0, 1),
+      param("Be Decay", 0.3, 0, 1),
+      param("Be Sustain", 0.7, 0, 1),
+      param("Be Release", 0.3, 0, 1),
+      param("Filter Freq", 0.75, 0, 1),
+      param("Filter Res", 0.2, 0, 1),
+      param("Filter On", 0, 0, 1),
+      param("Filter Type", 0, 0, 1, true),
+      param("LFO Amount", 0, 0, 1),
+      param("LFO Rate", 0.5, 0, 1),
+    ],
+  };
+}
+
 function makeStockDevice(name: string): FakeDevice {
   const lower = name.toLowerCase();
   if (lower === "drum rack") {
@@ -109,6 +151,9 @@ function makeStockDevice(name: string): FakeDevice {
   }
   if (lower === "simpler") {
     return { name, kind: "simpler", params: [param("Transpose", 0.5)] };
+  }
+  if (lower === "operator") {
+    return makeOperatorDevice(name);
   }
   return {
     name,

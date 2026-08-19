@@ -10,7 +10,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import a2m, ab, drumstats, duck, pumpcheck, ref, report, targets
+from . import a2m, ab, drumstats, duck, opmatch, pumpcheck, ref, report, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -352,6 +352,72 @@ def _cmd_onsets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _render_opmatch_text(result: dict) -> str:
+    a = result["analysis"]
+    f0 = a["f0"]
+    lines = [
+        f"tier {result['tier']}: {result['summary']}",
+        "",
+        f"f0: {_fmt(f0['hz'], 1)} Hz  drift {_fmt(f0['drift_semitones'], 2)} semitones  "
+        f"voiced {f0['voiced_fraction'] * 100:.0f}%",
+        f"harmonicity ratio: {a['harmonicity_ratio']:.2f}  "
+        f"partial deviation: {_fmt(a['partial_deviation_semitones'], 2)} semitones  "
+        f"noise floor ratio: {a['noise_floor_ratio']:.2f}",
+        f"ADSR fit: attack {a['adsr']['attack_s'] * 1000:.0f}ms  decay {a['adsr']['decay_s'] * 1000:.0f}ms  "
+        f"sustain {a['adsr']['sustain_db']:.1f}dB  release {a['adsr']['release_s'] * 1000:.0f}ms  "
+        f"(r^2={a['adsr']['r_squared']:.2f})",
+        f"centroid: {a['centroid']['direction']} "
+        f"({_fmt(a['centroid']['start_hz'], 0)} -> {_fmt(a['centroid']['end_hz'], 0)} Hz)",
+    ]
+    if result["tier"] == 3:
+        lines.append("")
+        lines.append("reasons:")
+        for r in result["reasons"]:
+            lines.append(f"  - {r}")
+        return "\n".join(lines)
+
+    p = result["proposal"]
+    lines += [
+        "",
+        f"oscillator: {p['oscillator']['waveform']} (residual {p['oscillator']['residual']:.2f})",
+        f"envelope target: attack {p['envelope']['attack_s'] * 1000:.0f}ms  "
+        f"decay {p['envelope']['decay_s'] * 1000:.0f}ms  sustain {p['envelope']['sustain_db']:.1f}dB  "
+        f"release {p['envelope']['release_s'] * 1000:.0f}ms  (fit r^2={p['envelope']['fit_r_squared']:.2f})",
+        f"filter: {p['filter']['direction']}",
+        "",
+        "drawThesePartials (16 normalized amplitudes, hand-draw in Operator's "
+        "harmonics editor if the stock-wave residual above is high):",
+        "  " + ", ".join(f"{v:.2f}" for v in p["drawThesePartials"]),
+        "",
+        f"addressable (raw device.param values, HEURISTIC — see caveat): "
+        f"{', '.join(f'{k}={v:.3f}' for k, v in p['addressable'].items())}",
+        f"  {p['addressable_caveat']}",
+    ]
+    return "\n".join(lines)
+
+
+def _cmd_opmatch(args: argparse.Namespace) -> int:
+    result = opmatch.match(args.file)
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_opmatch_text(result))
+    return 0
+
+
+def _cmd_opcompare(args: argparse.Namespace) -> int:
+    result = opmatch.compare(args.ref, args.cand)
+    if args.json:
+        _print_json(result)
+    else:
+        print(
+            f"log-spectrogram L2: {result['log_spectrogram_l2']:.3f}  "
+            f"harmonic cosine: {_fmt(result['harmonic_cosine'], 3)}  "
+            f"score: {result['score']:.3f} (1.0 = identical, ears decide the rest)"
+        )
+    return 0
+
+
 def _render_drumstats_text(result: dict) -> str:
     grid = result["grid"]
     header = "position   " + "".join(f"{i:>5d}" for i in range(grid))
@@ -541,6 +607,21 @@ def build_parser() -> argparse.ArgumentParser:
                              help="JSON object embedded verbatim in --save-record's 'attribution' field")
     p_drumstats.add_argument("--json", action="store_true")
     p_drumstats.set_defaults(func=_cmd_drumstats)
+
+    p_opmatch = sub.add_parser(
+        "opmatch", help="Analyze a sample and propose an Operator patch (tiered by reachability)"
+    )
+    p_opmatch.add_argument("file")
+    p_opmatch.add_argument("--json", action="store_true")
+    p_opmatch.set_defaults(func=_cmd_opmatch)
+
+    p_opcompare = sub.add_parser(
+        "opcompare", help="Compare a reference capture against a candidate (verify closed loop)"
+    )
+    p_opcompare.add_argument("ref")
+    p_opcompare.add_argument("cand")
+    p_opcompare.add_argument("--json", action="store_true")
+    p_opcompare.set_defaults(func=_cmd_opcompare)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")

@@ -268,6 +268,42 @@ awh mix target <refFiles...> --save <name>        # measure refs -> genre target
   master; if it fails, fall back to asking the user to export the span and
   run report on that file.
 
+## Operator assistant (`awh op`) — recipes + audio-sample sound matching
+
+```sh
+awh op recipes                                  # list operator-recipe-* knowledge entries
+awh op apply <recipe> <devicePath> [--dry-run] [--audition]
+                                                 # write a recipe's params to a live Operator
+awh op match <sample.wav> [--apply <devicePath>]
+                                                 # analyze a sample -> tiered Operator patch proposal
+awh op verify <ref.wav> <devicePath>            # closed-loop: audition + capture + compare
+```
+
+- `apply` validates EVERY param name against `device.get` before writing
+  anything — an unknown/mistyped name (e.g. from a hand-edited recipe)
+  fails loudly and writes NOTHING, never a partial patch. `--dry-run`
+  prints the moves; `--audition` writes the recipe's `playNotes` to an
+  empty session slot on the device's track for the owner to press play.
+- `match` is TIERED, and tier 3 ("outside Operator's reachable set") is a
+  NORMAL result, not an error — say so plainly, quote the specific
+  measured property that's the blocker (harmonicity/pitch drift/inharmonic
+  partials), and don't push the owner toward a patch that can't actually
+  get there. Tiers 1-2 always include a `drawThesePartials` list (16
+  amplitudes) — Operator's user-drawable harmonics are believed UI-only
+  (unverified, not in the 195 automatable params), so hand this to the
+  owner to draw in 30s whenever the stock-wave residual is high.
+  `--apply <devicePath>` pushes only the proposal's `addressable` subset
+  (same validate-first flow as `apply`) — those raw values are an
+  explicitly-labeled HEURISTIC, not a calibrated curve; say so, don't
+  present them as exact.
+- `verify` is the closed loop (owner machine only) — needs the AWH Capture
+  Tap M4L device (m4l/README.md) on the device's track/bus; it is NOT
+  auto-iterated, report the score and let the owner tweak, then re-verify.
+- Raw `device.param` values have NO verified display-unit curve beyond a
+  single Volume point (`knowledge/setup/device-parameter-surface.md`,
+  `compressor-raw-display-mapping.md`) — never claim a raw number means a
+  specific ms/Hz/dB unless a knowledge entry says so.
+
 ## References (`awh ref`) — deconstruct, mark, correct
 
 ```sh
@@ -599,6 +635,33 @@ loud enough for clubs", "did that EQ change help"):
    full-mix bleed). The on/off `ab` pair remains the gold-standard proof.
 4. No target yet? Offer `awh mix target <owner's reference tracks> --save
    <genre>` first — comparisons run against THEIR references, not folklore.
+
+**Sound-design an Operator patch** ("give me a growl bass on Operator",
+"make this sound like <sample>", "dial in a pluck patch"):
+1. Starting from craft knowledge: `awh op recipes` → pick a slug, then
+   `awh op apply <recipe> <devicePath> [--dry-run] [--audition]` — validates
+   every param NAME against the live device before writing anything (fails
+   loudly, writes nothing, on a mistyped/missing param); `--audition` drops
+   the recipe's playNotes into an empty session slot to press play.
+2. Starting from a reference sound: get the audio (owner-provided, or
+   rendered/captured from the Set), then `awh op match <sample.wav>` — a
+   TIERED proposal, never a guess dressed as certainty. Tier 3 ("outside
+   Operator's reachable set") is a NORMAL, expected result for
+   noisy/inharmonic/formant-heavy material — relay the specific measured
+   reason (harmonicity/pitch drift/inharmonic partials), don't push the
+   owner toward a patch Operator can't actually produce.
+3. On a tier-1/2 match: relay the oscillator/envelope/filter targets and
+   the honest confidence (residual). ALWAYS hand the owner the
+   `drawThesePartials` list too — Operator's user-drawable harmonics are
+   believed UI-only (unverified, not automatable), a 30-second manual step
+   when the stock-wave residual is high. `--apply <devicePath>` pushes only
+   the addressable subset (same validate-first flow as `apply`); its raw
+   values are an explicitly-labeled heuristic, not a calibrated curve — say
+   so plainly, don't claim precision the system doesn't have.
+4. To verify against the real sound (owner's machine, needs the AWH Capture
+   Tap on the device's bus, m4l/README.md): `awh op verify <ref.wav>
+   <devicePath>` — NOT auto-iterated; report the score, let the owner
+   tweak, then re-verify (measure→adjust→verify, same discipline as mixing).
 
 **Sidechain ducking** ("tune my sidechain", "duck the bass to my kick",
 "set up sidechaining"). Read knowledge/setup/sidechain-template.md first —

@@ -1167,3 +1167,83 @@ so the plugin-parameter question stops being folklore.
       (plugin-parameter surface — what's addressable from the CLI), same
       spirit as `compressor-raw-display-mapping`. Done:
       `knowledge/setup/device-parameter-surface.md` (tier verified).
+
+## B2 (Operator assistant, `awh op`) owner validation checklist
+
+Built + smoke-tested against `awh serve-fake` with a fake Operator device
+(representative ~25-param subset, real naming style — see
+`packages/core/src/fake/fakeLiveBridge.ts`) and synthetic WAVs: `op recipes`
+(zero-entries state + a temp `operator-recipe-*` entry pointed at via a
+scratch `AWH_LIBRARY`/knowledge root, per `findLibraryRoot`'s existing
+`$AWH_LIBRARY` override — no new env var needed), `op apply` happy path +
+unknown-param loud failure with zero writes + `--dry-run`, `op match` on a
+synthetic pluck (tier 1, correct sine/saw classification) and on white
+noise + a stretched-partial "bell" (tier 3, both refused with the specific
+measured blocker named), `op verify`'s error against the fake gateway (see
+below). `pnpm test` green (321 core incl. 10 new `operator.test.ts` +
+fake-Operator-device coverage; 24 cli incl. 9 new `op.test.ts`), venv
+pytest green (97 incl. 13 new `test_opmatch.py` — harmonic-vector recovery,
+ADSR fit, the white-noise AND inharmonic-bell negative controls,
+determinism). None of this is real device or real audio yet — everything
+below needs the owner's actual Live Set and real captures:
+
+- [ ] Real apply + audition: with a real Operator instance in Live, `awh op
+      apply <a real operator-recipe-*> <devicePath> --audition` — confirm
+      device.get read-back genuinely matches every written param (not just
+      that the gateway accepted the write), and that the audition clip's
+      playNotes actually sound like the intended patch when played. This
+      is the first real-device test of the raw values a seeded recipe
+      entry claims — if a `draft`-tier recipe's raw values turn out wrong
+      by ear, that's expected (the seeding pass marks unverified raw
+      values as `draft`) and is exactly what this checklist step is for:
+      catch it, then feed the correction back into the recipe entry.
+- [ ] Real match on a real bass sample: `awh op match <a real bass one-
+      shot or sustained note>.wav` — does the tier/summary line read as
+      true to ear (a clean tier-1 "good Operator candidate" call should
+      genuinely sound Operator-reachable; a tier-3 refusal should
+      genuinely sound like something Operator can't do — a growl/reese
+      with heavy sub-harmonic distortion or noise components is the
+      interesting edge case to try, since it may legitimately refuse or
+      may land tier 2 with a high oscillator residual). Then `--apply
+      <devicePath>` on a tier-1/2 result and listen: do the addressable
+      envelope/filter values (explicitly heuristic, see the module's
+      `ADDRESSABLE_CAVEAT`) land anywhere close, or does the ASSUMED
+      10s max-envelope-range constant in `analysis/awh_analysis/opmatch.py`
+      need recalibrating against a real observed raw<->ms curve?
+- [ ] The drawn-partials probe (open question from the design doc's Half
+      1 section): with a tier-1/2 `op match` result that has a nonzero
+      oscillator residual, hand-draw the printed `drawThesePartials`
+      values into Operator's harmonics editor in Live, then `device.get`
+      the SAME device again — did any NEW param appear, or did any
+      existing param's value change? The working (unverified) assumption
+      is that Operator's user-drawable harmonics are UI-only and NOT
+      among the 195 automatable params (`knowledge/setup/device-
+      parameter-surface.md`) — this is the first real test of that
+      assumption. If drawn partials DO turn out addressable via some
+      param, `propose()`'s `drawThesePartials`-only handling needs
+      upgrading to push them directly instead.
+- [ ] Raw↔display observations flow back into recipes: for every recipe
+      applied above, read Operator's own UI display value next to the raw
+      number `awh op apply` reports (Algorithm's displayed name/number,
+      Osc-A Coarse's displayed ratio, Ae Attack's displayed ms, ...) and
+      record the pairing — same discipline as `compressor-raw-display-
+      mapping.md` (a single point is a fact, not a curve; don't
+      extrapolate). Update the seeded `operator-recipe-*` entries'
+      comments with confirmed display values and promote their tier once
+      a recipe's raw values are confirmed correct by ear; leave
+      unconfirmed ones `draft`. This is the ONLY way `op match`'s
+      heuristic `addressable` normalization (currently an honest
+      placeholder assumption, not a measured curve) gets replaced with
+      something real.
+- [ ] `op verify`'s closed loop, in Live with the AWH Capture Tap placed on
+      the device's bus (m4l/README.md): confirm the reported score
+      actually tracks audible closeness (dial a patch further from the
+      reference and confirm the score gets worse; dial it closer and
+      confirm it improves) — the log-spectrogram-L2/harmonic-cosine blend
+      and its `SCORE_L2_SCALE` constant are unverified against real
+      ears, only against synthetic self-comparison (score 1.0) and
+      synthetic vs. noise (score dropped as expected) in the pytest
+      suite.
+- [ ] Skill: "make this sound like this sample on Operator" end-to-end
+      through the Typical Flows entry (SKILL.md's "Sound-design an
+      Operator patch") — not run this pass.

@@ -204,3 +204,4 @@ export {
   type GeneratedPhrase,
   type ResponseCandidate,
 } from "./phrase/phrase.js";
+export { parseOperatorRecipe, type OperatorRecipe } from "./operator/recipe.js";
