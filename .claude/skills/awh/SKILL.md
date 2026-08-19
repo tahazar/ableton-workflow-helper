@@ -162,6 +162,9 @@ awh drums gen <trackPath> --style house|techno|trap [--bars 4] [--density 0..1]
 awh drums fill <clipPath> [--style s]      # TRANSFORM: fill into the last bar
 awh drums humanize <clipPath> [--timing 0.02] [--velocity 8]   # role-aware groove
 awh drums vary <clipPath> [-n 4] [--amount 0..1]   # role-aware variations
+awh drums mine <dir...> [--bpm N | --no-bpm-from-name] [--grid 16] [--save name]
+    # RESEARCH: band-split rhythm-stat mining from a folder of drum loops —
+    # reports numbers to compare against the built-in specs, never edits them
 ```
 
 - `gen` maps the track's drum-rack pads to roles (kick/snare/clap/hats/...)
@@ -178,6 +181,20 @@ awh drums vary <clipPath> [-n 4] [--amount 0..1]   # role-aware variations
   PLACE — one undo reverts; re-read to show the user what changed.
 - density/style requests map naturally: "busier" → higher --density,
   "darker/minimal" → techno at lower density, "half-time/trap" → trap.
+- `mine` measures REAL drum loops (a folder of audio files, BPM from the
+  filename by default) — band-split (<120Hz/120Hz-2kHz/>2kHz, a kick/
+  snare-clap/hat PROXY, not source separation) onset detection folded onto
+  a 16th-grid, giving per-position hit-probability tables, density, and a
+  swing estimate. It ONLY reports; it never edits
+  `packages/core/src/drums/grammars.ts`/`styleSpec.ts` — those built-in
+  specs are hand-authored and locked. `--save <name>` writes a measurement
+  record into `library/measurements/` (same convention as `mix report
+  --save`; `awh mix records` lists/shows both kinds). Zero audio files in
+  the directory is a normal result (exit 0, states it, writes nothing) —
+  not an error. See `knowledge/rhythm/waivops-drum-stats-pilot.md` for a
+  worked example (pilot numbers vs. the built-in `HOUSE_STYLE_SPEC`/
+  `TECHNO_STYLE_SPEC`/`TRAP_STYLE_SPEC` assumptions) and always quote its
+  own pilot-sample-size caveat when citing it.
 
 ## Phrase engine (`awh drop`) — call-and-response drop writing
 
@@ -505,6 +522,34 @@ beat trap", "humanize my drums", "variations of my drum loop"):
    `awh drums vary` (variations), `awh drums fill` (last-bar fill),
    `awh drums humanize` (groove) — NOT plain `vary`/hand edits.
 3. Audition loop as with vary: name the slots, let the owner listen, sweep.
+
+**Mine rhythm stats from real drum loops / check the drum grammar against
+real data** ("how do real house kicks actually sit on the grid", "check our
+trap pattern against real loops", "mine this sample pack for rhythm
+stats"):
+1. Confirm there's a folder of drum-loop audio files (not a single file —
+   `mine` aggregates across a whole directory for a statistically
+   meaningful position-probability table).
+2. `awh drums mine <dir> --dataset <name> [--bpm N | --no-bpm-from-name]
+   [--save <name> --attribution "<license/credit line>"]` — BPM comes from
+   the filename by default (e.g. `138bpm_...`); pass `--bpm` for packs that
+   don't encode it. `--save` only when the dataset's license permits
+   reuse — put the EXACT required credit line in `--attribution`, verbatim,
+   not paraphrased.
+3. Relay the printed per-band (low/mid/high — a kick/snare-clap/hat PROXY,
+   say so) position-probability table, density, and swing estimate
+   verbatim — never invent a number the tool didn't print. Zero audio files
+   found is a normal result (exit 0, states it) — not an error.
+4. This is REPORTING ONLY: never edit `HOUSE_STYLE_SPEC`/
+   `TECHNO_STYLE_SPEC`/`TRAP_STYLE_SPEC` in `grammars.ts`/`styleSpec.ts`
+   from a mining result — those are hand-authored and locked. If the
+   numbers are worth acting on, write/extend a `knowledge/rhythm/` entry
+   comparing them to the built-in assumptions (see
+   `waivops-drum-stats-pilot` for the format) and let the owner decide on
+   any spec change separately, as its own reviewed edit.
+5. Always state the sample size and caveat small-n pilots as suggestive,
+   not definitive — a folder of a few dozen loops is a starting hypothesis,
+   not a verdict.
 
 **Answer a call clip with a response** ("give me some responses to this
 lead", "answer this vocal chop with a bass growl", "write a call and

@@ -1,0 +1,186 @@
+{
+  "schema": 1,
+  "kind": "drumstats",
+  "saved": "2026-08-19",
+  "n_sources": 14,
+  "sources": [
+    {
+      "file": "122bpm_tr9_drm_id_001_0125.mp3",
+      "sha256": "01c24e69664a1c9a6198952ad7050b5d2dd8d69f619737df138a45a6eba2821a"
+    },
+    {
+      "file": "124bpm_tr9_drm_id_001_0160.mp3",
+      "sha256": "f9a5fb898557b5f9cd62a64abcbc5b1c9299f661fdce5ade73639a1e32e7c417"
+    },
+    {
+      "file": "128bpm_tr9_drm_id_001_0060.mp3",
+      "sha256": "36539585ec4734b9545a1b42706f94240e546044a1aa55494e9189d606fe6f25"
+    },
+    {
+      "file": "130bpm_tr9_drm_id_001_0053.mp3",
+      "sha256": "81618b82155d00bb8fd32e996a0fff013a5846098749d55ed0cd79ea4788d78e"
+    },
+    {
+      "file": "132bpm_tr9_drm_id_001_0032.mp3",
+      "sha256": "c67e2774a687f69c0a33f6176f79951716eb53dcd5efa1dd13815acf37639a4b"
+    },
+    {
+      "file": "132bpm_tr9_drm_id_001_0170.mp3",
+      "sha256": "ab3d3cdf515ab649aa57903e6312c037831f8e56454abe710d573cf59c521ee8"
+    },
+    {
+      "file": "132bpm_tr9_drm_id_001_0179.mp3",
+      "sha256": "24dd1be78584689df96546e1e8aad5416fc980c8b03f76314b83f78d78de2d46"
+    },
+    {
+      "file": "134bpm_tr9_drm_id_001_0083.mp3",
+      "sha256": "48bf9622bae73dbd7476dda5bb6391e63b728e11d91b905cfeb48d67d0f071e4"
+    },
+    {
+      "file": "136bpm_tr9_drm_id_001_0133.mp3",
+      "sha256": "2f68a5b0d4c0f13e06f69ee4682d8933681e4df582ec1099a1b9a388bdb58847"
+    },
+    {
+      "file": "136bpm_tr9_drm_id_001_0143.mp3",
+      "sha256": "e118eb15babc364df62eb13331f1461f6049b54d0bdaa92ca6cd1896ae7f2c2c"
+    },
+    {
+      "file": "136bpm_tr9_drm_id_001_0156.mp3",
+      "sha256": "19e3797960af5748b5204e4f334619429b689ead5d2b68a28ee1eb048c807f05"
+    },
+    {
+      "file": "138bpm_tr9_drm_id_001_0148.mp3",
+      "sha256": "44fceb8e959eeba75a5d5d43d88b48776dac8194df4400e379a02bf42e391cf0"
+    },
+    {
+      "file": "138bpm_tr9_drm_id_001_0158.mp3",
+      "sha256": "482c906a6009e1c2562cbc2a1fa58ed33da674c439d875ca7074fcfea0ec33b2"
+    },
+    {
+      "file": "140bpm_tr9_drm_id_001_0072.mp3",
+      "sha256": "896d49a74868630798e8f346c554b533e78ac78a1a4ba8783528e9ce705654e1"
+    }
+  ],
+  "stats": {
+    "dataset": "waivops-edm-tr9-pilot",
+    "n_loops": 14,
+    "bpm_range": [
+      122.0,
+      140.0
+    ],
+    "bpm_mean": 132.71428571428572,
+    "grid": 16,
+    "per_band": {
+      "low": {
+        "position_prob": [
+          0.9464285714285714,
+          0.4107142857142857,
+          0.0,
+          0.03571428571428571,
+          0.9821428571428571,
+          0.44642857142857145,
+          0.0,
+          0.21428571428571427,
+          0.9821428571428571,
+          0.42857142857142855,
+          0.07142857142857142,
+          0.10714285714285714,
+          0.9821428571428571,
+          0.4107142857142857,
+          0.03571428571428571,
+          0.32142857142857145
+        ],
+        "density": 8.732142857142858,
+        "onsets_total": 489
+      },
+      "mid": {
+        "position_prob": [
+          1.0,
+          0.4642857142857143,
+          0.625,
+          0.39285714285714285,
+          1.0,
+          0.4107142857142857,
+          0.6964285714285714,
+          0.3392857142857143,
+          1.0,
+          0.5892857142857143,
+          0.6607142857142857,
+          0.44642857142857145,
+          1.0,
+          0.4107142857142857,
+          0.6607142857142857,
+          0.35714285714285715
+        ],
+        "density": 10.071428571428571,
+        "onsets_total": 564
+      },
+      "high": {
+        "position_prob": [
+          0.875,
+          0.7678571428571429,
+          1.0,
+          0.30357142857142855,
+          1.0,
+          0.7857142857142857,
+          1.0,
+          0.39285714285714285,
+          0.8571428571428571,
+          0.8571428571428571,
+          1.0,
+          0.39285714285714285,
+          1.0,
+          0.8571428571428571,
+          1.0,
+          0.4107142857142857
+        ],
+        "density": 12.642857142857142,
+        "onsets_total": 708
+      }
+    },
+    "swing_estimate": {
+      "band": "high",
+      "method": "mean fractional-grid-step timing offset of onsets nearest EVEN positions (on-8th) vs ODD positions (the following off-16th); positive = off-16th lands later (swung)",
+      "on8_mean_offset_steps": 0.02814364048649888,
+      "off16_mean_offset_steps": 0.0032939159079895695,
+      "delay_frac_of_16th_step": -0.02484972457850931,
+      "delay_equivalent_beats": -0.0062124311446273275,
+      "n_on8_onsets": 440,
+      "n_off16_onsets": 268
+    },
+    "downbeat_check": {
+      "assumption": "loop starts on beat 1 (downbeat at t=0s)",
+      "loops_checked": 14,
+      "loops_near_zero": 14,
+      "near_zero_threshold_s": 0.1607142857142857
+    },
+    "mp3_decode_mode": "soundfile",
+    "assumptions": [
+      "band-split (<120 Hz / 120 Hz-2 kHz / >2 kHz) is a KICK / SNARE-CLAP / HAT PROXY, not source separation \u2014 a hat transient still has low-frequency click energy and a kick has harmonics past 2 kHz; treat 'low band' as 'where a kick dominates in a mix', not 'the isolated kick track'.",
+      "4/4 time signature assumed for the grid-step math (step duration = (60/bpm) * (4/grid)).",
+      "loop is assumed to start on beat 1 (downbeat at t=0s) \u2014 checked against the low band's first onset on 14/14 loop(s) with a detectable low-band onset; 14 landed within 161 ms of t=0 (the assumption held for every checked loop).",
+      "n=14 loop(s) \u2014 a PILOT sample size; treat position probabilities as suggestive, not definitive, until the full dataset is mined."
+    ],
+    "files": [
+      "122bpm_tr9_drm_id_001_0125.mp3",
+      "124bpm_tr9_drm_id_001_0160.mp3",
+      "128bpm_tr9_drm_id_001_0060.mp3",
+      "130bpm_tr9_drm_id_001_0053.mp3",
+      "132bpm_tr9_drm_id_001_0032.mp3",
+      "132bpm_tr9_drm_id_001_0170.mp3",
+      "132bpm_tr9_drm_id_001_0179.mp3",
+      "134bpm_tr9_drm_id_001_0083.mp3",
+      "136bpm_tr9_drm_id_001_0133.mp3",
+      "136bpm_tr9_drm_id_001_0143.mp3",
+      "136bpm_tr9_drm_id_001_0156.mp3",
+      "138bpm_tr9_drm_id_001_0148.mp3",
+      "138bpm_tr9_drm_id_001_0158.mp3",
+      "140bpm_tr9_drm_id_001_0072.mp3"
+    ],
+    "skipped": [],
+    "generated_by": "awh_analysis.drumstats.mine_drum_loops"
+  },
+  "attribution": {
+    "note": "WaivOps, \"WaivOps EDM-TR9: Open Audio Resources for Machine Learning in Music\" (2023), https://doi.org/10.5281/zenodo.10278066 \u2014 Creative Commons Attribution 4.0 International (CC BY 4.0). Compiled by Patchbanks (info@patchbanks.com)."
+  }
+}

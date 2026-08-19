@@ -156,6 +156,7 @@ export {
 export {
   KnowledgeStore,
   type KnowledgeFilter,
+  type DrumStatsRecordSummary,
   type MeasurementRecordSummary,
   type ReferenceRecordSummary,
   type StoredKnowledgeEntry,
