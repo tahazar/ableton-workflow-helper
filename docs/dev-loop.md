@@ -1085,54 +1085,52 @@ recovery, silence zero-items, white-noise negative control) and
 n≈15-25 caveat) are the AI-buildable half. Mining the FULL datasets and
 deciding whether the pilot's numbers hold up is the owner's:
 
-- [ ] Download the three full WaivOps archives (CC BY 4.0 — keep the
-      attribution lines below with any output derived from them):
-      ```sh
-      # EDM-TR9 (house/techno, TR-909-style) — 4.81 GB, 3780 loops
-      curl -L -o edm_tr9_drm_id_001.tar.gz \
-        "https://zenodo.org/records/10278066/files/edm_tr9_drm_id_001.tar.gz?download=1"
-      # EDM-TR8 (TR-808/electro) — 4.4 GB, 3790 loops
-      curl -L -o edm_tr8_drm_id_001-0013_wav.tar.gz \
-        "https://zenodo.org/records/13257814/files/edm_tr8_drm_id_001-0013_wav.tar.gz?download=1"
-      # HH-TRP (trap) — 22.3 GB, 15000 loops
-      curl -L -o hh_trp_wav.tar.gz \
-        "https://zenodo.org/records/15734094/files/hh_trp_wav.tar.gz?download=1&preview=1"
-      ```
-      Extract each into its own flat directory (or use `--at-bar`-style
-      subfolders — `drums mine` scans one directory non-recursively per
-      invocation, so pass the extracted folder itself, or run once per
-      subfolder and compare).
-- [ ] Run the real mine, saving records that supersede the pilot ones:
-      ```sh
-      awh drums mine <extractedEDM-TR9Dir> --dataset waivops-edm-tr9-full \
-        --save waivops-tr9-full --attribution \
-        'WaivOps, "WaivOps EDM-TR9: Open Audio Resources for Machine Learning in Music" (2023), https://doi.org/10.5281/zenodo.10278066 — CC BY 4.0. Compiled by Patchbanks (info@patchbanks.com).'
-      awh drums mine <extractedEDM-TR8Dir> --dataset waivops-edm-tr8-full \
-        --save waivops-tr8-full --attribution \
-        'WaivOps, "WaivOps EDM-TR8: Open Audio Resources for Machine Learning in Music" (2024), https://doi.org/10.5281/zenodo.13257814 — CC BY 4.0. Compiled by Patchbanks (info@patchbanks.com).'
-      awh drums mine <extractedHH-TRPDir> --dataset waivops-hh-trp-full \
-        --save waivops-hhtrp-full --attribution \
-        'WaivOps, "WaivOps HH-TRP: Open Audio Resources for Machine Learning in Music" (2025), https://doi.org/10.5281/zenodo.15734094 — CC BY 4.0. Compiled by Patchbanks (info@patchbanks.com).'
-      ```
-      Mining thousands of loops is CPU-bound DSP (STFT + Butterworth filters
-      per loop, three bands each) — expect real wall time on a full archive;
-      run it in the background and check `awh mix records` when done. If
-      MP3 decode is unavailable on the target machine's libsndfile build,
-      `drumstats.py` falls back to `ffmpeg` automatically — install ffmpeg
-      first if `awh drums mine` reports the fallback failing.
-- [ ] Compare `awh mix records waivops-tr9-full` (etc.) against the pilot
-      numbers in `knowledge/rhythm/waivops-drum-stats-pilot.md` — do the
-      position probabilities/densities/swing estimate hold up at full n, or
-      were they a small-sample artifact? Either way is a useful finding.
-- [ ] Update `knowledge/rhythm/waivops-drum-stats-pilot.md`: replace/extend
-      the pilot numbers with the full-dataset ones, bump confidence language
-      now that n is in the thousands, and only THEN consider whether any of
-      the built-in `HOUSE_STYLE_SPEC`/`TECHNO_STYLE_SPEC`/`TRAP_STYLE_SPEC`
-      assumptions in `packages/core/src/drums/grammars.ts` are worth
-      revisiting — as a deliberate, reviewed, hand-edited change (the specs
-      are locked byte-identical; mined stats inform that decision, they
-      never auto-apply to it). Promote the entry's tier only after this
-      real-data pass, never before.
+- [x] Download the three full WaivOps archives (CC BY 4.0 — keep the
+      attribution lines below with any output derived from them). **Found a
+      real bug in this checklist's own HH-TRP URL**: the documented
+      `?download=1&preview=1` query returned Zenodo's HTML landing page
+      (6KB), not the file — `&preview=1` forces the web preview. Correct
+      URL is Zenodo's API content endpoint:
+      `https://zenodo.org/api/records/15734094/files/hh_trp_wav.tar.gz/content`
+      (verified against `GET /api/records/<id>` — `files[].links.self` is
+      always the reliable way to get a real download link; TR9/TR8's
+      `?download=1` URLs were independently confirmed correct against the
+      same API, sizes matched exactly: 4810529632 / 4369713348 bytes).
+      **Also found**: the 22.3 GB HH-TRP transfer genuinely dropped
+      mid-stream twice (curl exited 0 both times despite a truncated file —
+      piping through `| tail` swallows curl's real exit code, a second,
+      separate bug in how the download was being run) — recovered with
+      `curl -L -C -` (resume) in a retry loop until the byte count matched
+      the API's reported size exactly, then verified with `gzip -t`.
+      Downloaded to `~/waivops-datasets/` (outside any cloud-synced
+      folder — a 31.5 GB download inside a synced directory would thrash
+      the sync client). All three: byte-exact match to the API's reported
+      size, `gzip -t` clean, extracted file counts exactly 3780/3790/15000.
+- [x] Run the real mine, saving records that supersede the pilot ones.
+      Done for all three — `awh mix records waivops-{tr9,tr8,hhtrp}-full`.
+- [x] Compare against the pilot numbers — do they hold up at full n?
+      **Genuinely mixed, exactly the point of doing this**: TR9 CONFIRMED
+      even more cleanly (95-98% → literal 100% at all 4 beats, 100%
+      downbeat-check pass). TR8's headline "beat 1 near-universal, others
+      weaker" pattern did NOT hold — full n shows a much more even 71-74%
+      across all four beats, though this reading itself needs caution
+      (TR8's downbeat-check pass rate is only 19%, vs. TR9's 100% — most
+      TR8 loops' onset grid likely doesn't align with this analysis's
+      beat-1 assumption, a genuinely new finding the small pilot could not
+      have surfaced). HH-TRP's kick-anchor finding (52%→49.4%) held almost
+      exactly — no longer a pilot fluke, a robust result at n=15000. HH-TRP's
+      swing finding **flipped sign** between pilot and full (pilot: -0.019
+      beats / sign-flipped from spec; full: +0.0216 beats / same direction
+      as spec, smaller magnitude) — a clean demonstration of a 20-loop
+      sample giving a confidently wrong-signed answer.
+- [x] Update `knowledge/rhythm/waivops-drum-stats-pilot.md`: replaced/
+      extended with the full-dataset numbers, confidence language bumped,
+      pilot records kept (not deleted) specifically to preserve the
+      small-n-vs-full-n comparison since it's a useful case study on its
+      own. Whether to revisit `TRAP_KICK_CELLS`' beat-1-anchor assumption
+      (the most robust disagreement found) is left as the owner's
+      deliberate, hand-reviewed call, per the entry's own "never
+      auto-apply" rule — not done here.
 
 ## Device parameter probe (B2 prerequisite + Serum) — owner checklist
 

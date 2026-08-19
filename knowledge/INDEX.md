@@ -35,7 +35,7 @@ Cite slug + tier when applying an entry. Executable sections are the contract.
 | [drum-style-dusty-garage](rhythm/drum-style-dusty-garage.md) | draft | house, garage, drums, style-spec | yes | 0 |
 | [drum-style-hybrid-trap](rhythm/drum-style-hybrid-trap.md) | draft | trap, hybrid-trap, drums, style-spec | yes | 0 |
 | [dubstep-drum-pattern](rhythm/dubstep-drum-pattern.md) | sourced | dubstep, 140bpm, half-time, drums, riddim, tearout, melodic-dubstep, space | yes | 7 |
-| [waivops-drum-stats-pilot](rhythm/waivops-drum-stats-pilot.md) | sourced | house, techno, trap, edm, drums, statistics, waivops, pilot, style-spec | yes | 7 |
+| [waivops-drum-stats-pilot](rhythm/waivops-drum-stats-pilot.md) | sourced | house, techno, trap, edm, drums, statistics, waivops, full-dataset, style-spec | yes | 7 |
 
 ## setup
 
@@ -59,8 +59,11 @@ Cite slug + tier when applying an entry. Executable sections are the contract.
 
 | record | saved | dataset | loops | sources |
 |---|---|---|---|---|
+| [waivops-hhtrp-full](../library/measurements/waivops-hhtrp-full.json) | 2026-08-19 | waivops-hh-trp-full | 15000 | 15000 |
 | [waivops-hhtrp-pilot](../library/measurements/waivops-hhtrp-pilot.json) | 2026-08-19 | waivops-hh-trp-pilot | 20 | 20 |
+| [waivops-tr8-full](../library/measurements/waivops-tr8-full.json) | 2026-08-18 | waivops-edm-tr8-full | 3790 | 3790 |
 | [waivops-tr8-pilot](../library/measurements/waivops-tr8-pilot.json) | 2026-08-19 | waivops-edm-tr8-pilot | 25 | 25 |
+| [waivops-tr9-full](../library/measurements/waivops-tr9-full.json) | 2026-08-18 | waivops-edm-tr9-full | 3780 | 3780 |
 | [waivops-tr9-pilot](../library/measurements/waivops-tr9-pilot.json) | 2026-08-19 | waivops-edm-tr9-pilot | 14 | 14 |
 
 ## references (library/references/ — deconstructed reference maps)
