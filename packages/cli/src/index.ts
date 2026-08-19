@@ -1283,6 +1283,153 @@ drums
   );
 
 // ---------------------------------------------------------------------------
+// Drum-loop rhythm-statistics mining (owner request): band-split onset
+// mining across a folder of drum loops, reported for comparison against the
+// built-in style specs — never auto-applied to them (grammars.ts/styleSpec.ts
+// stay hand-authored and locked).
+// ---------------------------------------------------------------------------
+
+interface DrumStatsBand {
+  position_prob: number[];
+  density: number;
+  onsets_total: number;
+}
+
+interface DrumStatsResult {
+  dataset: string;
+  n_loops: number;
+  bpm_range: [number, number];
+  bpm_mean: number;
+  grid: number;
+  per_band: { low: DrumStatsBand; mid: DrumStatsBand; high: DrumStatsBand };
+  swing_estimate: {
+    band: string;
+    on8_mean_offset_steps: number | null;
+    off16_mean_offset_steps: number | null;
+    delay_frac_of_16th_step: number | null;
+    delay_equivalent_beats: number | null;
+    n_on8_onsets: number;
+    n_off16_onsets: number;
+  };
+  downbeat_check: { loops_checked: number; loops_near_zero: number; near_zero_threshold_s: number | null };
+  mp3_decode_mode: string | null;
+  assumptions: string[];
+  files: string[];
+  skipped: { file: string; reason: string }[];
+  generated_by: string;
+}
+
+function renderDrumStatsTable(result: DrumStatsResult): string {
+  const bands: Array<"low" | "mid" | "high"> = ["low", "mid", "high"];
+  const grid = result.grid;
+  const header = "position   " + Array.from({ length: grid }, (_, i) => String(i).padStart(5)).join("");
+  const lines = [
+    `${result.dataset} — ${result.n_loops} loop(s), BPM ${result.bpm_range[0].toFixed(0)}-` +
+      `${result.bpm_range[1].toFixed(0)} (mean ${result.bpm_mean.toFixed(1)}), ` +
+      `mp3 decode: ${result.mp3_decode_mode ?? "n/a"}`,
+    "",
+    "Position-hit probability (% of bars with an onset at that grid step):",
+    header,
+  ];
+  for (const b of bands) {
+    const pb = result.per_band[b];
+    const row = pb.position_prob.map((p) => String(Math.round(p * 100)).padStart(5)).join("");
+    lines.push(`${b.padEnd(10)} ${row}`);
+  }
+  lines.push("");
+  for (const b of bands) {
+    const pb = result.per_band[b];
+    lines.push(`${b.padEnd(4)} density  ${pb.density.toFixed(2)} onsets/bar (${pb.onsets_total} onsets total)`);
+  }
+  lines.push("");
+  const sw = result.swing_estimate;
+  lines.push(
+    sw.delay_frac_of_16th_step !== null
+      ? `swing (high band, off-16th vs on-8th timing): ${(sw.delay_frac_of_16th_step * 100).toFixed(1)}% ` +
+          `of a 16th step late (${sw.delay_equivalent_beats!.toFixed(3)} beats equiv.; n=${sw.n_on8_onsets} on-8th / ` +
+          `${sw.n_off16_onsets} off-16th onsets)`
+      : "swing: not enough high-band onsets to estimate",
+  );
+  lines.push("");
+  lines.push("Assumptions (read before trusting these numbers):");
+  for (const a of result.assumptions) lines.push(`  - ${a}`);
+  if (result.skipped.length > 0) {
+    lines.push("");
+    lines.push("Skipped files:");
+    for (const s of result.skipped) lines.push(`  - ${s.file}: ${s.reason}`);
+  }
+  return lines.join("\n");
+}
+
+drums
+  .command("mine <dirs...>")
+  .description(
+    "Mine rhythm statistics (band-split 16th-grid hit-position probabilities) from " +
+      "a folder of drum-loop audio files — REPORTS numbers to compare against the " +
+      "built-in style specs, never auto-tunes them",
+  )
+  .option("--no-bpm-from-name", "disable parsing BPM from loop filenames (e.g. '138bpm_...') — requires --bpm")
+  .option("--bpm <bpm>", "fixed BPM fallback (or forced for every loop with --no-bpm-from-name)")
+  .option("--grid <n>", "grid steps per bar", "16")
+  .option("--dataset <name>", "dataset name for the output (default: single input directory's basename)")
+  .option(
+    "--attribution <text>",
+    "license/attribution note embedded verbatim in the saved record (e.g. the exact CC BY 4.0 credit line)",
+  )
+  .option(
+    "--save [name]",
+    "also save a measurement record to library/measurements/ (default name: the dataset name)",
+  )
+  .action(
+    async (
+      dirs: string[],
+      cmdOpts: {
+        bpmFromName: boolean;
+        bpm?: string;
+        grid: string;
+        dataset?: string;
+        attribution?: string;
+        save?: string | boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const datasetName =
+        cmdOpts.dataset ?? (dirs.length === 1 ? basename(resolve(dirs[0]!)) : undefined);
+
+      const args = ["drumstats", ...dirs];
+      if (!cmdOpts.bpmFromName) args.push("--no-bpm-from-name");
+      if (cmdOpts.bpm) args.push("--bpm", cmdOpts.bpm);
+      args.push("--grid", cmdOpts.grid);
+      if (datasetName) args.push("--dataset", datasetName);
+
+      let recordPath: string | undefined;
+      if (cmdOpts.save !== undefined) {
+        const name =
+          typeof cmdOpts.save === "string" ? cmdOpts.save : slugify(datasetName ?? "drumstats-record");
+        recordPath = join(findLibraryRoot(), "measurements", `${name}.json`);
+        await mkdir(dirname(recordPath), { recursive: true });
+        args.push("--save-record", recordPath);
+        if (cmdOpts.attribution) {
+          args.push("--attribution", JSON.stringify({ note: cmdOpts.attribution }));
+        }
+        process.stderr.write(`record -> ${recordPath}\n`);
+      }
+
+      const result = (await runAnalysisJson(args)) as unknown as DrumStatsResult;
+
+      // Zero audio files found is a STATE, not an error (docs/lessons-learned.md #5).
+      if (result.n_loops === 0) {
+        output(opts, result, () =>
+          `no audio files found in: ${dirs.join(", ")} (looked for .mp3/.wav/.aif/.aiff/.flac/.ogg)`,
+        );
+        return;
+      }
+
+      output(opts, result, () => renderDrumStatsTable(result));
+    },
+  );
+
+// ---------------------------------------------------------------------------
 // Phrase engine (M9): call-and-response drop writing.
 // ---------------------------------------------------------------------------
 
@@ -2404,22 +2551,54 @@ mix
   .action(async (name: string | undefined) => {
     const opts = program.opts<GlobalOpts>();
     const dir = join(findLibraryRoot(), "measurements");
+
+    // Two record "kinds" share library/measurements/: single-file mix
+    // reports (report.save_record, `kind` field absent) and multi-file
+    // drumstats records (drumstats.save_record, `kind: "drumstats"`) —
+    // both must render (not crash) in `mix records`/`mix records <name>`.
+    interface DrumStatsRecordFile {
+      kind: "drumstats";
+      saved: string;
+      n_sources: number;
+      stats: DrumStatsResult;
+      attribution?: { note?: string; [k: string]: unknown };
+    }
+    interface MixReportRecordFile {
+      kind?: undefined;
+      saved: string;
+      file: string;
+      measurements: {
+        loudness: { lufs_integrated: number; true_peak_db: number; psr: { min_psr_loud: number } };
+        spectrum: { tilt_db_per_oct: number };
+        bpm?: number;
+      };
+      findings: { severity: string; explanation: string; suggestion: string }[];
+    }
+    type RecordFile = DrumStatsRecordFile | MixReportRecordFile;
+
     if (name !== undefined) {
       const file = join(dir, `${name}.json`);
       if (!existsSync(file)) throw new Error(`no measurement record ${file}`);
-      const record = JSON.parse(readFileSync(file, "utf8")) as {
-        saved: string;
-        file: string;
-        measurements: Record<string, never>;
-        findings: { severity: string; explanation: string; suggestion: string }[];
-      };
-      output(opts, record, () => {
-        const m = record.measurements as unknown as {
-          loudness: { lufs_integrated: number; true_peak_db: number; psr: { min_psr_loud: number } };
-          spectrum: { tilt_db_per_oct: number };
-          bpm?: number;
-        };
-        return [
+      const record = JSON.parse(readFileSync(file, "utf8")) as RecordFile;
+      if (record.kind === "drumstats") {
+        const s = record.stats;
+        output(opts, record, () =>
+          [
+            `${name} — saved ${record.saved} (drumstats: ${s.dataset})`,
+            `  n_loops ${s.n_loops}  sources ${record.n_sources}  ` +
+              `bpm ${s.bpm_range[0].toFixed(0)}-${s.bpm_range[1].toFixed(0)}`,
+            `  density  low ${s.per_band.low.density.toFixed(2)}/bar · ` +
+              `mid ${s.per_band.mid.density.toFixed(2)}/bar · high ${s.per_band.high.density.toFixed(2)}/bar`,
+            ...(record.attribution?.note ? [`  attribution: ${record.attribution.note}`] : []),
+            ``,
+            `full JSON: ${file} (or --json); re-run: awh drums mine <dir> --dataset ${s.dataset}`,
+          ].join("\n"),
+        );
+        return;
+      }
+      const m = record.measurements;
+      output(opts, record, () =>
+        [
           `${name} — saved ${record.saved}`,
           `  source  ${record.file}`,
           `  LUFS-I ${m.loudness.lufs_integrated.toFixed(2)} · TP ${m.loudness.true_peak_db.toFixed(2)} dBTP · ` +
@@ -2431,8 +2610,8 @@ mix
           ),
           ``,
           `full JSON: ${file} (or --json)`,
-        ].join("\n");
-      });
+        ].join("\n"),
+      );
       return;
     }
     if (!existsSync(dir)) {
@@ -2443,32 +2622,27 @@ mix
       .filter((f) => f.endsWith(".json"))
       .sort()
       .map((f) => {
-        const r = JSON.parse(readFileSync(join(dir, f), "utf8")) as {
-          saved: string;
-          file: string;
-          measurements: {
-            loudness: { lufs_integrated: number };
-            spectrum: { tilt_db_per_oct: number };
+        const r = JSON.parse(readFileSync(join(dir, f), "utf8")) as RecordFile;
+        const name = f.replace(/\.json$/, "");
+        if (r.kind === "drumstats") {
+          return {
+            name,
+            saved: r.saved,
+            summary: `drumstats: ${r.stats.n_loops} loop(s), ${r.stats.dataset}`,
           };
-        };
+        }
         return {
-          name: f.replace(/\.json$/, ""),
+          name,
           saved: r.saved,
-          lufs: r.measurements.loudness.lufs_integrated,
-          tilt: r.measurements.spectrum.tilt_db_per_oct,
-          file: basename(r.file),
+          summary:
+            `${r.measurements.loudness.lufs_integrated.toFixed(1).padStart(6)} LUFS  ` +
+            `${r.measurements.spectrum.tilt_db_per_oct.toFixed(1).padStart(5)} dB/oct  ${basename(r.file)}`,
         };
       });
     output(opts, rows, () =>
       rows.length === 0
         ? "no measurement records yet — awh mix report <file> --save"
-        : rows
-            .map(
-              (r) =>
-                `${r.name.padEnd(32)} ${r.saved}  ${r.lufs.toFixed(1).padStart(6)} LUFS  ` +
-                `${r.tilt.toFixed(1).padStart(5)} dB/oct  ${r.file}`,
-            )
-            .join("\n"),
+        : rows.map((r) => `${r.name.padEnd(32)} ${r.saved}  ${r.summary}`).join("\n"),
     );
   });
 

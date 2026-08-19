@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any
 
 import soundfile as sf
 
-from . import a2m, ab, duck, pumpcheck, ref, report, targets
+from . import a2m, ab, drumstats, duck, pumpcheck, ref, report, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -351,6 +352,81 @@ def _cmd_onsets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _render_drumstats_text(result: dict) -> str:
+    grid = result["grid"]
+    header = "position   " + "".join(f"{i:>5d}" for i in range(grid))
+    lines = [
+        f"dataset: {result['dataset']}  ({result['n_loops']} loop(s), "
+        f"BPM {result['bpm_range'][0]:.0f}-{result['bpm_range'][1]:.0f}, "
+        f"mean {result['bpm_mean']:.1f}, decode={result['mp3_decode_mode']})",
+        "",
+        "position-hit probability (% of bars with an onset at that grid step):",
+        header,
+    ]
+    for band in ("low", "mid", "high"):
+        b = result["per_band"][band]
+        row = "".join(f"{round(p * 100):>5d}" for p in b["position_prob"])
+        lines.append(f"{band:<10s} {row}")
+    lines.append("")
+    for band in ("low", "mid", "high"):
+        b = result["per_band"][band]
+        lines.append(
+            f"{band:<5s} density {b['density']:.2f} onsets/bar ({b['onsets_total']} onsets total)"
+        )
+    lines.append("")
+    sw = result["swing_estimate"]
+    if sw["delay_frac_of_16th_step"] is not None:
+        lines.append(
+            f"swing (high band): off-16ths land {sw['delay_frac_of_16th_step'] * 100:+.1f}% of a "
+            f"step vs on-8ths ({sw['delay_equivalent_beats']:+.3f} beats equiv.; "
+            f"n={sw['n_on8_onsets']}/{sw['n_off16_onsets']})"
+        )
+    else:
+        lines.append("swing: not enough high-band onsets to estimate")
+    lines.append("")
+    lines.append("assumptions:")
+    for a in result["assumptions"]:
+        lines.append(f"  - {a}")
+    if result["skipped"]:
+        lines.append("")
+        lines.append("skipped files:")
+        for s in result["skipped"]:
+            lines.append(f"  - {s['file']}: {s['reason']}")
+    return "\n".join(lines)
+
+
+def _cmd_drumstats(args: argparse.Namespace) -> int:
+    files = drumstats.find_audio_files(args.paths)
+    dataset_name = args.dataset
+    if dataset_name is None and len(args.paths) == 1 and os.path.isdir(args.paths[0]):
+        dataset_name = os.path.basename(os.path.normpath(args.paths[0]))
+
+    if not files:
+        # Zero audio files found is a STATE, not an error (docs/lessons-learned.md #5).
+        payload = {"dataset": dataset_name, "n_loops": 0, "files": []}
+        if args.json:
+            _print_json(payload)
+        else:
+            print(f"no audio files found in: {', '.join(args.paths)}")
+        return 0
+
+    result = drumstats.mine_drum_loops(
+        files,
+        bpm_from_name=not args.no_bpm_from_name,
+        bpm=args.bpm,
+        grid=args.grid,
+        dataset_name=dataset_name,
+    )
+    if args.save_record:
+        attribution = json.loads(args.attribution) if args.attribution else None
+        drumstats.save_record(args.save_record, files, result, attribution=attribution)
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_drumstats_text(result))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -441,6 +517,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_on.add_argument("--min-gap-ms", type=float, default=80.0)
     p_on.add_argument("--json", action="store_true")
     p_on.set_defaults(func=_cmd_onsets)
+
+    p_drumstats = sub.add_parser(
+        "drumstats",
+        help="Mine band-split rhythm statistics (16th-grid position probabilities) from a folder of drum loops",
+    )
+    p_drumstats.add_argument("paths", nargs="+", help="audio files and/or directories (scanned non-recursively)")
+    p_drumstats.add_argument(
+        "--bpm", type=float, default=None,
+        help="fixed BPM used as a fallback (or for every file with --no-bpm-from-name)",
+    )
+    p_drumstats.add_argument(
+        "--no-bpm-from-name", action="store_true",
+        help="disable parsing BPM from loop filenames (e.g. '138bpm_...') — requires --bpm",
+    )
+    p_drumstats.add_argument("--grid", type=int, default=drumstats.DEFAULT_GRID,
+                             help="grid steps per bar (default 16 = 16th notes)")
+    p_drumstats.add_argument("--dataset", type=str, default=None,
+                             help="dataset name for the output (default: single input directory's basename)")
+    p_drumstats.add_argument("--save-record", type=str, default=None,
+                             help="also write a drum-stats measurement record JSON to this path")
+    p_drumstats.add_argument("--attribution", type=str, default=None,
+                             help="JSON object embedded verbatim in --save-record's 'attribution' field")
+    p_drumstats.add_argument("--json", action="store_true")
+    p_drumstats.set_defaults(func=_cmd_drumstats)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")

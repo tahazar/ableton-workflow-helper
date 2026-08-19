@@ -1073,3 +1073,82 @@ like a real call-and-response pair:
       with a bass growl" → Claude follows the Typical Flows entry (reads
       the call clip, uses `drop respond`, doesn't hand-compose a growl part
       or reach for plain `vary`).
+
+## Drum stats mining (`awh drums mine`) owner checklist
+
+Built + tested against a PILOT subset only: the WaivOps example-loop MP3s
+checked into the datasets' own repos (`examples/`, ~15-25 files each) — not
+the full archives, which are multi-GB Zenodo downloads egress-blocked from
+the build container. `analysis/tests/test_drumstats.py` (synthetic-pattern
+recovery, silence zero-items, white-noise negative control) and
+`knowledge/rhythm/waivops-drum-stats-pilot.md` (the pilot numbers + honest
+n≈15-25 caveat) are the AI-buildable half. Mining the FULL datasets and
+deciding whether the pilot's numbers hold up is the owner's:
+
+- [ ] Download the three full WaivOps archives (CC BY 4.0 — keep the
+      attribution lines below with any output derived from them):
+      ```sh
+      # EDM-TR9 (house/techno, TR-909-style) — 4.81 GB, 3780 loops
+      curl -L -o edm_tr9_drm_id_001.tar.gz \
+        "https://zenodo.org/records/10278066/files/edm_tr9_drm_id_001.tar.gz?download=1"
+      # EDM-TR8 (TR-808/electro) — 4.4 GB, 3790 loops
+      curl -L -o edm_tr8_drm_id_001-0013_wav.tar.gz \
+        "https://zenodo.org/records/13257814/files/edm_tr8_drm_id_001-0013_wav.tar.gz?download=1"
+      # HH-TRP (trap) — 22.3 GB, 15000 loops
+      curl -L -o hh_trp_wav.tar.gz \
+        "https://zenodo.org/records/15734094/files/hh_trp_wav.tar.gz?download=1&preview=1"
+      ```
+      Extract each into its own flat directory (or use `--at-bar`-style
+      subfolders — `drums mine` scans one directory non-recursively per
+      invocation, so pass the extracted folder itself, or run once per
+      subfolder and compare).
+- [ ] Run the real mine, saving records that supersede the pilot ones:
+      ```sh
+      awh drums mine <extractedEDM-TR9Dir> --dataset waivops-edm-tr9-full \
+        --save waivops-tr9-full --attribution \
+        'WaivOps, "WaivOps EDM-TR9: Open Audio Resources for Machine Learning in Music" (2023), https://doi.org/10.5281/zenodo.10278066 — CC BY 4.0. Compiled by Patchbanks (info@patchbanks.com).'
+      awh drums mine <extractedEDM-TR8Dir> --dataset waivops-edm-tr8-full \
+        --save waivops-tr8-full --attribution \
+        'WaivOps, "WaivOps EDM-TR8: Open Audio Resources for Machine Learning in Music" (2024), https://doi.org/10.5281/zenodo.13257814 — CC BY 4.0. Compiled by Patchbanks (info@patchbanks.com).'
+      awh drums mine <extractedHH-TRPDir> --dataset waivops-hh-trp-full \
+        --save waivops-hhtrp-full --attribution \
+        'WaivOps, "WaivOps HH-TRP: Open Audio Resources for Machine Learning in Music" (2025), https://doi.org/10.5281/zenodo.15734094 — CC BY 4.0. Compiled by Patchbanks (info@patchbanks.com).'
+      ```
+      Mining thousands of loops is CPU-bound DSP (STFT + Butterworth filters
+      per loop, three bands each) — expect real wall time on a full archive;
+      run it in the background and check `awh mix records` when done. If
+      MP3 decode is unavailable on the target machine's libsndfile build,
+      `drumstats.py` falls back to `ffmpeg` automatically — install ffmpeg
+      first if `awh drums mine` reports the fallback failing.
+- [ ] Compare `awh mix records waivops-tr9-full` (etc.) against the pilot
+      numbers in `knowledge/rhythm/waivops-drum-stats-pilot.md` — do the
+      position probabilities/densities/swing estimate hold up at full n, or
+      were they a small-sample artifact? Either way is a useful finding.
+- [ ] Update `knowledge/rhythm/waivops-drum-stats-pilot.md`: replace/extend
+      the pilot numbers with the full-dataset ones, bump confidence language
+      now that n is in the thousands, and only THEN consider whether any of
+      the built-in `HOUSE_STYLE_SPEC`/`TECHNO_STYLE_SPEC`/`TRAP_STYLE_SPEC`
+      assumptions in `packages/core/src/drums/grammars.ts` are worth
+      revisiting — as a deliberate, reviewed, hand-edited change (the specs
+      are locked byte-identical; mined stats inform that decision, they
+      never auto-apply to it). Promote the entry's tier only after this
+      real-data pass, never before.
+
+## Device parameter probe (B2 prerequisite + Serum) — owner checklist
+
+Five minutes on the dev machine during any Live session. Both probes use
+the same two commands; the goal is recording what the SDK actually exposes
+so the plugin-parameter question stops being folklore.
+
+- [ ] Operator (native, the original B2 probe): insert an Operator by
+      hand, then `awh call device.get '{"path": "track:N/device:M"}'` —
+      save the JSON parameter dump. Which of its parameters appear, and
+      are the oscillator/envelope params addressable?
+- [ ] Serum (VST3): with a Serum instance loaded, run the same
+      `device.get` dump. Record: how many parameters Live exposes, are
+      they real names ("Filter Cutoff") or opaque ("Param 37"), do the
+      macros appear, and does `awh call device.param` on one of them
+      (e.g. a macro, raw 0..1) audibly move it?
+- [ ] Drop both dumps + findings into a `knowledge/setup/` entry
+      (plugin-parameter surface — what's addressable from the CLI), same
+      spirit as `compressor-raw-display-mapping`.
