@@ -1324,16 +1324,26 @@ test). This is exactly the kind of bug the existing Playwright smoke test
 could NOT catch — it only asserts on debug-exposed scheduler state, never
 reads visible page text/headings.
 
-- [ ] `awh endless demo -o <dir>` → serve it (`python3 -m http.server` in
+- [x] `awh endless demo -o <dir>` → serve it (`python3 -m http.server` in
       `<dir>`) and actually LISTEN. Does pressing Play produce audible,
       groove-plausible kick/hat/bass/pads, does the section change land
       musically (not just structurally correct per the debug readout), and
       does the mute/fluctuation movement register as subtle mix breathing
-      rather than an audible glitch? **Still open** — this pass only did
-      headless HTTP-level verification (curl against every served asset,
-      200s across the board) plus the fix above; nobody has pressed Play
-      and listened, and no interactive browser (visual render, click,
-      console-error check) has been done against this feature yet.
+      rather than an audible glitch? **Done, owner confirmed by ear** — a
+      real interactive browser session (Chrome, via the connected Claude
+      extension) loaded the demo at `http://127.0.0.1:8123/`, confirmed the
+      `<h1>` fix rendered correctly (no more literal placeholder), pressed
+      Play, and watched it run/transition live: `performance #631621170`
+      picked, intro (2 bars) → drop (2 bars) transition happened with fresh
+      variant picks each section (`drop-drums-b.wav`/`drop-bass-a.wav`/
+      `drop-pads-a.wav`), elapsed timer advanced correctly, zero console
+      errors throughout. Owner then listened directly and confirmed all
+      three questions: section change lands musically (not just
+      structurally), no clicks/pops at boundaries, mute/fluctuation reads
+      as subtle mix breathing, not glitchy. This was on the synthetic demo
+      stems (sine/noise/saw), not a real owner song — the next two
+      checklist items (real bounced stems, then the owner's actual song)
+      are still the open bar.
 - [ ] Bounce a few bars of a REAL song's stems (drums/bass/pads or
       whatever layers apply) bar-exact per section, WITH any reverb/delay
       tail overlapped back into the loop rather than trimmed at the
