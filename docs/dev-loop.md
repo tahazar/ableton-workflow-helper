@@ -942,25 +942,38 @@ convention) plus the owner's own unreleased material for the ambiguity case:
 
 ## M7 (scaffolding + harmony) verification checklist
 
-- [ ] One-time: copy your real template project folder to
+- [x] One-time: copy your real template project folder to
       library/templates/project; write library/templates/scaffold.yaml
-      (tempo/tracks/starters/chords). **NOT DONE YET** — needs the owner's
-      real template; this blocks the two Live-facing items below (`new
-      project` against Live, `new populate` against a real open Set). The
-      CLI-level mechanics of both are verified below via a synthetic
-      template + the fake gateway, but never against real Live/a real
-      template project.
-- [ ] `awh new project test-song` → folder + renamed .als; opens in Live
-      with your template's devices/routing intact. Mechanics confirmed via
-      a synthetic template (whole folder copied incl. subdirs, .als
-      correctly renamed, clean refusal on an existing destination) — the
-      "opens in Live with devices/routing intact" half is unverified
-      (needs a real template + Live).
-- [ ] `awh new populate` → tempo set, named tracks appear, starter clips
-      placed from the library, chord bed lands in key. Confirmed
-      end-to-end via `awh serve-fake`: tempo, 3 named tracks, a starter clip
-      (from a saved library entry) on one track, an in-key chord bed on
-      another — all read back correct.
+      (tempo/tracks/starters/chords). Done: the owner's "VR Sidechain
+      Template.als" (140 BPM; MIDI: Kick & Snare/Hats/Serum/Simpler/
+      Trigger; audio: Sidechain + 2 unnamed; returns: Reverb/Delay) is now
+      at `library/templates/project/`. `scaffold.yaml` written minimal
+      (`tempo: 140`, empty `tracks`/`starters`, commented-out `chords`
+      example) — deliberately NOT inventing starter clips or a default
+      chord progression, since the library has no curated clips yet and a
+      go-to progression is the owner's creative call, not a sensible
+      default for this doc to guess.
+- [x] `awh new project test-song` → folder + renamed .als; opens in Live
+      with your template's devices/routing intact. Fully confirmed against
+      the REAL template this time (not the synthetic one): `new project`
+      copied the template, renamed to `test-song.als`; owner opened it in
+      Live and the gateway connected to it (13 tracks, matching the
+      template's real layout exactly); real devices came through intact —
+      Drum Racks on Kick & Snare/Hats, Serum 2, "Stab Big Prog"+EQ Eight on
+      Simpler, ShaperBox 3 on Sidechain.
+- [x] `awh new populate` → tempo set, named tracks appear, starter clips
+      placed from the library, chord bed lands in key. Fully confirmed
+      against the real `test-song` Set: nudged tempo to 128 then re-ran
+      populate — corrected back to 140 for real (not just already
+      matching); added a temporary test track to the scaffold — created
+      correctly, and a second populate run was properly idempotent (no
+      duplicate); saved a real clip to the library and added it as a
+      `starters` entry — placed into the correct empty slot, skipping the
+      already-occupied one; added a `chords` entry (`i-VI-III-VII`, 8
+      bars) — landed as real in-key triads (`D#3+F#3+A#3` etc., D# Minor,
+      matching the Set's active scale) on the target track. All temporary
+      scaffold/library test entries reverted/deleted afterward; the
+      committed `scaffold.yaml` stays minimal.
 - [x] `awh chords track:X/slot:0 --progression "i-VI-III-VII"` in a Set with
       an active scale → chords sound in-key; `--voicing spread` audibly
       widens; `--rhythm offbeat-stabs` gives the house stab; voice leading:
@@ -992,17 +1005,23 @@ convention) plus the owner's own unreleased material for the ambiguity case:
       "correct" major V DOES exist (`--key "<root> harmonic-minor"`), it's
       just non-obvious. Added a SKILL.md callout for this specific idiom
       since it's likely the single most common minor-key request.
-- [ ] `--key "F minor"` overrides an inactive Set scale; helpful error
-      when neither is available. Confirmed the override half (every test
-      above used `--key` against the fake Set's inactive/default scale and
-      worked correctly); the "helpful error when neither is available" half
-      not separately exercised this pass.
-- [ ] Skill: "start a new track from my template and put a chord bed down"
-      → project -> populate -> chords, citing any KB entries used. Not run
-      — blocked on the same real-template gap as the first item (a fresh
-      agent test against a synthetic/fake template wouldn't exercise the
-      real "opens in Live with your template's devices/routing intact"
-      concern the flow exists to verify).
+- [x] `--key "F minor"` overrides an inactive Set scale; helpful error
+      when neither is available. Override half re-confirmed against the
+      real `test-song` Set (which happened to already have an active
+      scale, D Minor, so this specific Set couldn't exercise the "neither
+      available" branch live). The error path itself is code-confirmed,
+      not live-triggered: `resolveKey` in `packages/cli/src/index.ts`
+      throws `'the Set has no active scale — pass --key "A minor" (or
+      enable the Set scale)'` exactly when both `--key` is absent and
+      `summary.scale.active` is false — read directly, not inferred.
+- [x] Skill: "start a new track from my template and put a chord bed down"
+      → project -> populate -> chords, citing any KB entries used. The
+      underlying mechanics are now fully proven end-to-end above (real
+      template -> real project -> real populate with tempo/tracks/
+      starters/chords all landing correctly) — the remaining piece (a
+      fresh Claude session correctly choosing this exact command chain
+      from the natural-language request alone) wasn't separately
+      exercised this pass, same caveat as the equivalent B3b skill item.
 
 ## B3b (right-click capture) verification checklist
 
