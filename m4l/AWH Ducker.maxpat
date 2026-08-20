@@ -83,7 +83,16 @@
 			{ "box": { "id": "obj-74", "maxclass": "newobj", "text": "plugin~", "patching_rect": [ 200.0, 400.0, 60.0, 22.0 ], "numinlets": 1, "numoutlets": 2, "outlettype": ["signal","signal"] } },
 			{ "box": { "id": "obj-75", "maxclass": "newobj", "text": "*~", "patching_rect": [ 200.0, 460.0, 55.0, 22.0 ], "numinlets": 2, "numoutlets": 1, "outlettype": ["signal"] } },
 			{ "box": { "id": "obj-76", "maxclass": "newobj", "text": "*~", "patching_rect": [ 300.0, 460.0, 55.0, 22.0 ], "numinlets": 2, "numoutlets": 1, "outlettype": ["signal"] } },
-			{ "box": { "id": "obj-77", "maxclass": "newobj", "text": "plugout~", "patching_rect": [ 200.0, 520.0, 65.0, 22.0 ], "numinlets": 2, "numoutlets": 2, "outlettype": ["signal","signal"] } }
+			{ "box": { "id": "obj-77", "maxclass": "newobj", "text": "plugout~", "patching_rect": [ 200.0, 520.0, 65.0, 22.0 ], "numinlets": 2, "numoutlets": 2, "outlettype": ["signal","signal"] } },
+			{ "box": { "id": "obj-78", "maxclass": "comment", "text": "DIAGNOSTIC TAP (owner debug, remove before shipping) — current_song_time / is_playing readout, fed from route's outlets", "patching_rect": [ 1000.0, 560.0, 400.0, 20.0 ], "numinlets": 1, "numoutlets": 0 } },
+			{ "box": { "id": "obj-79", "maxclass": "flonum", "numinlets": 1, "numoutlets": 2, "outlettype": ["", "bang"], "parameter_enable": 0, "patching_rect": [ 1000.0, 585.0, 90.0, 22.0 ] } },
+			{ "box": { "id": "obj-80", "maxclass": "comment", "text": "current_song_time", "patching_rect": [ 1100.0, 588.0, 120.0, 20.0 ], "numinlets": 1, "numoutlets": 0 } },
+			{ "box": { "id": "obj-81", "maxclass": "number", "numinlets": 1, "numoutlets": 2, "outlettype": ["", "bang"], "parameter_enable": 0, "patching_rect": [ 1240.0, 585.0, 50.0, 22.0 ] } },
+			{ "box": { "id": "obj-82", "maxclass": "comment", "text": "is_playing", "patching_rect": [ 1300.0, 588.0, 80.0, 20.0 ], "numinlets": 1, "numoutlets": 0 } },
+			{ "box": { "id": "obj-83", "maxclass": "newobj", "text": "print AWH-trigger-fired", "patching_rect": [ 1260.0, 1080.0, 150.0, 22.0 ], "numinlets": 1, "numoutlets": 0 } },
+			{ "box": { "id": "obj-84", "maxclass": "newobj", "text": "print AWH-envelope-target", "patching_rect": [ 1360.0, 1320.0, 170.0, 22.0 ], "numinlets": 1, "numoutlets": 0 } },
+			{ "box": { "id": "obj-85", "maxclass": "button", "patching_rect": [ 1120.0, 80.0, 20.0, 20.0 ], "numinlets": 1, "numoutlets": 1, "outlettype": [""] } },
+			{ "box": { "id": "obj-86", "maxclass": "comment", "text": "MANUAL RE-INIT — click after any reload/paste (loadbang won't refire on paste, live.path won't resolve without this)", "patching_rect": [ 1150.0, 83.0, 400.0, 20.0 ], "numinlets": 1, "numoutlets": 0 } }
 		],
 		"lines": [
 			{ "patchline": { "source": [ "obj-2", 0 ], "destination": [ "obj-3", 0 ] } },
@@ -183,7 +192,10 @@
 			{ "patchline": { "source": [ "obj-73", 0 ], "destination": [ "obj-75", 1 ] } },
 			{ "patchline": { "source": [ "obj-73", 0 ], "destination": [ "obj-76", 1 ] } },
 			{ "patchline": { "source": [ "obj-75", 0 ], "destination": [ "obj-77", 0 ] } },
-			{ "patchline": { "source": [ "obj-76", 0 ], "destination": [ "obj-77", 1 ] } }
+			{ "patchline": { "source": [ "obj-76", 0 ], "destination": [ "obj-77", 1 ] } },
+			{ "patchline": { "source": [ "obj-63", 0 ], "destination": [ "obj-83", 0 ] } },
+			{ "patchline": { "source": [ "obj-72", 0 ], "destination": [ "obj-84", 0 ] } },
+			{ "patchline": { "source": [ "obj-85", 0 ], "destination": [ "obj-30", 0 ] } }
 		]
 	}
 }
