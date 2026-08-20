@@ -552,6 +552,95 @@ the port → clear timeout error, not a hang) also independently re-run and
 confirmed. The wire protocol is solid; nothing below this line is possible
 without the real Max device:
 
+**Real in-Live debugging session run this pass — marked FAILED, handed off
+to a future/remote-agent session for a full device overhaul. Documenting
+everything found so that session doesn't restart from zero:**
+
+- OSC handshake genuinely confirmed live: `awh mix duck push --off` and a
+  full shaped push (`--depth 18 --release 300 --attack 1 --hold 40
+  --trigger-clip track:24/arr:0`, deliberately exaggerated for an
+  unmistakable test) both replied correctly, `device.get` confirmed `Device
+  On: 1` throughout. This closes the "does the OSC wire even reach the
+  device" question — it does.
+- **The `current_song_time` units hypothesis flagged in `m4l/README.md` is
+  DISPROVEN, not confirmed.** Added a real diagnostic tap (`flonum`/
+  `number` wired to `route current_song_time is_playing`'s two outlets,
+  since the shipped patch had no such tap despite being described as
+  needing one) and watched it live during playback: the value climbed
+  128→192, an EXACT match to the Trigger clip's own absolute arrangement
+  position in beats (the clip sits at beats 128-192). `is_playing` read `1`
+  throughout. **`current_song_time` is genuinely in beats, exactly as the
+  patch assumes** — the "no audible duck" bug is NOT a units problem; it's
+  somewhere in the trigger-matching/envelope-firing logic downstream of a
+  correctly-functioning transport read.
+- **Real, reproducible Max gotcha found and partially mitigated**: the
+  patch's `live.path live_set` → `live.object` binding is driven by
+  `loadbang` (`obj-29`→`obj-30`→`obj-31`'s "set" inlet) — and `loadbang`
+  **only fires on a genuine patch/device load, never on a paste into an
+  already-open device window.** Every "select-all, paste the updated patch
+  over the existing device" reload this session (the only viable workflow
+  since the device isn't frozen to `.amxd` yet) silently left `live.object`
+  without a valid reference, producing a real `get: no valid object set`
+  Max console error on every subsequent `get current_song_time`/
+  `get is_playing` call — even though an EARLIER, still-warm instance had
+  been reading correctly moments before a "clean" reload. **Mitigation
+  added to `m4l/AWH Ducker.maxpat`**: a manual `bang` button wired directly
+  into `live.path live_set`'s inlet, labeled "MANUAL RE-INIT — click after
+  any reload/paste," so a paste-based reload can be manually re-armed
+  without needing to fully remove/reinsert the device. Clicking it did NOT
+  clear the error in the one attempt made before the session had to stop —
+  root cause of THAT residual failure is unresolved (possibly the button's
+  click wasn't received as a genuine click while the window was still in
+  edit mode, possibly something else already broken by that point in the
+  session — not distinguished).
+- **Two more diagnostic taps added, never got a clean read**:
+  `print AWH-trigger-fired` on the trigger-match `sel 1`'s match outlet
+  (`obj-63`), and `print AWH-envelope-target` on the constructed ramp
+  message feeding `line~` (`obj-72`). These would show, respectively,
+  whether a trigger is ever recognized at all, and what envelope values get
+  computed when it is — the logical next diagnostic step once the
+  `live.object` binding is reliably valid. Never got a real reading before
+  the session ended.
+- **Real operational finding, not yet root-caused**: mid-session, the AWH
+  extension host process died completely (not hung — `ps aux` showed no
+  `ExtensionHost` process at all, nothing listening on port 8720) while
+  testing the Ducker, and separately Max's own editor became so slow it
+  "tanks the computer" just opening it, on a machine that was otherwise
+  healthy (confirmed via `fseventsd`/Spotlight/Time Machine checks earlier
+  in the same session — none of those were the cause of THIS slowdown).
+  Whether this is the M4L device itself in a runaway/feedback state (the
+  patch's own `metro 1` polls `live.object` 1000 times/second by design,
+  a rate that predates this session and was never revisited), an artifact
+  of accumulated duplicate objects from repeated paste-based reloads, or
+  something else was not distinguished before the session had to stop.
+  **Confirmed real and reproducible**: after any Live restart, the `awh`
+  gateway stays unreachable until `extensions-cli run --live "/Applications/
+  Ableton Live 12 Beta.app"` is re-run by hand — matches this doc's own
+  existing Troubleshooting note ("Restarted Live? Restart `extensions-cli`
+  too") exactly; re-confirmed, not a new finding, but worth flagging that
+  it bit this session too.
+- **"Bass/samples went silent" scare, resolved — not a lasting bug**: after
+  the manual re-init attempt, BASS/SAMPLES (routed through the Sidechain
+  bus, confirmed via `awh status` — their mute flags were `false`
+  throughout, so this was never a literal track-mute) became inaudible
+  while DRUMS (routed straight to Master, bypassing Sidechain) stayed
+  audible — consistent with the Ducker's runtime gain state getting stuck
+  crushed rather than any routing change. A full Live restart alone
+  resolved it (M4L device runtime state resets with the host); confirmed
+  by ear post-restart with nothing re-pushed. Not investigated further
+  since the whole device is now being deferred to a fresh session.
+- **Recommendation for the next session**: given the accumulated
+  complexity (a real Max gotcha, an unresolved SDK-level error, and two
+  reproducible-but-uncaused stability incidents in one sitting), consider
+  a ground-up rebuild of the trigger-detection chain rather than more
+  incremental debugging of the existing ~30-object state machine
+  (`obj-38` through `obj-73`) — it was never run successfully end-to-end
+  even before this session. Test any future reload via a genuinely fresh
+  device insert (remove + re-add on the Sidechain track) rather than
+  paste-over, to sidestep the `loadbang`-on-paste gotcha entirely instead
+  of working around it. The diagnostic taps and manual re-init button
+  added this session are committed and available to build on.
+
 - [ ] `m4l/AWH Ducker.maxpat` opens/pastes cleanly in Max on the Sidechain
       track (between `plugin~`/`plugout~`) without validator errors. If it
       doesn't, hand-build from the manual build table in `m4l/README.md`.
