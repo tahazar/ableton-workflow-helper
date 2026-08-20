@@ -52,15 +52,15 @@ shorter overall timescale.
 name: pluck
 device: Operator
 params:
-  Algorithm: 0.5    # display: 2-operator shape — Osc-B (modulator) into Osc-A (carrier), same topology as operator-recipe-growl-bass. Index within the 11 algorithm shapes NOT identified from sourced material — dial by eye and overwrite. RAW UNVERIFIED.
-  "A Coarse": 0.0159    # display: ratio 1 — carrier tracks the played pitch. Coarse-scale assumption per the caveat block — RAW UNVERIFIED.
+  Algorithm: 1    # display: Alg. 2 — 2-operator shape, Osc-B (modulator) into Osc-A (carrier), same topology as operator-recipe-growl-bass. CORRECTED 2026-08-20: Algorithm's real raw range is 0-10 (11 quantized steps), not 0-1 — raw 1 (Alg. 2) is general Operator knowledge for the standard "B modulates A" 2-operator chain, NOT read back from this specific device instance — worth a UI glance to confirm before trusting blindly.
+  "A Coarse": 1    # display: ratio 1 — carrier tracks the played pitch. CORRECTED: Coarse's real raw range is 0-48, not 0-1; left at Operator's own default (1), which a freshly-inserted device very plausibly already reports as ratio 1.00 — UNVERIFIED by ear/UI, but no longer wrong by three orders of magnitude.
   "A Fine": 0.0
   "Osc-A Level": 1.0        # display: full carrier output — RAW UNVERIFIED.
   "Ae Attack": 0.0          # display: 0 — sourced directly ("Attack and Sustain at 0" for a percussive envelope). RAW UNVERIFIED placeholder, though the DISPLAY intent (zero) is sourced with unusual confidence.
   "Ae Decay": 0.35          # display: short-to-medium ("Decay to 9 o'clock" per the sourced description — qualitative position, not a number this entry can convert precisely). INFERRED param name (only Ae Attack confirmed) — RAW UNVERIFIED placeholder.
   "Ae Sustain": 0.0         # display: 0 — sourced directly, same percussive-envelope description as Ae Attack above.
   "Ae Release": 0.45        # display: moderate ("Release to 1 o'clock" per the source — qualitative, not a number). INFERRED param name — RAW UNVERIFIED placeholder.
-  "B Coarse": 0.0476    # display: ratio 2 (2:1 modulator) — sourced from both FM-pluck sources above. Same Coarse assumption — RAW UNVERIFIED.
+  "B Coarse": 2    # display: ratio 2 (2:1 modulator) — sourced from both FM-pluck sources above. CORRECTED scale (0-48 real range, not 0-1); raw value 2 is a BEST-EFFORT guess at "ratio 2.00" assuming a roughly-linear low-end mapping from Operator's default (raw 1 ≈ ratio 1.00) — genuinely UNVERIFIED, needs an ear/UI pass to confirm the actual ratio this produces before trusting the "2:1" claim.
   "B Fine": 0.0
   "Osc-B Level": 0.55       # display: moderate-high peak modulation index for a bright, cutting attack. CONSTRUCTED magnitude (sources describe the envelope shape and ratio, not an exact index) — RAW UNVERIFIED.
   "Be Attack": 0.0          # display: fast attack, sourced ("fast attack... on the modulator envelope"). RAW UNVERIFIED placeholder.
