@@ -905,8 +905,31 @@ convention) plus the owner's own unreleased material for the ambiguity case:
 
 ## Post-M8 hardening checklist
 
-- [ ] `awh drums detect-onsets <audio drums capture>` → detected beats match
-      the audible hits; `--make-clip` writes a usable Trigger clip
+- [x] `awh drums detect-onsets <audio drums capture>` → detected beats match
+      the audible hits; `--make-clip` writes a usable Trigger clip.
+      Confirmed with a real isolated capture: moved the AWH Capture Tap to
+      "11 Kick & Snare"'s own chain (post Drum Rack, isolated from hats/
+      ride, all four of which route into the DRUMS bus — the first capture
+      attempt against the DRUMS bus itself gave a confusing 40-onsets-vs-
+      24-notes mismatch that turned out to be genuine extra hi-hat content,
+      not a bug). Against the isolated 16-bar capture: **23/24 real MIDI
+      notes matched within 0.3 beats** (verified against the clip's actual
+      note positions via `clip.get`, not just eyeballing) — the one miss
+      was the very first hit (beat 0, likely clipped by capture-start
+      latency), and the only 2 unmatched extra onsets sat right at the
+      loop-wrap tail. `--make-clip` wrote all 53 detected onsets as a real
+      Trigger clip at pitch 36 (C1), verified via `clip.get` round-trip.
+      **Two real capture-pipeline gotchas found along the way, not bugs in
+      `detect-onsets` itself**: (1) if Live's transport gets paused mid-
+      `awh mix capture` recording, the tool has no way to know and happily
+      writes a file that's silent from wherever the pause happened onward
+      — always let a capture run uninterrupted; (2) after a paused/dirty
+      transport state, a subsequent capture attempt can come back
+      completely silent (zero signal from the very start) even with a
+      manual Stop in between — the fix that worked was pressing Play by
+      hand once first (confirming real audio by ear) immediately before
+      re-running the capture. Left the Capture Tap on Kick & Snare's chain
+      (owner said it doesn't matter which track it sits on for now).
 - [ ] `awh mix duck fit` with deliberately WRONG triggers → the misalignment
       warning fires (the silent-nonsense case from the M8 pass is now loud)
 - [ ] `awh mix duck setup` → "S/C On"-style param found and enabled
