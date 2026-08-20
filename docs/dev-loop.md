@@ -1247,3 +1247,60 @@ below needs the owner's actual Live Set and real captures:
 - [ ] Skill: "make this sound like this sample on Operator" end-to-end
       through the Typical Flows entry (SKILL.md's "Sound-design an
       Operator patch") — not run this pass.
+
+## M10 (endless player) owner validation checklist
+
+Built + tested against `packages/cli/assets/endless/player.js` directly
+(the exact file the emitted HTML loads — no second copy of the decision
+logic), `packages/core/test/endless.test.ts` (spec parsing/typo-rejection,
+reachability negative control, empty-pool validation) and
+`packages/cli/test/endless.test.ts` (decision-core determinism/weights/
+maxConsecutive/noRepeatVariant/protectedLayers/bounded-fluctuation, WAV
+round-trip, build validation failures each named — missing file, wrong
+duration, unreachable section, empty pool — plus a Playwright smoke test
+against the preinstalled Chromium that loads the demo page, presses Play,
+and asserts the debug-exposed scheduler state actually advances: elapsed
+time increases and section history grows between two checks). `pnpm test`
+green end to end (`endless demo -o <dir>` and `endless build --single-file`
+both run for real in the build session — see its report for exact output/
+sizes). None of this proves the result is a good LISTEN, or that a real
+owner song's stems survive the pipeline — synthetic sine/noise/saw stems
+prove the plumbing, not the craft:
+
+- [ ] `awh endless demo -o <dir>` → serve it (`python3 -m http.server` in
+      `<dir>`) and actually LISTEN. Does pressing Play produce audible,
+      groove-plausible kick/hat/bass/pads, does the section change land
+      musically (not just structurally correct per the debug readout), and
+      does the mute/fluctuation movement register as subtle mix breathing
+      rather than an audible glitch?
+- [ ] Bounce a few bars of a REAL song's stems (drums/bass/pads or
+      whatever layers apply) bar-exact per section, WITH any reverb/delay
+      tail overlapped back into the loop rather than trimmed at the
+      boundary (the README's own documented convention — this checklist
+      item is the first real test that "overlapped tail" bouncing actually
+      produces a clean-sounding loop point, not just a duration that
+      passes validation).
+- [ ] `awh endless plan --sections "..." --bpm <bpm> -o endless.yaml`, fill
+      in the pools with those real bounces, `awh endless build endless.yaml
+      -o dist/<name>` → confirm the validation errors (deliberately break
+      one file's duration, delete one pool file, deliberately strand a
+      section) are legible enough that the owner (not just an agent) can
+      fix them from the message alone, then confirm the clean build sounds
+      right end to end — crossfades smooth (no click/pop at section
+      boundaries), mix fluctuation subtle, "performance #N" reproducible
+      across a reload with the same seed.
+- [ ] Build the owner's own actual song this way, start to finish — the
+      real exit criterion. Everything above is necessary but not
+      sufficient; this is the first time the full pipeline runs on
+      material that matters.
+- [ ] Follow-actions SDK probe (design doc's stated open question,
+      non-goal for v1 but worth answering while the API is fresh in mind):
+      does `@ableton-extensions/sdk` expose clip follow-action properties
+      (`device.get`/equivalent on a clip, or a dedicated LOM path)? If yes,
+      record what's addressable in `docs/sdk-feedback.md` or a knowledge
+      entry — it's the prerequisite for a later `awh endless to-session`
+      that builds the in-Live equivalent of this grammar using Live's own
+      follow actions instead of a browser player.
+- [ ] Skill: "make an endless version of my track to share" → Claude
+      follows the Typical Flows entry (plan -> owner fills pools -> build,
+      not `awh sections` or hand-composed HTML).

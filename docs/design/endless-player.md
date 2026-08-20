@@ -1,6 +1,6 @@
 # Design: Endless player (M10 — Bronze-style infinite song versions)
 
-- Status: in build (2026-08-19). Owner request: reconstruct the
+- Status: built (pending owner validation) (2026-08-19). Owner request: reconstruct the
   capability behind Jai Paul x Bronze (jasmine.bronze.ai) for their own
   songs. Research basis (chat, 2026-08-19, sourced): Bronze's content is
   entirely pre-supplied artist stems; the procedural aspect is

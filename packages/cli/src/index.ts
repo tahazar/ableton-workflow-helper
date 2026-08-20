@@ -24,6 +24,9 @@ import {
   type RecipePlan,
 } from "./op.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { buildEndlessPlayer, SINGLE_FILE_WARN_BYTES } from "./endless/build.js";
+import { buildEndlessPlanYaml, parseSectionsArg, sectionsFromReference, type RefSectionLike } from "./endless/plan.js";
+import { buildEndlessDemo } from "./endless/demo.js";
 import {
   listForms,
   planFromForm,
@@ -4049,6 +4052,138 @@ refSections
           (s) => `  bar ${String(s.start_bar).padStart(3)}-${String(s.end_bar).padEnd(3)} ${s.name}`,
         ),
         ...(savedTo ? [`merged into ${savedTo} — run \`awh kb index\` to refresh the index`] : []),
+      ].join("\n"),
+    );
+  });
+
+const endless = program
+  .command("endless")
+  .description(
+    "Endless player (M10): seeded, ever-different arrangements built from YOUR own " +
+      "produced/mixed stems — see docs/design/endless-player.md",
+  );
+
+endless
+  .command("plan")
+  .description(
+    "Emit a fully-commented endless.yaml starter scaffold — from --sections \"id:bars,...\" " +
+      "or --from-ref <name> (reuses a saved reference's corrected section map, M8)",
+  )
+  .option("--sections <spec>", 'section list, e.g. "intro:8,build:8,drop:16,break:8"')
+  .option(
+    "--from-ref <file>",
+    "a saved library/references/<name>.json, or a `ref sections read -o <file>` JSON — " +
+      "mutually exclusive with --sections",
+  )
+  .option("--name <name>", 'song name for the spec (default: derived, or "my-song")')
+  .option("--bpm <bpm>", "tempo — required with --sections; taken from the reference with --from-ref")
+  .option("-o, --out <file>", "output path", "endless.yaml")
+  .option("--force", "overwrite an existing file")
+  .action(
+    async (cmdOpts: {
+      sections?: string;
+      fromRef?: string;
+      name?: string;
+      bpm?: string;
+      out: string;
+      force?: boolean;
+    }) => {
+      const opts = program.opts<GlobalOpts>();
+      if (!cmdOpts.sections === !cmdOpts.fromRef) {
+        throw new Error('pass exactly one of --sections "id:bars,..." or --from-ref <file>');
+      }
+      if (existsSync(cmdOpts.out) && !cmdOpts.force) {
+        throw new Error(`${cmdOpts.out} already exists — refusing to overwrite (pass --force)`);
+      }
+
+      let sections: { id: string; bars: number }[];
+      let bpm: number;
+      let name: string;
+      if (cmdOpts.sections) {
+        sections = parseSectionsArg(cmdOpts.sections);
+        if (!cmdOpts.bpm) throw new Error("--bpm is required with --sections");
+        bpm = Number(cmdOpts.bpm);
+        if (!Number.isFinite(bpm) || bpm <= 0) throw new Error(`--bpm must be a positive number`);
+        name = cmdOpts.name ?? "my-song";
+      } else {
+        const requested = cmdOpts.fromRef!;
+        let refFile = requested;
+        if (!existsSync(refFile)) {
+          const candidate = join(findLibraryRoot(), "references", `${requested}.json`);
+          if (!existsSync(candidate)) {
+            throw new Error(`--from-ref: no file at "${requested}" or "${candidate}"`);
+          }
+          refFile = candidate;
+        }
+        const parsed = JSON.parse(await readFile(refFile, "utf8")) as {
+          sections?: RefSectionLike[];
+          bpm?: number;
+          reference?: { sections: RefSectionLike[]; bpm: number };
+        };
+        const refSections = parsed.reference?.sections ?? parsed.sections;
+        const refBpm = parsed.reference?.bpm ?? parsed.bpm;
+        if (!refSections) throw new Error(`${refFile} has no sections`);
+        sections = sectionsFromReference(refSections);
+        if (cmdOpts.bpm) {
+          bpm = Number(cmdOpts.bpm);
+          if (!Number.isFinite(bpm) || bpm <= 0) throw new Error(`--bpm must be a positive number`);
+        } else if (refBpm) {
+          bpm = Math.round(refBpm * 100) / 100;
+        } else {
+          throw new Error(`${refFile} has no bpm — pass --bpm to set one`);
+        }
+        name = cmdOpts.name ?? basename(refFile).replace(/\.json$/, "");
+      }
+
+      const yamlText = buildEndlessPlanYaml({ name, bpm, sections });
+      await writeFile(cmdOpts.out, yamlText, "utf8");
+      output(opts, { path: cmdOpts.out, name, bpm, sections: sections.length }, () =>
+        [
+          `wrote ${cmdOpts.out} (${sections.length} section(s), ${bpm} BPM) — fill in the pools, then:`,
+          `  awh endless build ${cmdOpts.out} -o dist/${name}`,
+        ].join("\n"),
+      );
+    },
+  );
+
+endless
+  .command("build <spec>")
+  .description(
+    "Validate an endless.yaml LOUDLY — every file, duration, reachability, empty-pool " +
+      "problem at once, before writing anything — then emit the player",
+  )
+  .requiredOption("-o, --out <dir>", "output directory")
+  .option("--single-file", "inline player.js + every audio file as data: URIs into one index.html")
+  .action(async (specPath: string, cmdOpts: { out: string; singleFile?: boolean }) => {
+    const opts = program.opts<GlobalOpts>();
+    const result = await buildEndlessPlayer(specPath, cmdOpts.out, { singleFile: cmdOpts.singleFile });
+    const sizeNote =
+      result.singleFileBytes !== undefined
+        ? ` (${(result.singleFileBytes / (1024 * 1024)).toFixed(1)} MB${
+            result.singleFileBytes > SINGLE_FILE_WARN_BYTES ? ", over the 12 MB single-file guideline" : ""
+          })`
+        : "";
+    output(opts, result, () =>
+      [
+        `built -> ${result.outDir}${sizeNote}`,
+        cmdOpts.singleFile
+          ? `open ${join(result.outDir, "index.html")} directly — no server needed`
+          : `serve it (fetch() is blocked on file://): cd ${result.outDir} && python3 -m http.server 8000`,
+      ].join("\n"),
+    );
+  });
+
+endless
+  .command("demo")
+  .description("Generate a tiny synthetic 3-layer song (kick/hat + bass + pads) + spec, and build it")
+  .requiredOption("-o, --out <dir>", "output directory")
+  .action(async (cmdOpts: { out: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const result = await buildEndlessDemo(cmdOpts.out);
+    output(opts, result, () =>
+      [
+        `demo built -> ${result.outDir} (spec: ${result.specPath})`,
+        `serve it: cd ${result.outDir} && python3 -m http.server 8000`,
       ].join("\n"),
     );
   });
