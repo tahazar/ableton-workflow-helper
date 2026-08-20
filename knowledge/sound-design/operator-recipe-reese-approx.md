@@ -79,30 +79,30 @@ genuinely thick, that ceiling is architectural, not a dial to turn harder.
 name: reese-approx
 device: Operator
 params:
-  Algorithm: 0.2    # display: parallel-carrier shape — Osc-A/B/C/D all act as independent carriers with NO FM routing between them (this patch needs summed detuned layers, not modulation), same topology idea as operator-recipe-sub-click. Index within the 11 algorithm shapes NOT identified from sourced material — dial to the "all four bottom-row, no lines between them" shape by eye and overwrite. RAW UNVERIFIED.
-  "A Coarse": 0.0159    # display: ratio 1 — reference layer, in tune. Coarse-scale assumption per the caveat block — RAW UNVERIFIED.
-  "A Fine": 0.0         # display: 0 cents — the untouched reference pitch all other layers detune against.
+  Algorithm: 0    # display: Alg. 1 — parallel carriers, no FM routing between Osc-A/B/C/D (this patch needs summed detuned layers, not modulation). CORRECTED 2026-08-20 against a real `device.get` dump: Algorithm's real raw range is 0-10 (11 quantized steps, `Alg. 1`-`Alg. 11`), not 0-1. Alg. 1 (raw 0) IS the standard "four independent unmodulated oscillators" topology — general Operator knowledge, still worth a UI glance to confirm before trusting blindly.
+  "A Coarse": 1    # display: ratio 1 (unison) — reference layer, in tune. CORRECTED: Coarse's real raw range is 0-48, not 0-1; left at Operator's own default (1) rather than guessing a specific ratio-table index, since all four oscillators only need to MATCH each other here (the detuning happens on Fine below), not hit an exact ratio value.
+  "A Fine": 0         # display: 0 cents — the untouched reference pitch all other layers detune against.
   "Osc-A Level": 0.85       # display: near-full — one of four summed layers, headroom left for the others. CONSTRUCTED — RAW UNVERIFIED.
   "Ae Attack": 0.0          # display: fast — RAW UNVERIFIED placeholder.
   "Ae Decay": 0.2
   "Ae Sustain": 0.85        # display: high — a Reese sustains through the note, this is a bass, not a pluck. INFERRED param name — RAW UNVERIFIED.
   "Ae Release": 0.25
-  "B Coarse": 0.0159    # display: ratio 1 — same pitch class as A, detuning happens on Fine below, not Coarse. RAW UNVERIFIED.
-  "B Fine": 0.015       # display: +18 cents. Assumed raw ≈ cents/1200 per the caveat block (Fine documented as a one-octave, positive-only, cents-calibrated range) — RAW UNVERIFIED. The DETUNE AMOUNT ITSELF (18 cents) is CONSTRUCTED — no source gives an exact Reese cents value, only "slightly different" / "a little detuning."
+  "B Coarse": 1    # display: ratio 1 — same pitch class as A, matching its Coarse so detuning happens entirely on Fine below. CORRECTED, same reasoning as A Coarse.
+  "B Fine": 15       # display: ~+18 cents. CORRECTED: Fine's real raw range is 0-1000 across a one-octave (1200-cent) span per its sourced description, so raw ≈ cents × (1000/1200) ≈ cents × 0.833 — 18 cents × 0.833 ≈ 15. Still RAW UNVERIFIED in the sense that no Operator raw↔display pair has been read back into this repo; only the SCALE is now corrected, not confirmed by ear. The DETUNE AMOUNT ITSELF (18 cents) remains CONSTRUCTED — no source gives an exact Reese cents value, only "slightly different" / "a little detuning."
   "Osc-B Level": 0.85
   "Be Attack": 0.0
   "Be Decay": 0.2
   "Be Sustain": 0.85
   "Be Release": 0.25
-  "C Coarse": 0.0159    # display: ratio 1. RAW UNVERIFIED.
-  "C Fine": 0.02        # display: +24 cents — detuned the OTHER direction in spirit from B by being a larger offset, giving three-way beat interference rather than a single simple pair. CONSTRUCTED — RAW UNVERIFIED. (Fine is documented as positive-only, so "detuning the other direction" is approximated here as a larger positive offset, not a true negative offset — see the caveat block.)
+  "C Coarse": 1    # display: ratio 1. CORRECTED, same reasoning as A/B Coarse.
+  "C Fine": 20        # display: ~+24 cents — detuned further than B, giving three-way beat interference rather than a single simple pair. CORRECTED scale (24 × 0.833 ≈ 20), CONSTRUCTED spacing — see B Fine's note.
   "Osc-C Level": 0.7        # display: slightly under A/B — a third layer, kept a bit lower so the stack doesn't just get louder without adding movement. CONSTRUCTED — RAW UNVERIFIED.
   "Ce Attack": 0.0
   "Ce Decay": 0.2
   "Ce Sustain": 0.85
   "Ce Release": 0.25
-  "D Coarse": 0.0159    # display: ratio 1. RAW UNVERIFIED.
-  "D Fine": 0.007       # display: +8 cents — a fourth, closer-spaced layer, filling in the beat-frequency texture between A and B/C. CONSTRUCTED — RAW UNVERIFIED.
+  "D Coarse": 1    # display: ratio 1. CORRECTED, same reasoning as A/B/C Coarse.
+  "D Fine": 7       # display: ~+8 cents — a fourth, closer-spaced layer, filling in the beat-frequency texture between A and B/C. CORRECTED scale (8 × 0.833 ≈ 7), CONSTRUCTED spacing — see B Fine's note.
   "Osc-D Level": 0.6        # display: lowest of the four — a filler layer, not a primary voice. CONSTRUCTED — RAW UNVERIFIED.
   "De Attack": 0.0
   "De Decay": 0.2
@@ -110,35 +110,31 @@ params:
   "De Release": 0.25
   "Filter Freq": 0.55       # display: moderate lowpass, standard Reese practice of keeping the top end from getting harsh. INFERRED param name, CONSTRUCTED display target — RAW UNVERIFIED.
   "Filter Res": 0.2
-  Spread: 0.4               # display: moderate — the one real Operator-native stereo-width tool for this patch, per the sourced "Spread... panning variation across voices" description. Does NOT add detuned voices, only stereo width to the existing ones (see "The honest limit" above). INFERRED param name (the control is sourced, its exact device.get spelling is not) — RAW UNVERIFIED.
+  Spread: 40                # display: moderate — the one real Operator-native stereo-width tool for this patch, per the sourced "Spread... panning variation across voices" description. Does NOT add detuned voices, only stereo width to the existing ones (see "The honest limit" above). CORRECTED 2026-08-20: `Spread`'s real raw range is 0-100 (confirmed via `device.get`, name itself was correctly guessed), not 0-1 — writing 0.4 silently clamped to 0 (confirmed via `awh op apply`'s own read-back mismatch report). Now the fourth param in this one recipe found scaled wrong the same way (after Algorithm/Coarse/Fine) — this batch was very likely authored under a blanket 0-1 assumption for every param.
   Volume: 0.65              # confirmed device.get name. Lower than other recipes since four oscillator layers are summed here — RAW UNVERIFIED for this value.
 playNotes: "1|1 F1 1 v115"
 ```
 
 ## Raw values: unverified — read before applying
 
-**CONFIRMED (not just unverified) scale bug, found via a real `awh op apply` on Operator**: `Algorithm`'s real raw range is **0-10** (11 quantized steps, `Alg. 1`-`Alg. 11`), and `Coarse`'s real raw range is **0-48** — NOT the normalized 0-1 range this recipe assumed for every param. Writing this recipe's 0-1-scaled values for `Algorithm`/`*Coarse` against a real device silently round/clamp to 0 (confirmed: read-back mismatch on all three). Every OTHER param in this recipe (Volume, `Osc-* Level`, envelope times, `Filter Freq`/`Filter Res`) genuinely IS ~0-1 scaled and wrote/read back correctly — this is specifically an `Algorithm`/`Coarse` problem, not a whole-recipe one. Not corrected here: knowing the real RANGE doesn't tell us the CORRECT value within it (e.g. which of the 11 algorithms is "2-operator, B into A") — that still needs a real ear/UI pass, `knowledge/setup/device-parameter-surface.md` has no `displayValue` API to shortcut it.
+**CONFIRMED scale bug, found via a real `awh op apply` on Operator — now CORRECTED in the executable block above (2026-08-20)**: `Algorithm`'s real raw range is **0-10** (11 quantized steps, `Alg. 1`-`Alg. 11`), and `Coarse`'s real raw range is **0-48** — NOT the normalized 0-1 range this recipe originally assumed. Fixed by reading a live `device.get` dump directly: `Algorithm` set to `0` (Alg. 1, the standard "four independent unmodulated oscillators" topology), and all four `Coarse` params left at Operator's own default (`1`) so the oscillators simply MATCH each other — this patch only needs them in unison with each other, not at any specific ratio, so there was no need to guess a precise ratio-table index. `Fine` had the SAME class of bug (its real range is 0-1000, not 0-1) — corrected using `raw ≈ cents × (1000/1200)` since Fine is sourced as spanning one octave (1200 cents) over its 0-1000 range. Every OTHER param in this recipe (Volume, `Osc-* Level`, envelope times, `Filter Freq`/`Filter Res`) was already confirmed ~0-1 scaled and unaffected.
 
-**Also applies to `Fine`** (this recipe uses nonzero values): the real raw range is **0-1000**, not 0-1 — the `raw ≈ cents/1200` formula this recipe used is built on the same wrong assumption as `Coarse` above, so the detune amounts are likely off by roughly three orders of magnitude, not just musically imprecise.
+**Still genuinely unverified**: the corrected values fix the SCALE (right order of magnitude, values that won't silently clamp to 0), not the exact CORRECT sound — no Operator raw↔display pair has been read back into this repo, so treat every specific number as a starting point to apply, listen to, and correct, same as any other entry in this batch. The Algorithm-1-is-parallel-oscillators claim is general Operator knowledge, not something read back from this specific device instance — worth a quick UI glance to confirm.
 
 Standing caveat (same estimation method as the other entries in this
-batch): **every raw value above is an unverified estimate, not a
-measurement.** No Operator raw↔display pair has ever been read back into
-this repo. Apply, listen against the DISPLAY comments, correct, and record
-observed raw↔display pairs back into this entry. Coarse assumed ≈
-(ratio−0.5)/31.5 across its ~0.5–32 display range; Fine assumed ≈
-cents/1200, and because Fine is sourced as positive-only (a one-octave
-range with "positive amounts only," per the same source used in the other
-entries in this batch), the "detune the other way" layers here are
-approximated as larger POSITIVE offsets rather than true negative
-detuning — if Operator's real Fine behavior allows negative cents this
-whole sub-stack should be revisited, since true bidirectional detuning
-(some layers sharp, some flat) is closer to how a real Reese's unison
-stack is normally built than one-directional detuning is. The four exact
-cents values (18/24/8/0) are CONSTRUCTED spacing choices, not sourced from
-any Reese-specific citation — no source in this batch gives an exact
-detune-amount number, only qualitative "slightly different"/"a little
-detuning" language.
+batch): apply, listen against the DISPLAY comments, correct, and record
+observed raw↔display pairs back into this entry. Fine is sourced as
+positive-only (a one-octave range with "positive amounts only," per the
+same source used in the other entries in this batch), so the "detune the
+other way" layers here are approximated as larger POSITIVE offsets rather
+than true negative detuning — if Operator's real Fine behavior allows
+negative cents this whole sub-stack should be revisited, since true
+bidirectional detuning (some layers sharp, some flat) is closer to how a
+real Reese's unison stack is normally built than one-directional detuning
+is. The four exact cents values (18/24/8/0) are CONSTRUCTED spacing
+choices, not sourced from any Reese-specific citation — no source in this
+batch gives an exact detune-amount number, only qualitative "slightly
+different"/"a little detuning" language.
 
 ## Param naming: verified vs inferred
 

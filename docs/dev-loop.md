@@ -1352,6 +1352,37 @@ ADSR fit, the white-noise AND inharmonic-bell negative controls,
 determinism). None of this is real device or real audio yet — everything
 below needs the owner's actual Live Set and real captures:
 
+**Real production session (2026-08-20) surfaced the same 0-1-scale bug in
+three MORE recipes, beyond the pluck/Algorithm/Coarse case already fixed**:
+building a real track (drone/riser/amen-break bridge/16-bar call-and-
+response drop, on a fresh Operator per part) hit the identical bug pattern
+in `reese-approx` (Algorithm, all four `*Coarse`, all four `*Fine`, AND
+`Spread` — four separate params in one recipe, `Spread`'s real range is
+0-100 not 0-1), `pluck` (same Algorithm/Coarse pair as before), and
+`noise-perc` (`Osc-A Wave` real range 0-22 with 23 NAMED waveforms
+including a genuine "Noise White" the recipe's author didn't know existed
+— only "Noise Looped" was cited — and `Filter Type` real range 0-4 with 5
+named types). All four recipes now corrected against real `device.get`
+dumps and verified by read-back (`all params verified by read-back` for
+every one). **This is now a confirmed systemic pattern, not isolated
+incidents** — every recipe in this batch was very likely authored under a
+blanket 0-1 assumption for every param; the ones that happened to work
+(Volume, `Osc-* Level`, envelope times, `Filter Freq`/`Filter Res`) did so
+by coincidence of their real ranges genuinely being close to 0-1, not
+because the assumption was validated. **Worth a dedicated audit pass**
+checking every remaining param in `growl-bass`, `fm-bell`, `e-piano`,
+`sub-click` against real `device.get` ranges before trusting them applied
+— this session only touched the four recipes actually used tonight.
+
+**Also found: `clip.create-audio` cannot place a clip directly on a group
+track** (confirmed on "SAMPLES", a group track per the owner's own
+description of the Set's routing) — fails with a generic
+`Failed to create clip` 500 from the SDK, no useful message. Same op
+works fine on a genuine leaf audio track. Not a bug in this repo's code;
+a real SDK/Live-object-model constraint worth remembering — always
+target a leaf audio track for `clip.create-audio`/`awh render`, never a
+group header.
+
 - [x] Real apply + audition: with a real Operator instance in Live, `awh op
       apply <a real operator-recipe-*> <devicePath> --audition` — confirm
       device.get read-back genuinely matches every written param (not just

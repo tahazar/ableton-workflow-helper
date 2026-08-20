@@ -56,8 +56,8 @@ above, not as an Operator fact in its own right.
 name: noise-perc
 device: Operator
 params:
-  Algorithm: 0.0    # display: single-oscillator carrier shape — Osc-A alone as the only bottom-row carrier, no FM routing needed for a noise-only percussion voice. Osc-B/C/D unused/off in this base patch (see the sine-ping variant note below). Index within the 11 algorithm shapes NOT identified from sourced material — dial to the simplest single-carrier shape by eye and overwrite. RAW UNVERIFIED.
-  "Osc-A Wave": 0.8    # display: Noise (looping noise sample, per the sourced Operator wave-chooser description above — NOT a true random generator). INFERRED param name (extends the A Coarse/Fine, Osc-A Level convention; the Wave chooser's device.get spelling and index-per-waveform ordering are both unconfirmed) — RAW UNVERIFIED placeholder, the 0.8 encodes only "somewhere late in a 5-item list" as a guess, not a real index mapping.
+  Algorithm: 0    # display: Alg. 1 — single-oscillator carrier shape, Osc-A alone as the only bottom-row carrier, no FM routing needed for a noise-only percussion voice. Osc-B/C/D unused/off in this base patch (see the sine-ping variant note below). Algorithm's real raw range is 0-10 (confirmed via `device.get`), not 0-1 — this specific value happened to be correct either way since raw 0 = Alg. 1 regardless of assumed scale.
+  "Osc-A Wave": 21    # display: "Noise White" — CORRECTED 2026-08-20 against a real `device.get` dump: `Osc-A Wave`'s real name and range were both confirmed (min 0, max 22, 23 named waveforms: Sine/Sine 4 Bit/Sine 8 Bit/Saw 3-D/Square 3-D/Triangle/Noise Looped/Noise White/User). Picked "Noise White" (index 21) over "Noise Looped" (index 20) since the device genuinely offers a distinct true-random option — the recipe's own craft section's claim that Operator's noise is "not real noise... but a looping noise sample" turns out to describe ONLY "Noise Looped"; "Noise White" is a separate, real waveform choice this recipe didn't know existed. The old 0.8 raw value (meant for an assumed 0-1 range) would have rounded to index 1 ("Sine 4 Bit") on the real 0-22 quantized range — not noise at all.
   "Osc-A Level": 1.0       # display: full noise output — RAW UNVERIFIED.
   "Ae Attack": 0.0         # display: instant — RAW UNVERIFIED placeholder.
   "Ae Decay": 0.5          # display: ~300ms, the Operator-sourced dancemusicnw number for this exact patch type ("set the decay to 300ms"). This is the OPEN-hat-leaning setting; for a CLOSED hat, shorten this toward the cross-instrument 100ms Analog reference cited above (roughly half this raw value, unverified). INFERRED param name (only Ae Attack confirmed) — RAW UNVERIFIED placeholder for how 300ms maps to raw, though the DISPLAY number itself is sourced.
@@ -65,7 +65,7 @@ params:
   "Ae Release": 0.3         # display: short, ~90ms-ish per the cross-instrument Analog reference ("release to 90ms"), used here only as an ordering hint. INFERRED param name — RAW UNVERIFIED placeholder.
   "Filter Freq": 0.75       # display: highpass cutoff pulled well up, removing the low end noise doesn't need for a hat/perc voice (a lowpassed noise loop reads as surf/wind, not a hat). INFERRED param name, CONSTRUCTED display target (no source gives an exact Hz number) — RAW UNVERIFIED.
   "Filter Res": 0.3         # display: some resonance for a metallic "ping" character. INFERRED param name — RAW UNVERIFIED.
-  "Filter Type": 0.5        # display: High-pass. INFERRED param name AND value-to-type mapping unconfirmed — RAW UNVERIFIED placeholder.
+  "Filter Type": 1          # display: Highpass. CORRECTED 2026-08-20: `Filter Type`'s real range is 0-4, quantized, 5 named types (Lowpass/Highpass/Bandpass/Notch/Morph) — confirmed via `device.get`. Highpass = index 1. The old 0.5 raw value would have rounded to index 1 by coincidence on some rounding rules but is not reliable — this is now an exact, confirmed index, not a guess.
   Volume: 0.7               # confirmed device.get name. RAW UNVERIFIED for this value.
 playNotes: "1|1 F#1 1 v90"
 ```
@@ -80,7 +80,7 @@ base patch, since no source gives concrete numbers for that second layer.
 
 ## Raw values: unverified — read before applying
 
-**CONFIRMED (not just unverified) scale bug, found via a real `awh op apply` on Operator**: `Algorithm`'s real raw range is **0-10** (11 quantized steps, `Alg. 1`-`Alg. 11`) — NOT the normalized 0-1 range this recipe assumed. Writing a 0-1-scaled value against a real device silently rounds/clamps to 0 (confirmed via read-back mismatch). Every other param in this recipe genuinely IS ~0-1 scaled. Not corrected here: knowing the real range doesn't tell us the correct index within it — still needs a real ear/UI pass.
+**CONFIRMED scale bug, now CORRECTED (2026-08-20) against a real `device.get` dump**: `Algorithm`'s real raw range is 0-10 (this recipe's 0 value happened to be correct anyway). `Osc-A Wave`'s real range is 0-22 (23 named waveforms, not 0-1) — corrected to index 21 ("Noise White"), a REAL confirmed waveform this recipe's author didn't know existed (only "Noise Looped" was cited). `Filter Type`'s real range is 0-4 (5 named types) — corrected to index 1 ("Highpass"), an exact confirmed value replacing a rounding-lucky guess. `Filter Freq` (0-1) and `Filter Res` (0-1.25, close enough to the assumed 0-1 that the recipe's 0.3 stays reasonable) were confirmed NOT to need correction.
 
 Standing caveat (same estimation method as the other entries in this
 batch): **every raw value above is an unverified estimate, not a
