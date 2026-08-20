@@ -53,15 +53,15 @@ name: pluck
 device: Operator
 params:
   Algorithm: 0.5    # display: 2-operator shape — Osc-B (modulator) into Osc-A (carrier), same topology as operator-recipe-growl-bass. Index within the 11 algorithm shapes NOT identified from sourced material — dial by eye and overwrite. RAW UNVERIFIED.
-  "Osc-A Coarse": 0.0159    # display: ratio 1 — carrier tracks the played pitch. Coarse-scale assumption per the caveat block — RAW UNVERIFIED.
-  "Osc-A Fine": 0.0
+  "A Coarse": 0.0159    # display: ratio 1 — carrier tracks the played pitch. Coarse-scale assumption per the caveat block — RAW UNVERIFIED.
+  "A Fine": 0.0
   "Osc-A Level": 1.0        # display: full carrier output — RAW UNVERIFIED.
   "Ae Attack": 0.0          # display: 0 — sourced directly ("Attack and Sustain at 0" for a percussive envelope). RAW UNVERIFIED placeholder, though the DISPLAY intent (zero) is sourced with unusual confidence.
   "Ae Decay": 0.35          # display: short-to-medium ("Decay to 9 o'clock" per the sourced description — qualitative position, not a number this entry can convert precisely). INFERRED param name (only Ae Attack confirmed) — RAW UNVERIFIED placeholder.
   "Ae Sustain": 0.0         # display: 0 — sourced directly, same percussive-envelope description as Ae Attack above.
   "Ae Release": 0.45        # display: moderate ("Release to 1 o'clock" per the source — qualitative, not a number). INFERRED param name — RAW UNVERIFIED placeholder.
-  "Osc-B Coarse": 0.0476    # display: ratio 2 (2:1 modulator) — sourced from both FM-pluck sources above. Same Coarse assumption — RAW UNVERIFIED.
-  "Osc-B Fine": 0.0
+  "B Coarse": 0.0476    # display: ratio 2 (2:1 modulator) — sourced from both FM-pluck sources above. Same Coarse assumption — RAW UNVERIFIED.
+  "B Fine": 0.0
   "Osc-B Level": 0.55       # display: moderate-high peak modulation index for a bright, cutting attack. CONSTRUCTED magnitude (sources describe the envelope shape and ratio, not an exact index) — RAW UNVERIFIED.
   "Be Attack": 0.0          # display: fast attack, sourced ("fast attack... on the modulator envelope"). RAW UNVERIFIED placeholder.
   "Be Decay": 0.08          # display: ~50ms — the ONE sourced numeric envelope time in this recipe ("fast decay (50ms)... for bright, cutting plucks"). Deliberately the FASTEST decay in this patch, faster than Ae Decay, so the bright FM edge is heard only at the very start of the pluck. INFERRED param name — RAW UNVERIFIED placeholder; 50ms is sourced, but this raw number is still a guess at what raw value produces 50ms since no Operator time-scale curve exists in this repo.
@@ -74,6 +74,8 @@ playNotes: "1|1 C4 1 v105"
 ```
 
 ## Raw values: unverified — read before applying
+
+**CONFIRMED (not just unverified) scale bug, found via a real `awh op apply` on Operator**: `Algorithm`'s real raw range is **0-10** (11 quantized steps, `Alg. 1`-`Alg. 11`), and `Coarse`'s real raw range is **0-48** — NOT the normalized 0-1 range this recipe assumed for every param. Writing this recipe's 0-1-scaled values for `Algorithm`/`*Coarse` against a real device silently round/clamp to 0 (confirmed: read-back mismatch on all three). Every OTHER param in this recipe (Volume, `Osc-* Level`, envelope times, `Filter Freq`/`Filter Res`) genuinely IS ~0-1 scaled and wrote/read back correctly — this is specifically an `Algorithm`/`Coarse` problem, not a whole-recipe one. Not corrected here: knowing the real RANGE doesn't tell us the CORRECT value within it (e.g. which of the 11 algorithms is "2-operator, B into A") — that still needs a real ear/UI pass, `knowledge/setup/device-parameter-surface.md` has no `displayValue` API to shortcut it.
 
 Standing caveat (same estimation method as the other entries in this
 batch): **every raw value above is an unverified estimate, not a
@@ -91,8 +93,8 @@ entry could faithfully convert to a number.
 
 ## Param naming: verified vs inferred
 
-- **Verified-style**: `Algorithm`, `Osc-A Coarse`, `Osc-A Fine`,
-  `Osc-A Level`, `Osc-B Coarse`, `Osc-B Fine`, `Osc-B Level`, `Ae Attack`,
+- **Verified-style**: `Algorithm`, `A Coarse`, `A Fine`,
+  `Osc-A Level`, `B Coarse`, `B Fine`, `Osc-B Level`, `Ae Attack`,
   `Volume`.
 - **Inferred**: `Ae Decay`, `Ae Sustain`, `Ae Release`, `Be Attack`,
   `Be Decay`, `Be Sustain`, `Be Release`, `Filter Freq`, `Filter Res`.

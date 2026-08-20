@@ -54,15 +54,15 @@ name: fm-bell
 device: Operator
 params:
   Algorithm: 0.5    # display: 2-operator shape — Osc-B (modulator) into Osc-A (carrier), same topology as operator-recipe-growl-bass. Index within the 11 algorithm shapes NOT identified from sourced material — dial by eye and overwrite. RAW UNVERIFIED.
-  "Osc-A Coarse": 0.0159    # display: ratio 1 — carrier tracks the played pitch. Coarse-scale assumption per the caveat block — RAW UNVERIFIED.
-  "Osc-A Fine": 0.0
+  "A Coarse": 0.0159    # display: ratio 1 — carrier tracks the played pitch. Coarse-scale assumption per the caveat block — RAW UNVERIFIED.
+  "A Fine": 0.0
   "Osc-A Level": 1.0        # display: full carrier output — RAW UNVERIFIED.
   "Ae Attack": 0.0          # display: instant strike — RAW UNVERIFIED placeholder.
   "Ae Decay": 0.75          # display: long — this is the "long exponential amplitude decay" the source calls out as essential to the bell character. INFERRED param name (only Ae Attack confirmed) — RAW UNVERIFIED placeholder, deliberately set toward the "slow" end of this entry's own placeholder scale to encode "slow relative to Be Decay below," not a real ms value.
   "Ae Sustain": 0.15        # display: low — a struck bell has almost no sustain plateau, it's all decay/release. RAW UNVERIFIED, assumed raw≈display.
   "Ae Release": 0.6         # display: long ring-out tail. INFERRED param name — RAW UNVERIFIED placeholder.
-  "Osc-B Coarse": 0.0956    # display: ratio 3.51 — the inharmonic modulator ratio, sourced from the MOD WIGGLER "3.51 and 5.79... exactly what bells and gongs do" claim above. Same Coarse-scale assumption — RAW UNVERIFIED.
-  "Osc-B Fine": 0.0
+  "B Coarse": 0.0956    # display: ratio 3.51 — the inharmonic modulator ratio, sourced from the MOD WIGGLER "3.51 and 5.79... exactly what bells and gongs do" claim above. Same Coarse-scale assumption — RAW UNVERIFIED.
+  "B Fine": 0.0
   "Osc-B Level": 0.9        # display: high peak modulation index — the "bright" strike transient, decaying fast via Be Decay below. CONSTRUCTED magnitude (source describes the shape of the drop, not an exact index number) — RAW UNVERIFIED.
   "Be Attack": 0.0          # display: instant — RAW UNVERIFIED placeholder.
   "Be Decay": 0.15          # display: fast — this is the "steady drop in modulation index from bright to pure" itself; deliberately FAST relative to Ae Decay above, per the sourced two-envelope-rate bell mechanism. INFERRED param name — RAW UNVERIFIED placeholder.
@@ -73,6 +73,8 @@ playNotes: "1|1 C4 1 v100"
 ```
 
 ## Raw values: unverified — read before applying
+
+**CONFIRMED (not just unverified) scale bug, found via a real `awh op apply` on Operator**: `Algorithm`'s real raw range is **0-10** (11 quantized steps, `Alg. 1`-`Alg. 11`), and `Coarse`'s real raw range is **0-48** — NOT the normalized 0-1 range this recipe assumed for every param. Writing this recipe's 0-1-scaled values for `Algorithm`/`*Coarse` against a real device silently round/clamp to 0 (confirmed: read-back mismatch on all three). Every OTHER param in this recipe (Volume, `Osc-* Level`, envelope times, `Filter Freq`/`Filter Res`) genuinely IS ~0-1 scaled and wrote/read back correctly — this is specifically an `Algorithm`/`Coarse` problem, not a whole-recipe one. Not corrected here: knowing the real RANGE doesn't tell us the CORRECT value within it (e.g. which of the 11 algorithms is "2-operator, B into A") — that still needs a real ear/UI pass, `knowledge/setup/device-parameter-surface.md` has no `displayValue` API to shortcut it.
 
 Standing caveat (same estimation method as the other entries in this
 batch): **every raw value above is an unverified estimate, not a
@@ -91,8 +93,8 @@ they are not derived from any known ms→raw curve.
 
 ## Param naming: verified vs inferred
 
-- **Verified-style**: `Algorithm`, `Osc-A Coarse`, `Osc-A Fine`,
-  `Osc-A Level`, `Osc-B Coarse`, `Osc-B Fine`, `Osc-B Level`, `Ae Attack`,
+- **Verified-style**: `Algorithm`, `A Coarse`, `A Fine`,
+  `Osc-A Level`, `B Coarse`, `B Fine`, `Osc-B Level`, `Ae Attack`,
   `Volume`.
 - **Inferred**: `Ae Decay`, `Ae Sustain`, `Ae Release`, `Be Attack`,
   `Be Decay`, `Be Sustain`, `Be Release`. `awh op apply` must validate

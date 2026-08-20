@@ -610,9 +610,20 @@ describe("browser smoke (Playwright, stretch goal)", () => {
     const dir = await tmp("awh-endless-pw-");
     await buildEndlessDemo(dir);
     const { server, port } = await serveDir(dir);
+    // No hardcoded executablePath: that only ever resolves inside the one
+    // build environment that happened to have Chromium pre-installed there.
+    // Let Playwright resolve its own normally-installed browser (`npx
+    // playwright install chromium`); skip like the import guard above if
+    // none is found, so this stays a real (not machine-specific) test.
     let browser;
     try {
-      browser = await chromium.launch({ executablePath: "/opt/pw-browsers/chromium" });
+      browser = await chromium.launch();
+    } catch {
+      console.warn("SKIPPED: no Chromium install found for playwright-core (npx playwright install chromium)");
+      server.close();
+      return;
+    }
+    try {
       const page = await browser.newPage();
       await page.goto(`http://127.0.0.1:${port}/`);
       await page.click("#endless-play");
