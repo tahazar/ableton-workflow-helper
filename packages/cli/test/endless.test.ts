@@ -518,6 +518,18 @@ describe("endless build — happy path emission", () => {
     expect(playerJs).toBe(assetPlayerJs); // literally the same file, not a re-derived copy
   });
 
+  it("replaces __ENDLESS_TITLE__ everywhere it appears, not just the first occurrence", async () => {
+    // regression test: String.prototype.replace() (non-global) only swaps the FIRST
+    // match, so the <title> tag got the real name while the on-page <h1> kept the
+    // literal placeholder — found via a real curl against a served demo.
+    const dir = await tmp("awh-endless-title-");
+    const specPath = await writeTinySpecProject(dir);
+    await buildEndlessPlayer(specPath, join(dir, "out"));
+    const html = await readFile(join(dir, "out", "index.html"), "utf8");
+    expect(html).not.toContain("__ENDLESS_TITLE__");
+    expect(html).toMatch(/<h1>[^_][^<]*<\/h1>/);
+  });
+
   it("--single-file inlines player.js and every audio file, zero external src/href references", async () => {
     const dir = await tmp("awh-endless-singlefile-");
     const specPath = await writeTinySpecProject(dir);

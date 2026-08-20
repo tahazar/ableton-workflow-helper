@@ -1300,12 +1300,40 @@ sizes). None of this proves the result is a good LISTEN, or that a real
 owner song's stems survive the pipeline — synthetic sine/noise/saw stems
 prove the plumbing, not the craft:
 
+**Real bug found + fixed this pass (headless verification only — no
+interactive browser session was available in this environment, Chrome
+extension not connected):** `awh endless demo -o <dir>`, then `curl`ing the
+served `index.html` directly showed `<title>endless-demo — endless
+player</title>` correctly filled in, but the on-page `<h1>` still read the
+literal, unreplaced `__ENDLESS_TITLE__` placeholder. Root cause in
+`packages/cli/src/endless/build.ts`: `templateHtml.replace("__ENDLESS_TITLE__",
+spec.name)` uses JS's non-global `String.prototype.replace()`, which only
+swaps the FIRST match — the template has the placeholder twice (`<title>`
+and `<h1>`), so only the tab title got fixed. Same non-global `.replace()`
+pattern was used for the other two placeholders (`__ENDLESS_SPEC_JSON__`,
+the player-script-tag comment) in both the normal and `--single-file` build
+paths — fixed all of them to `.replaceAll()` since a future template change
+adding a second occurrence of any of them would silently reintroduce the
+same class of bug. Verified the fix against both build paths (`endless
+demo` and `endless build --single-file`) via a rebuilt CLI + fresh curl
+checks, added a regression test (`packages/cli/test/endless.test.ts`,
+"replaces __ENDLESS_TITLE__ everywhere it appears") that asserts the built
+HTML contains neither the literal placeholder nor an empty/placeholder
+`<h1>`. Full suite green after the fix: 32/32 (was 31/31 before the new
+test). This is exactly the kind of bug the existing Playwright smoke test
+could NOT catch — it only asserts on debug-exposed scheduler state, never
+reads visible page text/headings.
+
 - [ ] `awh endless demo -o <dir>` → serve it (`python3 -m http.server` in
       `<dir>`) and actually LISTEN. Does pressing Play produce audible,
       groove-plausible kick/hat/bass/pads, does the section change land
       musically (not just structurally correct per the debug readout), and
       does the mute/fluctuation movement register as subtle mix breathing
-      rather than an audible glitch?
+      rather than an audible glitch? **Still open** — this pass only did
+      headless HTTP-level verification (curl against every served asset,
+      200s across the board) plus the fix above; nobody has pressed Play
+      and listened, and no interactive browser (visual render, click,
+      console-error check) has been done against this feature yet.
 - [ ] Bounce a few bars of a REAL song's stems (drums/bass/pads or
       whatever layers apply) bar-exact per section, WITH any reverb/delay
       tail overlapped back into the loop rather than trimmed at the
