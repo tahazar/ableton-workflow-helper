@@ -57,7 +57,7 @@ name: noise-perc
 device: Operator
 params:
   Algorithm: 0.0    # display: single-oscillator carrier shape — Osc-A alone as the only bottom-row carrier, no FM routing needed for a noise-only percussion voice. Osc-B/C/D unused/off in this base patch (see the sine-ping variant note below). Index within the 11 algorithm shapes NOT identified from sourced material — dial to the simplest single-carrier shape by eye and overwrite. RAW UNVERIFIED.
-  "Osc-A Waveform": 0.8    # display: Noise (looping noise sample, per the sourced Operator wave-chooser description above — NOT a true random generator). INFERRED param name (extends the Osc-A Coarse/Fine/Level convention; the Wave chooser's device.get spelling and index-per-waveform ordering are both unconfirmed) — RAW UNVERIFIED placeholder, the 0.8 encodes only "somewhere late in a 5-item list" as a guess, not a real index mapping.
+  "Osc-A Wave": 0.8    # display: Noise (looping noise sample, per the sourced Operator wave-chooser description above — NOT a true random generator). INFERRED param name (extends the A Coarse/Fine, Osc-A Level convention; the Wave chooser's device.get spelling and index-per-waveform ordering are both unconfirmed) — RAW UNVERIFIED placeholder, the 0.8 encodes only "somewhere late in a 5-item list" as a guess, not a real index mapping.
   "Osc-A Level": 1.0       # display: full noise output — RAW UNVERIFIED.
   "Ae Attack": 0.0         # display: instant — RAW UNVERIFIED placeholder.
   "Ae Decay": 0.5          # display: ~300ms, the Operator-sourced dancemusicnw number for this exact patch type ("set the decay to 300ms"). This is the OPEN-hat-leaning setting; for a CLOSED hat, shorten this toward the cross-instrument 100ms Analog reference cited above (roughly half this raw value, unverified). INFERRED param name (only Ae Attack confirmed) — RAW UNVERIFIED placeholder for how 300ms maps to raw, though the DISPLAY number itself is sourced.
@@ -80,6 +80,8 @@ base patch, since no source gives concrete numbers for that second layer.
 
 ## Raw values: unverified — read before applying
 
+**CONFIRMED (not just unverified) scale bug, found via a real `awh op apply` on Operator**: `Algorithm`'s real raw range is **0-10** (11 quantized steps, `Alg. 1`-`Alg. 11`) — NOT the normalized 0-1 range this recipe assumed. Writing a 0-1-scaled value against a real device silently rounds/clamps to 0 (confirmed via read-back mismatch). Every other param in this recipe genuinely IS ~0-1 scaled. Not corrected here: knowing the real range doesn't tell us the correct index within it — still needs a real ear/UI pass.
+
 Standing caveat (same estimation method as the other entries in this
 batch): **every raw value above is an unverified estimate, not a
 measurement.** No Operator raw↔display pair has ever been read back into
@@ -89,7 +91,7 @@ BETTER display-value grounding than most of this batch (the 300ms decay
 and -inf dB sustain are real sourced numbers, not constructions) but the
 raw values that would produce them are still complete guesses — no
 Operator ms→raw or dB→raw curve exists anywhere in this repo. The
-`Osc-A Waveform` line is the weakest link in this recipe: neither the
+`Osc-A Wave` line is the weakest link in this recipe: neither the
 param's real `device.get` name nor how Operator encodes "which of 5
 waveforms" as a raw float is known — probe this specifically before
 trusting anything downstream of it.
@@ -98,10 +100,10 @@ trusting anything downstream of it.
 
 - **Verified-style**: `Algorithm`, `Osc-A Level`, `Ae Attack`, `Volume`
   (this entry uses fewer of the fully-verified names than the others in
-  this batch, since it deliberately avoids `Osc-A Coarse`/`Fine` — pitch
+  this batch, since it deliberately avoids `A Coarse`/`Fine` — pitch
   ratio is meaningless for a noise waveform).
-- **Inferred**: `Osc-A Waveform` (weakest — see above), `Ae Decay`,
+- **Inferred**: `Osc-A Wave` (weakest — see above), `Ae Decay`,
   `Ae Sustain`, `Ae Release`, `Filter Freq`, `Filter Res`, `Filter Type`.
   `awh op apply` must validate every name against a live `device.get` dump
-  before writing anything, and should treat `Osc-A Waveform` as the first
+  before writing anything, and should treat `Osc-A Wave` as the first
   thing to hand-verify in Live before trusting this recipe at all.

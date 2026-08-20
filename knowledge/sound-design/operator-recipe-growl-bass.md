@@ -61,15 +61,15 @@ name: growl-bass
 device: Operator
 params:
   Algorithm: 0.5   # display: 2-operator shape — Osc-B (modulator) into Osc-A (carrier), Osc-C/D unused/off. Which of Operator's 11 algorithm shapes carries this index is NOT identified from sourced material — dial to the "B feeds down into A, A is the only bottom-row carrier" shape by eye in Live and overwrite this placeholder. RAW UNVERIFIED.
-  "Osc-A Coarse": 0.0159   # display: ratio 1 (carrier = played fundamental). Assumed raw ≈ (ratio-0.5)/31.5 across Coarse's documented ~0.5-32 stepped display range — RAW UNVERIFIED, stated assumption only.
-  "Osc-A Fine": 0.0        # display: 0 cents — RAW UNVERIFIED.
+  "A Coarse": 0.0159   # display: ratio 1 (carrier = played fundamental). Assumed raw ≈ (ratio-0.5)/31.5 across Coarse's documented ~0.5-32 stepped display range — RAW UNVERIFIED, stated assumption only.
+  "A Fine": 0.0        # display: 0 cents — RAW UNVERIFIED.
   "Osc-A Level": 1.0       # display: full carrier output — RAW UNVERIFIED, assumed raw≈display fraction.
   "Ae Attack": 0.0         # display: ~0 ms, instant — RAW UNVERIFIED placeholder (no ms->raw curve known).
   "Ae Decay": 0.3          # display: medium decay into sustain — INFERRED param name (only "Ae Attack" is a confirmed device.get name; Decay/Sustain/Release for the A envelope are extended by naming-convention guess). RAW UNVERIFIED placeholder.
   "Ae Sustain": 0.85       # display: high — bass holds through the note. RAW UNVERIFIED, assumed raw≈display.
   "Ae Release": 0.2        # display: short-medium — INFERRED param name. RAW UNVERIFIED placeholder.
-  "Osc-B Coarse": 0.0476   # display: ratio 2 (2:1 modulator — the MusicRadar 55Hz/110Hz growl example). Same Coarse assumption as above — RAW UNVERIFIED.
-  "Osc-B Fine": 0.0        # display: 0 cents — RAW UNVERIFIED.
+  "B Coarse": 0.0476   # display: ratio 2 (2:1 modulator — the MusicRadar 55Hz/110Hz growl example). Same Coarse assumption as above — RAW UNVERIFIED.
+  "B Fine": 0.0        # display: 0 cents — RAW UNVERIFIED.
   "Osc-B Level": 0.4       # display: moderate FM index / "growl amount". CONSTRUCTED — no source gives one exact modulator-level number for this effect; this is a reasonable starting depth chosen by this entry, not a sourced value. RAW UNVERIFIED.
   "Be Attack": 0.0         # INFERRED param name (B's envelope, by extension of the Ae pattern). RAW UNVERIFIED placeholder.
   "Be Decay": 0.3
@@ -77,14 +77,16 @@ params:
   "Be Release": 0.2
   "Filter Freq": 0.5       # display: moderate lowpass cutoff to tame upper harmonics. INFERRED param name, CONSTRUCTED display target (no source number) — RAW UNVERIFIED.
   "Filter Res": 0.15       # INFERRED param name — RAW UNVERIFIED.
-  "LFO Waveform": 0.0      # display: Sine/Triangle. INFERRED param name — RAW UNVERIFIED (waveform index unknown).
+  "LFO Type": 0.0      # display: Sine/Triangle. INFERRED param name — RAW UNVERIFIED (waveform index unknown).
   "LFO Rate": 0.3          # display: 1/8-note triplet, tempo-synced — the canonical wobble division per dubstep-growl-basics[sourced]. INFERRED param name AND unconfirmed whether Rate itself encodes sync division vs a separate sync toggle exists (search found an "S"/"L" sync control in the LFO section whose device.get name was not identified). RAW UNVERIFIED placeholder — treat this whole line as a rough intent marker, not a value to trust.
-  "LFO Amount": 0.5        # display: moderate modulation depth into Osc-B Level (the FM-index route described above) — CONSTRUCTED, RAW UNVERIFIED. Whether the LFO's destination-chooser is itself device.param-addressable is UNCONFIRMED (per docs/design/operator-assistant.md, destinations are set via UI choosers) — probe this before assuming `awh op apply` can route the LFO at all.
+  "LFO Amt": 0.5        # display: moderate modulation depth into Osc-B Level (the FM-index route described above) — CONSTRUCTED, RAW UNVERIFIED. Whether the LFO's destination-chooser is itself device.param-addressable is UNCONFIRMED (per docs/design/operator-assistant.md, destinations are set via UI choosers) — probe this before assuming `awh op apply` can route the LFO at all.
   Volume: 0.7              # display: near-unity output. "Volume" IS a confirmed device.get name (knowledge/setup/device-parameter-surface.md). This specific 0.7 value/display pairing is still RAW UNVERIFIED for this patch.
 playNotes: "1|1 F1 1 v110"
 ```
 
 ## Raw values: unverified — read before applying
+
+**CONFIRMED (not just unverified) scale bug, found via a real `awh op apply` on Operator**: `Algorithm`'s real raw range is **0-10** (11 quantized steps, `Alg. 1`-`Alg. 11`), and `Coarse`'s real raw range is **0-48** — NOT the normalized 0-1 range this recipe assumed for every param. Writing this recipe's 0-1-scaled values for `Algorithm`/`*Coarse` against a real device silently round/clamp to 0 (confirmed: read-back mismatch on all three). Every OTHER param in this recipe (Volume, `Osc-* Level`, envelope times, `Filter Freq`/`Filter Res`) genuinely IS ~0-1 scaled and wrote/read back correctly — this is specifically an `Algorithm`/`Coarse` problem, not a whole-recipe one. Not corrected here: knowing the real RANGE doesn't tell us the CORRECT value within it (e.g. which of the 11 algorithms is "2-operator, B into A") — that still needs a real ear/UI pass, `knowledge/setup/device-parameter-surface.md` has no `displayValue` API to shortcut it.
 
 Standing caveat (applies to every param line above): **all raw values are
 unverified estimates, not measurements.** No Operator raw↔display pair has
@@ -108,13 +110,13 @@ material at all — dial by eye, first.
 ## Param naming: verified vs inferred
 
 - **Verified-style** (from `device-parameter-surface.md` / the pinned
-  patch-block spec): `Algorithm`, `Osc-A Coarse`, `Osc-A Fine`,
-  `Osc-A Level`, `Osc-B Coarse`, `Osc-B Fine`, `Osc-B Level`, `Ae Attack`,
+  patch-block spec): `Algorithm`, `A Coarse`, `A Fine`,
+  `Osc-A Level`, `B Coarse`, `B Fine`, `Osc-B Level`, `Ae Attack`,
   `Volume`.
 - **Inferred** (extended from the verified naming convention, NOT
   individually confirmed against a real `device.get` dump): `Ae Decay`,
   `Ae Sustain`, `Ae Release`, `Be Attack`, `Be Decay`, `Be Sustain`,
-  `Be Release`, `Filter Freq`, `Filter Res`, `LFO Waveform`, `LFO Rate`,
-  `LFO Amount`. Before `awh op apply` runs this recipe, it must validate
+  `Be Release`, `Filter Freq`, `Filter Res`, `LFO Type`, `LFO Rate`,
+  `LFO Amt`. Before `awh op apply` runs this recipe, it must validate
   every name against a live `device.get` dump first and fail loudly on any
   name Operator doesn't actually have (per `docs/design/operator-assistant.md`).

@@ -1187,16 +1187,42 @@ ADSR fit, the white-noise AND inharmonic-bell negative controls,
 determinism). None of this is real device or real audio yet — everything
 below needs the owner's actual Live Set and real captures:
 
-- [ ] Real apply + audition: with a real Operator instance in Live, `awh op
+- [x] Real apply + audition: with a real Operator instance in Live, `awh op
       apply <a real operator-recipe-*> <devicePath> --audition` — confirm
       device.get read-back genuinely matches every written param (not just
       that the gateway accepted the write), and that the audition clip's
-      playNotes actually sound like the intended patch when played. This
-      is the first real-device test of the raw values a seeded recipe
-      entry claims — if a `draft`-tier recipe's raw values turn out wrong
-      by ear, that's expected (the seeding pass marks unverified raw
-      values as `draft`) and is exactly what this checklist step is for:
-      catch it, then feed the correction back into the recipe entry.
+      playNotes actually sound like the intended patch when played.
+      **Found and fixed a real, systematic bug across all 7 shipped
+      recipes, before any by-ear correction was even reachable**: every
+      recipe used `Osc-A Coarse`/`Osc-A Fine`/etc. as param names, but the
+      real device's names (confirmed via `device.get` on a real inserted
+      Operator, disposable temp track) are `A Coarse`/`A Fine` — no `Osc-`
+      prefix on just those two, unlike every other `Osc-A *` param. The
+      fail-loud-write-nothing validation caught this correctly on every
+      recipe (zero partial writes, matching the design) — fixed the naming
+      in all 7 files (+ two recipe-specific misses: growl-bass's `LFO
+      Waveform`/`LFO Amount` → `LFO Type`/`LFO Amt`, noise-perc's
+      `Osc-A Waveform` → `Osc-A Wave`).
+      **Then found a second, deeper bug via the read-back mismatch
+      mechanism working exactly as designed**: real apply of the (now
+      correctly-named) `pluck` recipe wrote cleanly for every envelope/
+      filter/level param, but `Algorithm` and `*Coarse` reported mismatches
+      — read back as 0 regardless of what was written. Root cause,
+      confirmed via `device.get`'s real min/max: `Algorithm`'s raw range is
+      **0-10** (11 quantized steps) and `Coarse`'s is **0-48** — every
+      recipe assumed a normalized 0-1 range for EVERY param, which is
+      correct for Volume/`Osc-* Level`/envelope times/Filter Freq (all
+      confirmed genuinely ~0-1) but wrong for these two. `reese-approx`
+      additionally uses nonzero `Fine` values under the same wrong
+      assumption (`Fine`'s real range is 0-1000, not 0-1) — its detune
+      amounts are likely off by roughly three orders of magnitude.
+      **Not corrected numerically** — knowing the real RANGE doesn't reveal
+      the CORRECT value within it (e.g. which of the 11 algorithms is
+      "2-op, B into A") without a real ear/UI pass (no `displayValue` API
+      to shortcut it, per `device-parameter-surface.md`) — documented as a
+      CONFIRMED (not just unverified) scale bug directly in each affected
+      recipe's "Raw values" section instead, so the next by-ear pass knows
+      exactly what's already known-wrong vs. genuinely unverified.
 - [ ] Real match on a real bass sample: `awh op match <a real bass one-
       shot or sustained note>.wav` — does the tier/summary line read as
       true to ear (a clean tier-1 "good Operator candidate" call should
@@ -1204,7 +1230,14 @@ below needs the owner's actual Live Set and real captures:
       genuinely sound like something Operator can't do — a growl/reese
       with heavy sub-harmonic distortion or noise components is the
       interesting edge case to try, since it may legitimately refuse or
-      may land tier 2 with a high oscillator residual). Then `--apply
+      may land tier 2 with a high oscillator residual). Mechanism
+      confirmed this pass on synthetic material (own-generated, not a
+      real sample): a clean 220 Hz sine correctly landed tier 1 (f0
+      221.0 Hz, harmonicity 0.99, sine residual 0.00), white noise
+      correctly refused tier 3 with all three measured criteria named
+      (voiced fraction, harmonicity ratio, partial deviation) — but a
+      REAL bass sample, and whether the tier boundary reads as musically
+      true, is still open. Then `--apply
       <devicePath>` on a tier-1/2 result and listen: do the addressable
       envelope/filter values (explicitly heuristic, see the module's
       `ADDRESSABLE_CAVEAT`) land anywhere close, or does the ASSUMED

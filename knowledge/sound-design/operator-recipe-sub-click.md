@@ -52,16 +52,16 @@ name: sub-click
 device: Operator
 params:
   Algorithm: 0.2   # display: parallel-carrier shape — Osc-A and Osc-B both act as independent carriers with no FM routing between them (this patch needs summed layers, not modulation). Index within the 11 algorithm shapes NOT identified from sourced material — dial to the "A and B both bottom-row, no lines between them" shape by eye and overwrite. RAW UNVERIFIED.
-  "Osc-A Coarse": 0.0159    # display: ratio 1 — the sub carrier tracks the played note directly (e.g. C1 for a ~33Hz-ish trap sub). Coarse-scale assumption per the caveat block — RAW UNVERIFIED.
-  "Osc-A Fine": 0.0         # display: 0 cents, perfectly in tune — RAW UNVERIFIED.
+  "A Coarse": 0.0159    # display: ratio 1 — the sub carrier tracks the played note directly (e.g. C1 for a ~33Hz-ish trap sub). Coarse-scale assumption per the caveat block — RAW UNVERIFIED.
+  "A Fine": 0.0         # display: 0 cents, perfectly in tune — RAW UNVERIFIED.
   "Osc-A Level": 1.0        # display: full sub output — RAW UNVERIFIED.
-  "Osc-A Phase": 0.0        # display: 0 (zero-crossing start) — kept at 0 deliberately so the sub layer is click-free, per the sourced Phase behavior above. INFERRED param name (extends the Osc-A Coarse/Fine/Level convention; "Phase" as an Operator UI control is sourced, its exact device.get spelling is not). RAW UNVERIFIED but 0.0 is the one estimate this recipe is most confident in, since "Phase 0" is described as literally the zero point of the range.
+  "Osc-A Phase": 0.0        # display: 0 (zero-crossing start) — kept at 0 deliberately so the sub layer is click-free, per the sourced Phase behavior above. INFERRED param name (extends the A Coarse/Fine, Osc-A Level convention; "Phase" as an Operator UI control is sourced, its exact device.get spelling is not). RAW UNVERIFIED but 0.0 is the one estimate this recipe is most confident in, since "Phase 0" is described as literally the zero point of the range.
   "Ae Attack": 0.0          # display: instant — RAW UNVERIFIED placeholder.
   "Ae Decay": 0.2           # INFERRED param name (only Ae Attack is confirmed) — RAW UNVERIFIED placeholder.
   "Ae Sustain": 0.9         # display: high — the sub is meant to sustain through the whole note, per "keep that one untouched... all the way through". RAW UNVERIFIED, assumed raw≈display.
   "Ae Release": 0.25        # INFERRED param name — RAW UNVERIFIED placeholder.
-  "Osc-B Coarse": 0.0159    # display: ratio 1 — the click carrier tracks the same fundamental so it reads as "part of" the sub hit, not a separate pitch. RAW UNVERIFIED, same Coarse assumption.
-  "Osc-B Fine": 0.0
+  "B Coarse": 0.0159    # display: ratio 1 — the click carrier tracks the same fundamental so it reads as "part of" the sub hit, not a separate pitch. RAW UNVERIFIED, same Coarse assumption.
+  "B Fine": 0.0
   "Osc-B Level": 0.5        # display: click mixed under the sub so it reads as attack, not a second tone — matches the sourced "transient hits first, then the sub fades in, keeping separation" framing. CONSTRUCTED level (no source gives an exact mix ratio) — RAW UNVERIFIED.
   "Osc-B Phase": 0.35       # display: deliberately offset from 0 — this is the click generator, per the sourced Operator-specific Phase-click mechanism. CONSTRUCTED offset amount (source describes the mechanism, not a specific phase value) — RAW UNVERIFIED, arbitrary non-zero placeholder; the actual click character should be dialed by ear.
   "Be Attack": 0.0          # display: instant — RAW UNVERIFIED placeholder.
@@ -73,6 +73,8 @@ playNotes: "1|1 C1 1 v120"
 ```
 
 ## Raw values: unverified — read before applying
+
+**CONFIRMED (not just unverified) scale bug, found via a real `awh op apply` on Operator**: `Algorithm`'s real raw range is **0-10** (11 quantized steps, `Alg. 1`-`Alg. 11`), and `Coarse`'s real raw range is **0-48** — NOT the normalized 0-1 range this recipe assumed for every param. Writing this recipe's 0-1-scaled values for `Algorithm`/`*Coarse` against a real device silently round/clamp to 0 (confirmed: read-back mismatch on all three). Every OTHER param in this recipe (Volume, `Osc-* Level`, envelope times, `Filter Freq`/`Filter Res`) genuinely IS ~0-1 scaled and wrote/read back correctly — this is specifically an `Algorithm`/`Coarse` problem, not a whole-recipe one. Not corrected here: knowing the real RANGE doesn't tell us the CORRECT value within it (e.g. which of the 11 algorithms is "2-operator, B into A") — that still needs a real ear/UI pass, `knowledge/setup/device-parameter-surface.md` has no `displayValue` API to shortcut it.
 
 Standing caveat (same estimation method as `operator-recipe-growl-bass`):
 **every raw value above is an unverified estimate, not a measurement.**
@@ -91,8 +93,8 @@ sourced or derived click character — dial this one entirely by ear.
 
 ## Param naming: verified vs inferred
 
-- **Verified-style**: `Algorithm`, `Osc-A Coarse`, `Osc-A Fine`,
-  `Osc-A Level`, `Osc-B Coarse`, `Osc-B Fine`, `Osc-B Level`, `Ae Attack`,
+- **Verified-style**: `Algorithm`, `A Coarse`, `A Fine`,
+  `Osc-A Level`, `B Coarse`, `B Fine`, `Osc-B Level`, `Ae Attack`,
   `Volume`.
 - **Inferred**: `Osc-A Phase` / `Osc-B Phase` (the Phase *control* is
   sourced from Operator tutorials/forum threads; its exact `device.get`
