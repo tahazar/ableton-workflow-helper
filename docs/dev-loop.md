@@ -678,6 +678,16 @@ everything found so that session doesn't restart from zero:**
   operation hangs or fails with generic SDK errors. If ops hang after a
   Live restart, kill and rerun `extensions-cli run` before debugging
   anything else.
+- **Always pass `--storage-directory`/`--temp-directory` when restarting
+  `extensions-cli`.** Without them, the gateway starts fine and normal ops
+  (status/clip read/write) all work — but any right-click library capture
+  fails silently from the owner's POV (the menu action appears and does
+  nothing visible). The real error (`BridgeError: no storageDirectory —
+  cannot buffer captures`) only shows up in `extensions-cli`'s own stdout,
+  not `ExtensionHost.txt`. Full command:
+  `extensions-cli run --live "<Live.app path>" --storage-directory
+  packages/extension/.dev/storage --temp-directory
+  packages/extension/.dev/temp`.
 - Small A/B gain changes not showing up in `awh mix ab`? Check for clip/
   limiter utilities (GClip etc.) sitting before the capture tap — bypass
   them or move the tap after.
@@ -973,25 +983,49 @@ convention) plus the owner's own unreleased material for the ambiguity case:
 
 ## B3b (right-click capture) verification checklist
 
-- [ ] Rebuild + reload the extension; right-click a MIDI clip → "AWH: Save
-      clip to library" appears and logs a capture (ExtensionHost.txt).
-      Partial: `pnpm build:extension` builds clean, `sdkLiveBridge.ts`
-      correctly reuses the verified `endMarker - startMarker` session-clip
-      length fix (M1) and the same note conversion as clip reads (code
-      review, not live-clicked). Rebuilt and restarted dev-mode
-      `extensions-cli` to load it. **The actual right-click GUI action was
-      not tested this pass** (owner chose to skip) — still open.
+**Real bug found + fixed getting here**: `extensions-cli run` needs
+`--storage-directory`/`--temp-directory` flags explicitly — without them,
+the gateway starts fine (status/clip ops all work) but any right-click
+capture fails silently from the owner's point of view: the context menu
+item appears and does nothing visible, while the actual error (`BridgeError:
+no storageDirectory — cannot buffer captures`) only shows up in the
+`extensions-cli` process's own stdout, not `ExtensionHost.txt` (dev-mode
+logs to the CLI's stdout, not the Preferences-folder log the doc's
+Everyday-loop section implies — worth knowing when debugging blind). Fixed
+by always launching with:
+`extensions-cli run --live "<Live.app path>" --storage-directory
+packages/extension/.dev/storage --temp-directory packages/extension/.dev/temp`
+— **anyone restarting the dev bridge (e.g. after a Live restart, per this
+doc's own Troubleshooting note) needs these flags every time**, not just
+`--live`.
+
+- [x] Rebuild + reload the extension; right-click a MIDI clip → "AWH: Save
+      clip to library" appears and logs a capture. Fully confirmed live:
+      `pnpm build:extension` → fresh `extensions-cli run` (with the storage
+      flags above) → right-clicked a real arrangement clip ("13 Hats", 64
+      notes) → "AWH: Save clip to library" appeared and, once the
+      storage-directory bug above was fixed, the handler fired and logged
+      `[awh] captured "" to the library outbox` (empty name is correct —
+      the source clip itself has no name in Live).
 - [x] `awh lib import` → entry lands in clips/inbox/ with notes identical to
       the clip (`awh lib place` it back to verify), bpm/scale context
-      captured; second import → "outbox empty". Confirmed the empty-outbox
-      path against the real gateway: clean `"outbox empty — nothing
-      captured since the last import"` message, no error. The
-      populated-outbox path (real capture → import → verify notes/bpm/scale
-      → place-back) is blocked on the right-click item above.
-- [ ] Capture 3 clips before importing → all 3 drain in one import, slug
-      collisions get -2/-3 suffixes. Not run (needs real captures).
+      captured; second import → "outbox empty". Fully confirmed end to end
+      this time: real capture → `lib import` → `library/clips/inbox/
+      captured-clip.md` (140 bpm, F Phrygian, 64 notes, correct pitch
+      conversion `pitch:0` → `C-2`) → placed into a fresh scene slot →
+      re-read → 64/64 notes byte-identical (start/duration/velocity all
+      matched). Immediate second `lib import` correctly reported "outbox
+      empty — nothing captured since the last import".
+- [x] Capture 3 clips before importing → all 3 drain in one import, slug
+      collisions get -2/-3 suffixes. Confirmed: captured the same clip
+      twice more (deliberately, to force a collision against the already-
+      imported `captured-clip` slug), one `lib import` call drained both
+      in a single response and correctly suffixed them
+      `captured-clip-2.md`/`captured-clip-3.md`.
 - [ ] Skill: "I saved a couple of clips, pull them in" → import + guided
-      naming/tagging/curation. Not run.
+      naming/tagging/curation. The underlying mechanics (import + curate)
+      are now proven above; the conversational trigger itself wasn't
+      separately exercised this pass.
 
 ## Pump v2 (`awh mix pump-check`) verification checklist
 
