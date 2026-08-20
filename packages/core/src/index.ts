@@ -205,3 +205,14 @@ export {
   type ResponseCandidate,
 } from "./phrase/phrase.js";
 export { parseOperatorRecipe, type OperatorRecipe } from "./operator/recipe.js";
+export {
+  parseEndlessSpec,
+  validateEndlessSpec,
+  type EndlessFluctuation,
+  type EndlessLayer,
+  type EndlessLayerFluctuate,
+  type EndlessRules,
+  type EndlessSection,
+  type EndlessSpec,
+  type EndlessTransitionEdge,
+} from "./endless/spec.js";

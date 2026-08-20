@@ -424,6 +424,55 @@ devices (`device.insert/get/param/delete` — stock Live devices only),
 drum racks (`drum.pad-note`), Simpler (`simpler.sample`), `set.tempo`,
 audio clips (`clip.create-audio`).
 
+## Endless player (`awh endless`) — seeded, ever-different arrangements
+
+A standalone deliverable, separate from everything above: it builds a
+static, offline HTML+JS player from the owner's OWN produced/mixed audio
+stems (not notes it writes into Live) — an endless, never-repeating
+performance of one song, Bronze-style (docs/design/endless-player.md).
+There's no in-browser composition: the "endless" part is authoring-time
+variant pools (optionally from `awh drums`/`awh vary` renders) plus a
+seeded arrangement/mix grammar that picks which pre-produced loop plays
+next, forever.
+
+```sh
+awh endless plan --sections "intro:8,build:8,drop:16,break:8" --bpm 140 -o endless.yaml
+    # or: awh endless plan --from-ref <name> -o endless.yaml   (bars/bpm from
+    # a saved reference's corrected section map, M8 — see `awh ref`)
+    # edit endless.yaml: fill in each section's pools with your bounced
+    # audio file paths, add/rename layers, adjust transitions/rules — refuses
+    # to overwrite an existing file without --force
+awh endless build endless.yaml -o dist/my-song [--single-file]
+    # validates LOUDLY first — every pool file exists, every file's duration
+    # is bar-exact (+-25ms) to bars*4*60/bpm, every section reachable, no
+    # empty pools — reports every problem before writing anything
+awh endless demo -o dist/demo
+    # zero-asset sanity check: synthesizes a tiny kick/hat+bass+pads song
+    # and builds it, so you can hear the engine work with nothing of the
+    # owner's yet
+```
+
+- Loops must be bar-exact — if a bounced stem has a reverb/delay tail,
+  render it with the tail OVERLAPPED back onto the loop (not trimmed off);
+  `awh endless build` checks duration, not tail cleanliness, so a clipped
+  tail passes validation and still sounds wrong. Say this plainly when
+  helping bounce stems.
+- `build` writes `index.html` + `player.js` (zero deps) + the audio pools +
+  `endless-README.md` into the output dir; the README's own one-command
+  serve instruction (`python3 -m http.server`) is required because browsers
+  block `fetch()` on `file://` — don't tell the owner to just double-click
+  `index.html` for a multi-file build. `--single-file` inlines everything
+  as `data:` URIs into one HTML (fine for demos/sharing; warns above 12 MB).
+- This is NOT `awh sections` — `sections` writes an arrangement INTO the
+  Live Set from source clips; `endless` builds a standalone web player from
+  already-bounced audio files, outside Live entirely. Don't confuse a
+  request to "build me a live arrangement skeleton" (→ `awh sections`) with
+  "build me an endless/infinite version of my song to share" (→ `awh
+  endless`).
+- Never hand-edit the emitted `player.js` output to "fix" playback — it's a
+  literal copy of `packages/cli/assets/endless/player.js`; report a bug
+  instead of patching a build artifact.
+
 ## bar|beat notation
 
 One note (or chord) per line: `bar|beat pitch(es) duration [vN] [pN] [m]`
@@ -731,6 +780,30 @@ in F minor", "give me chords under this"):
    `draft` (or `sourced` with citations), never `verified`.
 3. End-of-session: `awh distill -o /tmp/distill.md` dumps the project;
    curate the notable clips into `awh save` and the lessons into entries.
+
+**Build an endless/infinite web version of a song to share** ("make an
+endless version of my track", "build me a Bronze-style infinite player",
+"I want a version of this song that's different every time"):
+1. This is OUTSIDE the Live Set entirely — don't reach for `awh sections`
+   (that writes an arrangement INTO Live from source clips) or hand-compose
+   anything; it's a standalone static web page built from the owner's own
+   bounced/mixed audio stems.
+2. Confirm the owner has (or will bounce) bar-exact loops per section per
+   layer — if unsure what "bar-exact" means here, offer `awh endless demo -o
+   <dir>` first so they can hear the engine work with zero real assets.
+3. `awh endless plan --sections "intro:8,drop:16,..." --bpm <bpm> -o
+   endless.yaml` (or `--from-ref <name>` if they have a corrected reference
+   section map from `awh ref`) → an editable, fully-commented scaffold with
+   EMPTY pools. Don't skip straight to `build` — the owner fills in real
+   audio file paths first.
+4. `awh endless build endless.yaml -o dist/<name>` → validates every file/
+   duration/reachability/pool loudly before writing anything; relay every
+   listed problem plainly (missing file, wrong duration, unreachable
+   section, empty pool) rather than guessing a fix. `--single-file` for a
+   single shareable HTML.
+5. Point them at the emitted `endless-README.md`'s serve instruction — a
+   multi-file build needs `python3 -m http.server`, not double-clicking
+   `index.html` (browsers block `fetch()` on `file://`).
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not
