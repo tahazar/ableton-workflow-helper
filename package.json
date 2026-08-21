@@ -10,7 +10,7 @@
   "scripts": {
     "build": "pnpm --filter @awh/core --filter @awh/cli build",
     "build:extension": "pnpm --filter @awh/extension build",
-    "test": "pnpm --filter @awh/core test",
+    "test": "pnpm --filter @awh/core --filter @awh/cli test",
     "typecheck": "pnpm -r typecheck",
     "setup:sdk": "node scripts/setup-sdk.mjs"
   }

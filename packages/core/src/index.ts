@@ -13,6 +13,7 @@ export {
   type MidiClipTarget,
   type MixerArgs,
   type NoteSpec,
+  type OutboxEntry,
   type SceneSummary,
   type SetSummary,
   type TrackKind,
@@ -114,6 +115,8 @@ export {
 export { type DrumContext, type DrumKit, type DrumRole } from "./drums/types.js";
 export { GM_DRUM_KIT, mapPadRoles, roleOfNote } from "./drums/roles.js";
 export {
+  HOUSE_STYLE_SPEC,
+  TECHNO_STYLE_SPEC,
   TRAP_KICK_CELLS,
   TRAP_STYLE_SPEC,
   generateDrumPattern,
@@ -134,6 +137,11 @@ export {
 } from "./drums/fills.js";
 export {
   parseDrumStyleSpec,
+  type DrumStyleSpec,
+  type HouseFamilyStyleSpec,
+  type HouseHatGridConfig,
+  type HouseRideConfig,
+  type HouseRumbleKicksConfig,
   type TrapFamilyKickCell,
   type TrapFamilyStyleSpec,
   type TrapHatBaseName,
@@ -148,6 +156,7 @@ export {
 export {
   KnowledgeStore,
   type KnowledgeFilter,
+  type DrumStatsRecordSummary,
   type MeasurementRecordSummary,
   type ReferenceRecordSummary,
   type StoredKnowledgeEntry,
@@ -160,3 +169,50 @@ export {
   type VoicedChord,
   type VoicingOptions,
 } from "./harmony/voicing.js";
+export {
+  clampNotesToLength,
+  clipLengthBeats,
+  parseQuantizeGrid,
+  quantizeNotes,
+  secondsToBeats,
+  QUANTIZE_GRIDS,
+} from "./a2m/quantize.js";
+export {
+  BASS_MUSIC_CR_SPEC,
+  RESPONSE_RECIPE_NAMES,
+  listPhraseStyles,
+  listPhraseVariants,
+  parsePhraseSpec,
+  type CallCell,
+  type EvolutionAction,
+  type EvolutionStep,
+  type PhraseSpec,
+  type ResponseRecipeName,
+  type TurnaroundKind,
+} from "./phrase/spec.js";
+export {
+  applyResponseRecipe,
+  fitResponseToWindow,
+  type RecipeResult,
+  type ResponseRecipe,
+} from "./phrase/recipes.js";
+export {
+  generatePhrase,
+  generateResponses,
+  type GeneratePhraseOptions,
+  type GenerateResponsesOptions,
+  type GeneratedPhrase,
+  type ResponseCandidate,
+} from "./phrase/phrase.js";
+export { parseOperatorRecipe, type OperatorRecipe } from "./operator/recipe.js";
+export {
+  parseEndlessSpec,
+  validateEndlessSpec,
+  type EndlessFluctuation,
+  type EndlessLayer,
+  type EndlessLayerFluctuate,
+  type EndlessRules,
+  type EndlessSection,
+  type EndlessSpec,
+  type EndlessTransitionEdge,
+} from "./endless/spec.js";

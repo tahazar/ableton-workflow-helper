@@ -61,6 +61,11 @@ time). These lessons are the "definition of done" for future milestones.
   manual touch alongside Audio From routing — but it's an ordinary
   automatable device.param; only the routing is genuinely outside the SDK.
   When declaring something unautomatable, verify each item separately.
+- **Destructive commands must refuse universal matchers.** `awh sweep
+  --prefix ""` matched every clip name and deleted a project's original
+  placeholder clip during a validation pass. Any delete/overwrite command
+  whose filter can degenerate to match-everything needs that case to be an
+  explicit opt-in flag (`--all`), never a silent default.
 - SDK limitations worth escalating to Ableton are collected in
   `docs/sdk-feedback.md` — add to it when a new one is hit.
 

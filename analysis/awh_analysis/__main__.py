@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from typing import Any
 
 import soundfile as sf
 
-from . import ab, duck, ref, report, targets
+from . import a2m, ab, drumstats, duck, opmatch, pumpcheck, ref, report, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -230,6 +231,51 @@ def _cmd_duckdepth(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_pumpcheck(args: argparse.Namespace) -> int:
+    from . import audio
+
+    triggers = [float(t) for t in args.triggers.split(",") if t.strip()]
+    x, sr = audio.load(args.file)
+    if args.cycle:
+        duration_s = x.shape[0] / sr
+        tiled = []
+        k = 0
+        while k * args.cycle < duration_s:
+            tiled.extend(t + k * args.cycle for t in triggers)
+            k += 1
+        triggers = [t for t in tiled if t < duration_s]
+    result = pumpcheck.check_pump(x, sr, triggers)
+    if args.json:
+        _print_json(result)
+    else:
+        env = result["envelope"]
+        fit = result["fitted"]
+        lines = [
+            f"Trigger-locked pump check ({result['used_triggers']} triggers, "
+            f"window {result['window_ms']:.0f} ms)",
+            "",
+            f"Envelope: peak {env['peak_db']:.1f} dB, tail {env['tail_db']:.1f} dB "
+            f"(span {env['peak_to_tail_db']:.1f} dB), minimum at {env['min_time_ms']:.0f} ms "
+            f"({100 * env['min_fraction']:.0f}% into the window)",
+            "",
+            "Fitted duck model (instant dip / hold / exponential release):",
+            f"  depth    {fit['depth_db']:.1f} dB",
+            f"  hold     {fit['hold_ms']:.0f} ms",
+            f"  release  tau {fit['release_tau_ms']:.0f} ms",
+            f"  fit r^2  {fit['r_squared']:.2f}",
+            "",
+            f"Verdict: {result['verdict']}",
+            f"  {result['evidence']}",
+        ]
+        if result["notes"]:
+            lines.append("")
+            lines.append("Notes:")
+            for note in result["notes"]:
+                lines.append(f"  - {note}")
+        print("\n".join(lines))
+    return 0
+
+
 def _render_ref_text(result: dict) -> str:
     lines = [
         f"File: {result['file']}  ({result['duration_s']:.1f} s)",
@@ -271,6 +317,28 @@ def _cmd_ref(args: argparse.Namespace) -> int:
 
 
 
+def _cmd_a2m(args: argparse.Namespace) -> int:
+    result = a2m.transcribe(
+        args.file,
+        onset_thresh=args.onset_thresh,
+        frame_thresh=args.frame_thresh,
+        min_note_len_ms=args.min_len,
+        min_freq=args.min_freq,
+        max_freq=args.max_freq,
+        melodia_trim=not args.no_melodia_trim,
+    )
+    if args.json:
+        _print_json(result)
+    else:
+        print(f"{result['n_notes']} notes ({result['model']})")
+        for n in result["notes"]:
+            print(
+                f"  {n['start_s']:7.3f}s +{n['dur_s']:6.3f}s  "
+                f"pitch={n['pitch']:3d}  vel={n['velocity']:3d}"
+            )
+    return 0
+
+
 def _cmd_onsets(args: argparse.Namespace) -> int:
     from . import audio
 
@@ -281,6 +349,147 @@ def _cmd_onsets(args: argparse.Namespace) -> int:
     else:
         print(f"{len(onsets)} onsets detected:")
         print(",".join(f"{t:.3f}" for t in onsets))
+    return 0
+
+
+def _render_opmatch_text(result: dict) -> str:
+    a = result["analysis"]
+    f0 = a["f0"]
+    lines = [
+        f"tier {result['tier']}: {result['summary']}",
+        "",
+        f"f0: {_fmt(f0['hz'], 1)} Hz  drift {_fmt(f0['drift_semitones'], 2)} semitones  "
+        f"voiced {f0['voiced_fraction'] * 100:.0f}%",
+        f"harmonicity ratio: {a['harmonicity_ratio']:.2f}  "
+        f"partial deviation: {_fmt(a['partial_deviation_semitones'], 2)} semitones  "
+        f"noise floor ratio: {a['noise_floor_ratio']:.2f}",
+        f"ADSR fit: attack {a['adsr']['attack_s'] * 1000:.0f}ms  decay {a['adsr']['decay_s'] * 1000:.0f}ms  "
+        f"sustain {a['adsr']['sustain_db']:.1f}dB  release {a['adsr']['release_s'] * 1000:.0f}ms  "
+        f"(r^2={a['adsr']['r_squared']:.2f})",
+        f"centroid: {a['centroid']['direction']} "
+        f"({_fmt(a['centroid']['start_hz'], 0)} -> {_fmt(a['centroid']['end_hz'], 0)} Hz)",
+    ]
+    if result["tier"] == 3:
+        lines.append("")
+        lines.append("reasons:")
+        for r in result["reasons"]:
+            lines.append(f"  - {r}")
+        return "\n".join(lines)
+
+    p = result["proposal"]
+    lines += [
+        "",
+        f"oscillator: {p['oscillator']['waveform']} (residual {p['oscillator']['residual']:.2f})",
+        f"envelope target: attack {p['envelope']['attack_s'] * 1000:.0f}ms  "
+        f"decay {p['envelope']['decay_s'] * 1000:.0f}ms  sustain {p['envelope']['sustain_db']:.1f}dB  "
+        f"release {p['envelope']['release_s'] * 1000:.0f}ms  (fit r^2={p['envelope']['fit_r_squared']:.2f})",
+        f"filter: {p['filter']['direction']}",
+        "",
+        "drawThesePartials (16 normalized amplitudes, hand-draw in Operator's "
+        "harmonics editor if the stock-wave residual above is high):",
+        "  " + ", ".join(f"{v:.2f}" for v in p["drawThesePartials"]),
+        "",
+        f"addressable (raw device.param values, HEURISTIC — see caveat): "
+        f"{', '.join(f'{k}={v:.3f}' for k, v in p['addressable'].items())}",
+        f"  {p['addressable_caveat']}",
+    ]
+    return "\n".join(lines)
+
+
+def _cmd_opmatch(args: argparse.Namespace) -> int:
+    result = opmatch.match(args.file)
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_opmatch_text(result))
+    return 0
+
+
+def _cmd_opcompare(args: argparse.Namespace) -> int:
+    result = opmatch.compare(args.ref, args.cand)
+    if args.json:
+        _print_json(result)
+    else:
+        print(
+            f"log-spectrogram L2: {result['log_spectrogram_l2']:.3f}  "
+            f"harmonic cosine: {_fmt(result['harmonic_cosine'], 3)}  "
+            f"score: {result['score']:.3f} (1.0 = identical, ears decide the rest)"
+        )
+    return 0
+
+
+def _render_drumstats_text(result: dict) -> str:
+    grid = result["grid"]
+    header = "position   " + "".join(f"{i:>5d}" for i in range(grid))
+    lines = [
+        f"dataset: {result['dataset']}  ({result['n_loops']} loop(s), "
+        f"BPM {result['bpm_range'][0]:.0f}-{result['bpm_range'][1]:.0f}, "
+        f"mean {result['bpm_mean']:.1f}, decode={result['mp3_decode_mode']})",
+        "",
+        "position-hit probability (% of bars with an onset at that grid step):",
+        header,
+    ]
+    for band in ("low", "mid", "high"):
+        b = result["per_band"][band]
+        row = "".join(f"{round(p * 100):>5d}" for p in b["position_prob"])
+        lines.append(f"{band:<10s} {row}")
+    lines.append("")
+    for band in ("low", "mid", "high"):
+        b = result["per_band"][band]
+        lines.append(
+            f"{band:<5s} density {b['density']:.2f} onsets/bar ({b['onsets_total']} onsets total)"
+        )
+    lines.append("")
+    sw = result["swing_estimate"]
+    if sw["delay_frac_of_16th_step"] is not None:
+        lines.append(
+            f"swing (high band): off-16ths land {sw['delay_frac_of_16th_step'] * 100:+.1f}% of a "
+            f"step vs on-8ths ({sw['delay_equivalent_beats']:+.3f} beats equiv.; "
+            f"n={sw['n_on8_onsets']}/{sw['n_off16_onsets']})"
+        )
+    else:
+        lines.append("swing: not enough high-band onsets to estimate")
+    lines.append("")
+    lines.append("assumptions:")
+    for a in result["assumptions"]:
+        lines.append(f"  - {a}")
+    if result["skipped"]:
+        lines.append("")
+        lines.append("skipped files:")
+        for s in result["skipped"]:
+            lines.append(f"  - {s['file']}: {s['reason']}")
+    return "\n".join(lines)
+
+
+def _cmd_drumstats(args: argparse.Namespace) -> int:
+    files = drumstats.find_audio_files(args.paths)
+    dataset_name = args.dataset
+    if dataset_name is None and len(args.paths) == 1 and os.path.isdir(args.paths[0]):
+        dataset_name = os.path.basename(os.path.normpath(args.paths[0]))
+
+    if not files:
+        # Zero audio files found is a STATE, not an error (docs/lessons-learned.md #5).
+        payload = {"dataset": dataset_name, "n_loops": 0, "files": []}
+        if args.json:
+            _print_json(payload)
+        else:
+            print(f"no audio files found in: {', '.join(args.paths)}")
+        return 0
+
+    result = drumstats.mine_drum_loops(
+        files,
+        bpm_from_name=not args.no_bpm_from_name,
+        bpm=args.bpm,
+        grid=args.grid,
+        dataset_name=dataset_name,
+    )
+    if args.save_record:
+        attribution = json.loads(args.attribution) if args.attribution else None
+        drumstats.save_record(args.save_record, files, result, attribution=attribution)
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_drumstats_text(result))
     return 0
 
 
@@ -330,6 +539,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_dd.add_argument("--json", action="store_true")
     p_dd.set_defaults(func=_cmd_duckdepth)
 
+    p_pump = sub.add_parser("pumpcheck", help="Trigger-locked sidechain-pump verification (fits the fixed duck model)")
+    p_pump.add_argument("file", help="capture to check (ideally the isolated ducked bus)")
+    p_pump.add_argument("--triggers", type=str, required=True,
+                        help="comma-separated trigger times in SECONDS (one cycle if --cycle)")
+    p_pump.add_argument("--cycle", type=float, default=None,
+                        help="trigger pattern cycle length in seconds — tiles the trigger "
+                             "list across the whole file (capture must start on a cycle boundary)")
+    p_pump.add_argument("--json", action="store_true")
+    p_pump.set_defaults(func=_cmd_pumpcheck)
+
     p_ref = sub.add_parser("ref", help="Analyze a reference track: tempo/grid, energy arc, section map")
     p_ref.add_argument("file")
     p_ref.add_argument("--phrase", type=int, default=4,
@@ -342,11 +561,67 @@ def build_parser() -> argparse.ArgumentParser:
     p_ref.add_argument("--json", action="store_true")
     p_ref.set_defaults(func=_cmd_ref)
 
+    p_a2m = sub.add_parser("a2m", help="Melodic audio-to-MIDI transcription (Basic Pitch, ONNX)")
+    p_a2m.add_argument("file")
+    p_a2m.add_argument("--onset-thresh", type=float, default=0.5,
+                       help="onset detection sensitivity (Basic Pitch default 0.5)")
+    p_a2m.add_argument("--frame-thresh", type=float, default=0.3,
+                       help="frame/pitch confidence threshold (Basic Pitch default 0.3)")
+    p_a2m.add_argument("--min-len", type=float, default=127.70,
+                       help="minimum note length in ms (Basic Pitch default 127.70)")
+    p_a2m.add_argument("--min-freq", type=float, default=None,
+                       help="ignore pitches below this frequency in Hz")
+    p_a2m.add_argument("--max-freq", type=float, default=None,
+                       help="ignore pitches above this frequency in Hz")
+    p_a2m.add_argument("--no-melodia-trim", action="store_true",
+                       help="disable the melodia post-processing trick (default: on)")
+    p_a2m.add_argument("--json", action="store_true")
+    p_a2m.set_defaults(func=_cmd_a2m)
+
     p_on = sub.add_parser("onsets", help="Detect drum onset times in an audio capture")
     p_on.add_argument("file")
     p_on.add_argument("--min-gap-ms", type=float, default=80.0)
     p_on.add_argument("--json", action="store_true")
     p_on.set_defaults(func=_cmd_onsets)
+
+    p_drumstats = sub.add_parser(
+        "drumstats",
+        help="Mine band-split rhythm statistics (16th-grid position probabilities) from a folder of drum loops",
+    )
+    p_drumstats.add_argument("paths", nargs="+", help="audio files and/or directories (scanned non-recursively)")
+    p_drumstats.add_argument(
+        "--bpm", type=float, default=None,
+        help="fixed BPM used as a fallback (or for every file with --no-bpm-from-name)",
+    )
+    p_drumstats.add_argument(
+        "--no-bpm-from-name", action="store_true",
+        help="disable parsing BPM from loop filenames (e.g. '138bpm_...') — requires --bpm",
+    )
+    p_drumstats.add_argument("--grid", type=int, default=drumstats.DEFAULT_GRID,
+                             help="grid steps per bar (default 16 = 16th notes)")
+    p_drumstats.add_argument("--dataset", type=str, default=None,
+                             help="dataset name for the output (default: single input directory's basename)")
+    p_drumstats.add_argument("--save-record", type=str, default=None,
+                             help="also write a drum-stats measurement record JSON to this path")
+    p_drumstats.add_argument("--attribution", type=str, default=None,
+                             help="JSON object embedded verbatim in --save-record's 'attribution' field")
+    p_drumstats.add_argument("--json", action="store_true")
+    p_drumstats.set_defaults(func=_cmd_drumstats)
+
+    p_opmatch = sub.add_parser(
+        "opmatch", help="Analyze a sample and propose an Operator patch (tiered by reachability)"
+    )
+    p_opmatch.add_argument("file")
+    p_opmatch.add_argument("--json", action="store_true")
+    p_opmatch.set_defaults(func=_cmd_opmatch)
+
+    p_opcompare = sub.add_parser(
+        "opcompare", help="Compare a reference capture against a candidate (verify closed loop)"
+    )
+    p_opcompare.add_argument("ref")
+    p_opcompare.add_argument("cand")
+    p_opcompare.add_argument("--json", action="store_true")
+    p_opcompare.set_defaults(func=_cmd_opcompare)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")
@@ -364,7 +639,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     try:
         return args.func(args)
-    except (ValueError, FileNotFoundError, OSError, sf.SoundFileError) as exc:
+    except (ValueError, FileNotFoundError, OSError, sf.SoundFileError, RuntimeError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 1
 

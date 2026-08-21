@@ -1,0 +1,23 @@
+# awh new populate — applied to whatever Set is currently open.
+# The VR Sidechain Template already ships with its own track layout
+# (Kick & Snare, Hats, Serum, Simpler, Trigger, Sidechain, returns), so
+# `tracks` below is deliberately minimal — only add entries here for
+# tracks you want on EVERY new project beyond what the template already
+# has.
+#
+# `starters` and `chords` are left empty: the library has no curated
+# clips yet (`awh lib list` is empty), and a chord progression/key is a
+# creative choice for you to make per-song, not a sensible default to
+# invent here. Add entries once you have real starter clips saved
+# (`awh save <clip> --category ...`) or a go-to opening progression.
+
+tempo: 140
+
+tracks: []
+
+starters: []
+
+# chords:
+#   track: "6 Serum"
+#   progression: "i-VI-III-VII"
+#   bars: 8
