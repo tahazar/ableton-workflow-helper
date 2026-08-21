@@ -41,7 +41,7 @@ const ROMAN_DEGREES: Record<string, number> = {
 // [accidental?][roman numeral][suffix?] — suffixes are mutually exclusive
 // (grammar decision: "V7sus4" etc. is not supported, keeping the grammar
 // simple and the derivation unambiguous).
-const CHORD_RE = /^([b#]?)([ivIV]+)(7|sus2|sus4|dim|aug)?$/;
+const CHORD_RE = /^([b#]?)([ivIV]+)(7|sus2|sus4|dim|aug|maj|min)?$/;
 
 function mod(n: number, m: number): number {
   return ((n % m) + m) % m;
@@ -99,7 +99,17 @@ function parseChord(symbol: string, scale: ScaleContextLike): ChordSpec {
 
   let intervals: number[];
   let quality: string;
-  if (suffix === "dim") {
+  if (suffix === "maj") {
+    // Explicit quality override (owner request): the deterministic
+    // scale-stacking default makes e.g. the conventional major V in a
+    // natural-minor progression unreachable without switching to harmonic
+    // minor — "Vmaj" forces the major triad while the root stays diatonic.
+    intervals = [0, 4, 7];
+    quality = "maj";
+  } else if (suffix === "min") {
+    intervals = [0, 3, 7];
+    quality = "min";
+  } else if (suffix === "dim") {
     // Explicit override: leaves the scale entirely (spec).
     intervals = [0, 3, 6];
     quality = "dim";

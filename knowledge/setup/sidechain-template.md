@@ -71,7 +71,8 @@ Practical notes for capture-based checks on this template:
 |---|---|---|
 | **ShaperBox Volume Shaper** | manual draw, fitted numbers | `awh mix duck fit` → draw the printed points (preset files are unwritable — see docs/research/shaperbox-preset-format.md) |
 | **Stock Compressor (sidechain)** | near-automatic | `awh mix duck setup <Sidechain track>` inserts + presets it (fastest attack, max ratio); TWO manual touches (SDK has no routing API): enable Sidechain + Audio From = trigger source, and dial Release to the fitted ms. Then `awh mix duck calibrate` closes the loop: capture → measure achieved depth → adjust Threshold → repeat until it hits the fitted target |
-| **Volume automation** | NOT writable | the Extensions SDK has no automation/clip-envelope API (ADR-001 accepted loss). Paths that could restore it: the parked offline-.als-injection experiment, or a future AWH M4L ducker device (transport-synced gain envelope pushed over OSC — fully automatic, no routing clicks) |
+| **AWH M4L Ducker** | fully automatic | `m4l/AWH Ducker.maxpat` — a transport-synced gain-envelope device, placed ONCE by hand on the Sidechain track (replacing or sitting after a bypassed Volume Shaper), then driven entirely over OSC: `awh mix duck fit ... --json > fit.json` then `awh mix duck push --fit fit.json --trigger-clip <Trigger clip>`. No routing clicks, no manual dial-turning — see `m4l/README.md` |
+| **Volume automation** | NOT writable | the Extensions SDK has no automation/clip-envelope API (ADR-001 accepted loss); the parked offline-.als-injection experiment is the only other path |
 
 Verification is strategy-independent: `awh mix duck measure` on a Sidechain-
 bus capture (achieved depth), or an on/off `awh mix ab` pair.

@@ -1,0 +1,241 @@
+{
+  "schema": 1,
+  "kind": "drumstats",
+  "saved": "2026-08-19",
+  "n_sources": 25,
+  "sources": [
+    {
+      "file": "100bpm_tr8_drm_id_003_0401.mp3",
+      "sha256": "529742f04783224e6a859e4d3a4eb2e8da2ad96cdab7affb551def331afc037a"
+    },
+    {
+      "file": "100bpm_tr8_drm_id_010_0052.mp3",
+      "sha256": "6e28ced4503479a002d339780c7bba1570da614a9ddc3929854b0d728987852d"
+    },
+    {
+      "file": "102bpm_tr8_drm_id_003_0249.mp3",
+      "sha256": "064cd43516225058ba1569e0fa611a8c791be75cf61a8df7e04269fb2b0037bf"
+    },
+    {
+      "file": "102bpm_tr8_drm_id_006_0199.mp3",
+      "sha256": "7e718036bd715468726a82b9501a5c42b8d8aee570fabb285e4e52d946ef91a9"
+    },
+    {
+      "file": "102bpm_tr8_drm_id_008_0122.mp3",
+      "sha256": "2fcdcbcfb0fc0df95c02b481d5b16a40bee119560ced9e1f205575445709386d"
+    },
+    {
+      "file": "105bpm_tr8_drm_id_008_0185.mp3",
+      "sha256": "9f9db076a53c79389f562ae5992caa3d2d5247f3431030838fd4564d87f35eee"
+    },
+    {
+      "file": "108bpm_tr8_drm_id_006_0189.mp3",
+      "sha256": "bbd338621927922590fb054427bd7a9188be2e80cf40d91bfaf123015fda761b"
+    },
+    {
+      "file": "110bpm_tr8_drm_id_002_0257.mp3",
+      "sha256": "903cba327b98b9fa372dc9a4668a5bb59336d9aac12405e4aa904c1eac257eb2"
+    },
+    {
+      "file": "110bpm_tr8_drm_id_010_0037.mp3",
+      "sha256": "ae53f2008c898f550a99e4a29d1508404c16b36c4e46982ba0db256e5c048988"
+    },
+    {
+      "file": "112bpm_tr8_drm_id_012_0217.mp3",
+      "sha256": "d163cceb95af84da52120041445b526e93f14a04592e63df348d29c3b4926840"
+    },
+    {
+      "file": "114bpm_tr8_drm_id_008_0055.mp3",
+      "sha256": "015af6c88033a9fdd26a7533a5aa0c8cecb552b9cd4281259f0df0855c379bbf"
+    },
+    {
+      "file": "115bpm_tr8_drm_id_003_0397.mp3",
+      "sha256": "82cc58c394e932446902b230e3bf483e372cc7fb7ba1d9f2f5fe48546f65dce3"
+    },
+    {
+      "file": "115bpm_tr8_drm_id_012_0352.mp3",
+      "sha256": "57a307dcac5b96be7019c0bca15edd7ea1c5a35fe065df41ecb417d691887ec7"
+    },
+    {
+      "file": "116bpm_tr8_drm_id_008_0306.mp3",
+      "sha256": "9903c1fbcee495447ddf57c229342be6f808460900bd9d62d59d5d97ab1c5f7d"
+    },
+    {
+      "file": "118bpm_tr8_drm_id_002_0092.mp3",
+      "sha256": "c238132ada1f3054ff0d58a2f3571682a41f61504291051384dcdc42cafacb6e"
+    },
+    {
+      "file": "120bpm_tr8_drm_id_009_0018.mp3",
+      "sha256": "699915248c0326095e341a2cba68eda3e8cbadf6a42ae41bcdb21069147cd425"
+    },
+    {
+      "file": "122bpm_tr8_drm_id_008_0044.mp3",
+      "sha256": "d4aba676ef188cbe9a7fb3c609d852ee1aaa6099f1f3c08d7c03019598397a5e"
+    },
+    {
+      "file": "125bpm_tr8_drm_id_012_0190.mp3",
+      "sha256": "1370f62b32b70a623a19c0e04c8e1cef563e20cbfd176f41c2c6a71efc75e0d1"
+    },
+    {
+      "file": "128bpm_tr8_drm_id_004_0457.mp3",
+      "sha256": "061389b72a7014de83e6135baa2ab5a278f766063c654db3e17b49febbc33451"
+    },
+    {
+      "file": "130bpm_tr8_drm_id_009_0196.mp3",
+      "sha256": "8e045d6d428a510f227042c8c4c02524b40b4959bbca290816b1e4f6cf22744c"
+    },
+    {
+      "file": "95bpm_tr8_drm_id_002_0499.mp3",
+      "sha256": "2a7b030fc563121a1eb8a2301ec5681108eb42ef049b8ffe57cc7a0539144982"
+    },
+    {
+      "file": "95bpm_tr8_drm_id_004_0423.mp3",
+      "sha256": "03f5d45202ff7247a5172bfd1a60c0a2047f5589d63beae23e5e962b30ec9b71"
+    },
+    {
+      "file": "95bpm_tr8_drm_id_012_0052.mp3",
+      "sha256": "fc4884c87ad055423f6d723da18a5c5beeca3deeb42568653d4c2d552e8e72c6"
+    },
+    {
+      "file": "98bpm_tr8_drm_id_007_0247.mp3",
+      "sha256": "95a1f64f4a4cd9e7239597dea6b6b5d202672c81567c4e9613916bfe8ddbccbf"
+    },
+    {
+      "file": "98bpm_tr8_drm_id_009_0010.mp3",
+      "sha256": "d8d76fd25a55c39b99556a07419fbddfc1234f70f8afaf3f60b55db6d73345f1"
+    }
+  ],
+  "stats": {
+    "dataset": "waivops-edm-tr8-pilot",
+    "n_loops": 25,
+    "bpm_range": [
+      95.0,
+      130.0
+    ],
+    "bpm_mean": 109.4,
+    "grid": 16,
+    "per_band": {
+      "low": {
+        "position_prob": [
+          0.99,
+          0.07,
+          0.2,
+          0.13,
+          0.61,
+          0.05,
+          0.64,
+          0.39,
+          0.75,
+          0.23,
+          0.39,
+          0.23,
+          0.61,
+          0.16,
+          0.31,
+          0.11
+        ],
+        "density": 6.05,
+        "onsets_total": 605
+      },
+      "mid": {
+        "position_prob": [
+          0.82,
+          0.19,
+          0.35,
+          0.43,
+          0.91,
+          0.2,
+          0.73,
+          0.6,
+          0.81,
+          0.31,
+          0.59,
+          0.54,
+          0.89,
+          0.4,
+          0.63,
+          0.26
+        ],
+        "density": 8.71,
+        "onsets_total": 871
+      },
+      "high": {
+        "position_prob": [
+          0.79,
+          0.36,
+          0.81,
+          0.58,
+          0.97,
+          0.31,
+          0.8,
+          0.64,
+          0.72,
+          0.41,
+          0.86,
+          0.52,
+          0.97,
+          0.49,
+          0.74,
+          0.52
+        ],
+        "density": 10.6,
+        "onsets_total": 1060
+      }
+    },
+    "swing_estimate": {
+      "band": "high",
+      "method": "mean fractional-grid-step timing offset of onsets nearest EVEN positions (on-8th) vs ODD positions (the following off-16th); positive = off-16th lands later (swung)",
+      "on8_mean_offset_steps": 0.01962434867267248,
+      "off16_mean_offset_steps": 0.016998458681414228,
+      "delay_frac_of_16th_step": -0.002625889991258252,
+      "delay_equivalent_beats": -0.000656472497814563,
+      "n_on8_onsets": 677,
+      "n_off16_onsets": 383
+    },
+    "downbeat_check": {
+      "assumption": "loop starts on beat 1 (downbeat at t=0s)",
+      "loops_checked": 25,
+      "loops_near_zero": 25,
+      "near_zero_threshold_s": 0.22959183673469388
+    },
+    "mp3_decode_mode": "soundfile",
+    "assumptions": [
+      "band-split (<120 Hz / 120 Hz-2 kHz / >2 kHz) is a KICK / SNARE-CLAP / HAT PROXY, not source separation \u2014 a hat transient still has low-frequency click energy and a kick has harmonics past 2 kHz; treat 'low band' as 'where a kick dominates in a mix', not 'the isolated kick track'.",
+      "4/4 time signature assumed for the grid-step math (step duration = (60/bpm) * (4/grid)).",
+      "loop is assumed to start on beat 1 (downbeat at t=0s) \u2014 checked against the low band's first onset on 25/25 loop(s) with a detectable low-band onset; 25 landed within 230 ms of t=0 (the assumption held for every checked loop).",
+      "n=25 loop(s) \u2014 a PILOT sample size; treat position probabilities as suggestive, not definitive, until the full dataset is mined."
+    ],
+    "files": [
+      "100bpm_tr8_drm_id_003_0401.mp3",
+      "100bpm_tr8_drm_id_010_0052.mp3",
+      "102bpm_tr8_drm_id_003_0249.mp3",
+      "102bpm_tr8_drm_id_006_0199.mp3",
+      "102bpm_tr8_drm_id_008_0122.mp3",
+      "105bpm_tr8_drm_id_008_0185.mp3",
+      "108bpm_tr8_drm_id_006_0189.mp3",
+      "110bpm_tr8_drm_id_002_0257.mp3",
+      "110bpm_tr8_drm_id_010_0037.mp3",
+      "112bpm_tr8_drm_id_012_0217.mp3",
+      "114bpm_tr8_drm_id_008_0055.mp3",
+      "115bpm_tr8_drm_id_003_0397.mp3",
+      "115bpm_tr8_drm_id_012_0352.mp3",
+      "116bpm_tr8_drm_id_008_0306.mp3",
+      "118bpm_tr8_drm_id_002_0092.mp3",
+      "120bpm_tr8_drm_id_009_0018.mp3",
+      "122bpm_tr8_drm_id_008_0044.mp3",
+      "125bpm_tr8_drm_id_012_0190.mp3",
+      "128bpm_tr8_drm_id_004_0457.mp3",
+      "130bpm_tr8_drm_id_009_0196.mp3",
+      "95bpm_tr8_drm_id_002_0499.mp3",
+      "95bpm_tr8_drm_id_004_0423.mp3",
+      "95bpm_tr8_drm_id_012_0052.mp3",
+      "98bpm_tr8_drm_id_007_0247.mp3",
+      "98bpm_tr8_drm_id_009_0010.mp3"
+    ],
+    "skipped": [],
+    "generated_by": "awh_analysis.drumstats.mine_drum_loops"
+  },
+  "attribution": {
+    "note": "WaivOps, \"WaivOps EDM-TR8: Open Audio Resources for Machine Learning in Music\" (2024), https://doi.org/10.5281/zenodo.13257814 \u2014 Creative Commons Attribution 4.0 International (CC BY 4.0). Compiled by Patchbanks (info@patchbanks.com)."
+  }
+}

@@ -128,6 +128,52 @@ describe("KnowledgeStore", () => {
     expect((await store.listEntries()).map((e) => e.slug)).toEqual(["garage-hat-shuffle"]);
   });
 
+  it("indexes drum-stats records (awh drums mine --save) alongside mix reports without crashing", async () => {
+    // Regression: library/measurements/ holds two record shapes — a
+    // drumstats record (`kind: "drumstats"`, no `measurements` field) sitting
+    // next to an ordinary mix-report record must not throw reading either.
+    await mkdir(measurements, { recursive: true });
+    await writeFile(
+      join(measurements, "my-ref.json"),
+      JSON.stringify({
+        saved: "2026-08-17",
+        file: "/x/my-ref.wav",
+        measurements: {
+          bpm: 98,
+          loudness: { lufs_integrated: -9.2 },
+          spectrum: { tilt_db_per_oct: -5.3 },
+        },
+        findings: [{}, {}],
+      }),
+    );
+    await writeFile(
+      join(measurements, "waivops-tr9-pilot.json"),
+      JSON.stringify({
+        schema: 1,
+        kind: "drumstats",
+        saved: "2026-08-19",
+        n_sources: 14,
+        sources: [{ file: "a.mp3", sha256: "x".repeat(64) }],
+        stats: { dataset: "waivops-edm-tr9-pilot", n_loops: 14 },
+        attribution: { note: "CC BY 4.0 — WaivOps" },
+      }),
+    );
+
+    const measurementRecords = await store.listMeasurementRecords();
+    expect(measurementRecords.map((r) => r.name)).toEqual(["my-ref"]);
+
+    const drumStatsRecords = await store.listDrumStatsRecords();
+    expect(drumStatsRecords).toEqual([
+      { name: "waivops-tr9-pilot", saved: "2026-08-19", dataset: "waivops-edm-tr9-pilot", nLoops: 14, nSources: 14 },
+    ]);
+
+    const index = await store.buildIndex();
+    expect(index).toContain("## measurements");
+    expect(index).toContain("| [my-ref](../library/measurements/my-ref.json)");
+    expect(index).toContain("## drum-stats records");
+    expect(index).toContain("| [waivops-tr9-pilot](../library/measurements/waivops-tr9-pilot.json) | 2026-08-19 | waivops-edm-tr9-pilot | 14 | 14 |");
+  });
+
   it("flags prose-only entries in the index", async () => {
     await store.saveEntry({
       ...entry,

@@ -55,6 +55,8 @@ awh clip write <clipPath> [file]     # notation (file or stdin) -> REPLACE notes
 awh clip create <target> [file]      # new clip from notation
     # target = slot path (track:0/slot:2), or track path + --at-bar <bar>
     # options: --length <beats> --name <name> --sig <beatsPerBar>
+awh clip from-audio <audioFile> <target> [--bpm N] [--quantize 1/16] [--dry-run]
+    # melodic audio -> MIDI clip (Basic Pitch transcription, see below)
 
 awh render <trackPath> --from <beat> --to <beat>   # audio track pre-FX -> file
 awh serve-fake                 # offline gateway with a fake Set (for testing)
@@ -100,6 +102,36 @@ Flow: vary → tell the user which slots to audition → they pick favourites �
 the user before sweeping anything they might have renamed). Vary needs enough
 empty slots; create scenes via `awh call scene.create` if it says there aren't.
 
+## Audio-to-MIDI (`awh clip from-audio`) — melodic transcription
+
+```sh
+awh clip from-audio <audioFile> <target> [--bpm N] [--quantize 1/4|1/8|1/16|1/32|off]
+    [--onset-thresh N] [--frame-thresh N] [--min-len ms] [--min-freq Hz] [--max-freq Hz]
+    [--name <name>] [--dry-run]
+    # target = track path (auto-picks an empty session slot) or an explicit
+    # session slot (track:0/slot:2)
+```
+
+- Transcribes MELODIC audio (a vocal take, hummed idea, synth/bass recording)
+  into a MIDI clip via Basic Pitch (polyphonic pitch estimate). Give the user
+  the estimate honestly: note count, pitch range, duration, and the params
+  used — this is a starting point to audition and correct, NOT ground truth.
+- **NOT for drums** — for drum-hit timing use `awh drums detect-onsets`
+  instead (it finds onset positions, not pitches).
+- `--bpm` converts seconds to beats; if omitted it reads the Set's tempo, so
+  usually you don't need to pass it. `--quantize` is `off` by default (raw
+  performance timing) — turn it on when the user wants a cleaned-up grid-snapped
+  result instead of the human feel.
+- Zero notes detected (silence, quiet recording, wrong thresholds) is a
+  normal outcome, not an error: it says so and creates nothing — don't retry
+  blindly, ask the user if the file/thresholds are right.
+- Explicit slot target with an existing clip: overwritten in place (same
+  convention as `awh lib place`) — clamped to the existing clip's length if
+  the transcription is longer (the gateway can't resize a clip), and it
+  tells you if that happened.
+- Always end with: this is an estimate — the user should audition and fix
+  wrong notes/octaves before treating it as done.
+
 ## Sections (`awh sections`) — motif -> arrangement skeleton
 
 Build a full arrangement from source loops via an editable YAML plan:
@@ -130,6 +162,9 @@ awh drums gen <trackPath> --style house|techno|trap [--bars 4] [--density 0..1]
 awh drums fill <clipPath> [--style s]      # TRANSFORM: fill into the last bar
 awh drums humanize <clipPath> [--timing 0.02] [--velocity 8]   # role-aware groove
 awh drums vary <clipPath> [-n 4] [--amount 0..1]   # role-aware variations
+awh drums mine <dir...> [--bpm N | --no-bpm-from-name] [--grid 16] [--save name]
+    # RESEARCH: band-split rhythm-stat mining from a folder of drum loops —
+    # reports numbers to compare against the built-in specs, never edits them
 ```
 
 - `gen` maps the track's drum-rack pads to roles (kick/snare/clap/hats/...)
@@ -146,6 +181,68 @@ awh drums vary <clipPath> [-n 4] [--amount 0..1]   # role-aware variations
   PLACE — one undo reverts; re-read to show the user what changed.
 - density/style requests map naturally: "busier" → higher --density,
   "darker/minimal" → techno at lower density, "half-time/trap" → trap.
+- `mine` measures REAL drum loops (a folder of audio files, BPM from the
+  filename by default) — band-split (<120Hz/120Hz-2kHz/>2kHz, a kick/
+  snare-clap/hat PROXY, not source separation) onset detection folded onto
+  a 16th-grid, giving per-position hit-probability tables, density, and a
+  swing estimate. It ONLY reports; it never edits
+  `packages/core/src/drums/grammars.ts`/`styleSpec.ts` — those built-in
+  specs are hand-authored and locked. `--save <name>` writes a measurement
+  record into `library/measurements/` (same convention as `mix report
+  --save`; `awh mix records` lists/shows both kinds). Zero audio files in
+  the directory is a normal result (exit 0, states it, writes nothing) —
+  not an error. See `knowledge/rhythm/waivops-drum-stats-pilot.md` for a
+  worked example (pilot numbers vs. the built-in `HOUSE_STYLE_SPEC`/
+  `TECHNO_STYLE_SPEC`/`TRAP_STYLE_SPEC` assumptions) and always quote its
+  own pilot-sample-size caveat when citing it.
+
+## Phrase engine (`awh drop`) — call-and-response drop writing
+
+```sh
+awh drop respond <callClip> <target> [--recipe r] [--seed N] [-n count] [--key k]
+    [--style s] [--dry-run]
+    # THE core feature: answer an EXISTING call clip. <target> = a track
+    # path; candidates land in consecutive empty session slots, named
+    # "resp <recipe> s<seed>". Default: one candidate per recipe.
+awh drop phrase <target> [responseTarget] [--bars 8|16] [--style s] [--seed N]
+    [--variant v] [--key k] [--at-bar N] [--dry-run]
+    # CO-WRITE: cold-start an 8/16-bar call/response skeleton from a spec.
+    # Two targets = paired call/response clips (equal length, each voice
+    # silent during the other's bars). One target = single clip,
+    # register-split (both voices in the same clip).
+```
+
+- Two contrasting voices trade phrases — a bright/high CALL and a low
+  growl/stab RESPONSE — never a stacked, unrelated riff. The response
+  always enters AFTER a rest (the "question mark"), never on top of the
+  call, and always resolves to a stable low-register pitch (tonic/fifth by
+  default) — the "answer" gesture. This is general call-and-response craft
+  (`knowledge/arrangement/call-response-drop-grammar`,
+  `call-response-rest-placement`), not a specific artist's technique unless
+  a style entry says otherwise.
+- `respond` is the everyday tool: point it at a call clip the owner already
+  wrote (or transcribed via `awh clip from-audio`) and it proposes several
+  named, reproducible candidate responses to audition — never presents one
+  as final. Zero notes in the call clip is a normal result (nothing to
+  respond to yet): it says so and writes nothing, same convention as
+  `clip from-audio`'s zero-notes case.
+- `phrase` is for starting from nothing: it generates BOTH voices from a
+  spec's weighted call cells, applies the spec's evolution plan (state the
+  pair verbatim, then vary the call only while the response anchors — see
+  `knowledge/arrangement/drop-phrase-evolution`), and a turnaround reset cue
+  at each phrase boundary. Use `--variant` to pin a named call cell
+  (`awh kb show <phrase-style slug>` or the built-in's own `callCells`
+  names), same idea as `drums gen --variant`.
+- A target that already holds a clip is FILLED in place (notes clamped to
+  its length), same occupied-target convention as `awh lib place` — never
+  skipped or duplicated.
+- `--style`: the built-in `bass-music-cr`, or a knowledge entry with slug
+  `phrase-style-<name>` and an ```awh-phrase-spec``` block — same
+  data-driven convention as drum styles (adding a style = writing
+  knowledge, not code). Prints the entry's tier when used; never present a
+  `draft` style's flavor as fact about a real artist.
+- Always end with the honest reminder: candidates/skeletons are starting
+  points to audition, never a finished part.
 
 ## Mix analysis (`awh mix`) — measurements, never vibes
 
@@ -170,6 +267,42 @@ awh mix target <refFiles...> --save <name>        # measure refs -> genre target
 - capture requires the AWH Capture Tap M4L device (m4l/README.md) on the
   master; if it fails, fall back to asking the user to export the span and
   run report on that file.
+
+## Operator assistant (`awh op`) — recipes + audio-sample sound matching
+
+```sh
+awh op recipes                                  # list operator-recipe-* knowledge entries
+awh op apply <recipe> <devicePath> [--dry-run] [--audition]
+                                                 # write a recipe's params to a live Operator
+awh op match <sample.wav> [--apply <devicePath>]
+                                                 # analyze a sample -> tiered Operator patch proposal
+awh op verify <ref.wav> <devicePath>            # closed-loop: audition + capture + compare
+```
+
+- `apply` validates EVERY param name against `device.get` before writing
+  anything — an unknown/mistyped name (e.g. from a hand-edited recipe)
+  fails loudly and writes NOTHING, never a partial patch. `--dry-run`
+  prints the moves; `--audition` writes the recipe's `playNotes` to an
+  empty session slot on the device's track for the owner to press play.
+- `match` is TIERED, and tier 3 ("outside Operator's reachable set") is a
+  NORMAL result, not an error — say so plainly, quote the specific
+  measured property that's the blocker (harmonicity/pitch drift/inharmonic
+  partials), and don't push the owner toward a patch that can't actually
+  get there. Tiers 1-2 always include a `drawThesePartials` list (16
+  amplitudes) — Operator's user-drawable harmonics are believed UI-only
+  (unverified, not in the 195 automatable params), so hand this to the
+  owner to draw in 30s whenever the stock-wave residual is high.
+  `--apply <devicePath>` pushes only the proposal's `addressable` subset
+  (same validate-first flow as `apply`) — those raw values are an
+  explicitly-labeled HEURISTIC, not a calibrated curve; say so, don't
+  present them as exact.
+- `verify` is the closed loop (owner machine only) — needs the AWH Capture
+  Tap M4L device (m4l/README.md) on the device's track/bus; it is NOT
+  auto-iterated, report the score and let the owner tweak, then re-verify.
+- Raw `device.param` values have NO verified display-unit curve beyond a
+  single Volume point (`knowledge/setup/device-parameter-surface.md`,
+  `compressor-raw-display-mapping.md`) — never claim a raw number means a
+  specific ms/Hz/dB unless a knowledge entry says so.
 
 ## References (`awh ref`) — deconstruct, mark, correct
 
@@ -207,7 +340,10 @@ awh chords <target> --progression "i-VI-III-VII" [--key "A minor"]
 
 - Progressions are roman numerals resolved against the SET's scale (or
   --key): qualities come from stacking the scale, so everything stays
-  in-key; `7`, `sus2/4`, `dim/aug`, and `b/#` borrowing supported. The
+  in-key; `7`, `sus2/4`, `dim/aug`, `b/#` borrowing, and explicit-quality
+  `maj`/`min` suffixes supported — `i-iv-Vmaj-i` is how you get the
+  conventional major dominant in natural minor (case is cosmetic;
+  quality never comes from capitalization). The
   output lists the voiced pitches — read them back to the owner.
 - CASE IS COSMETIC — `V` and `v` produce identical pitches; quality is
   100% scale-derived, never picked by case. This means the very common
@@ -270,6 +406,10 @@ awh lib index                             # regenerate INDEX.md
 
 - Save liberally when the owner likes something ("save that hat loop"); default
   tier is `draft` — the owner promotes to `verified` after real use.
+- Right-click captures: the owner can 'AWH: Save clip to library' on any
+  MIDI clip in Live — run `awh lib import` at session start (and whenever
+  they mention having captured things) to drain those into
+  clips/inbox/ drafts, then help name/tag/re-categorize them.
 - Slugs are unique across the whole library; `--overwrite` updates an entry.
 - Live-browser mirror: `awh lib export-alc` renders every clip to a generated
   Pack of .alc Live Clips (drag into Places once; re-exports auto-re-index).
@@ -283,6 +423,55 @@ tracks (`track.create/update/delete/duplicate/clear-range/mixer`), scenes,
 devices (`device.insert/get/param/delete` — stock Live devices only),
 drum racks (`drum.pad-note`), Simpler (`simpler.sample`), `set.tempo`,
 audio clips (`clip.create-audio`).
+
+## Endless player (`awh endless`) — seeded, ever-different arrangements
+
+A standalone deliverable, separate from everything above: it builds a
+static, offline HTML+JS player from the owner's OWN produced/mixed audio
+stems (not notes it writes into Live) — an endless, never-repeating
+performance of one song, Bronze-style (docs/design/endless-player.md).
+There's no in-browser composition: the "endless" part is authoring-time
+variant pools (optionally from `awh drums`/`awh vary` renders) plus a
+seeded arrangement/mix grammar that picks which pre-produced loop plays
+next, forever.
+
+```sh
+awh endless plan --sections "intro:8,build:8,drop:16,break:8" --bpm 140 -o endless.yaml
+    # or: awh endless plan --from-ref <name> -o endless.yaml   (bars/bpm from
+    # a saved reference's corrected section map, M8 — see `awh ref`)
+    # edit endless.yaml: fill in each section's pools with your bounced
+    # audio file paths, add/rename layers, adjust transitions/rules — refuses
+    # to overwrite an existing file without --force
+awh endless build endless.yaml -o dist/my-song [--single-file]
+    # validates LOUDLY first — every pool file exists, every file's duration
+    # is bar-exact (+-25ms) to bars*4*60/bpm, every section reachable, no
+    # empty pools — reports every problem before writing anything
+awh endless demo -o dist/demo
+    # zero-asset sanity check: synthesizes a tiny kick/hat+bass+pads song
+    # and builds it, so you can hear the engine work with nothing of the
+    # owner's yet
+```
+
+- Loops must be bar-exact — if a bounced stem has a reverb/delay tail,
+  render it with the tail OVERLAPPED back onto the loop (not trimmed off);
+  `awh endless build` checks duration, not tail cleanliness, so a clipped
+  tail passes validation and still sounds wrong. Say this plainly when
+  helping bounce stems.
+- `build` writes `index.html` + `player.js` (zero deps) + the audio pools +
+  `endless-README.md` into the output dir; the README's own one-command
+  serve instruction (`python3 -m http.server`) is required because browsers
+  block `fetch()` on `file://` — don't tell the owner to just double-click
+  `index.html` for a multi-file build. `--single-file` inlines everything
+  as `data:` URIs into one HTML (fine for demos/sharing; warns above 12 MB).
+- This is NOT `awh sections` — `sections` writes an arrangement INTO the
+  Live Set from source clips; `endless` builds a standalone web player from
+  already-bounced audio files, outside Live entirely. Don't confuse a
+  request to "build me a live arrangement skeleton" (→ `awh sections`) with
+  "build me an endless/infinite version of my song to share" (→ `awh
+  endless`).
+- Never hand-edit the emitted `player.js` output to "fix" playback — it's a
+  literal copy of `packages/cli/assets/endless/player.js`; report a bug
+  instead of patching a build artifact.
 
 ## bar|beat notation
 
@@ -313,6 +502,24 @@ sig 4/4              # optional header (default 4/4)
    `awh clip create track:2/slot:0 <<'EOF' ... EOF` or `--at-bar` for the
    arrangement.
 3. Re-read to verify; hand back to the user to audition.
+
+**Turn a recorded/hummed idea into a MIDI clip** ("transcribe this vocal
+take", "turn my hummed idea into notes", "get the melody out of this audio
+file"):
+1. Get the audio file (owner-provided, or rendered/captured from the Set).
+   Get the tempo from `awh status` unless the user gives `--bpm` explicitly.
+2. `awh clip from-audio <audioFile> <target>` — don't hand-transcribe pitches
+   yourself or reach for `clip create`; this runs the real transcription
+   model (Basic Pitch) and does the seconds→beats/clip-length math for you.
+   `--dry-run` first if the user wants to see the note count/pitch range
+   before committing anything to the Set.
+3. Zero notes is a normal result (silence, quiet take, wrong thresholds) —
+   it says so and writes nothing; don't retry blindly, ask about the file or
+   loosen `--onset-thresh`/`--frame-thresh` if the user expects notes.
+4. Tell the user plainly this is an ESTIMATE (polyphonic pitch detection,
+   not ground truth) and to audition + fix wrong notes/octaves — never
+   present it as a finished transcript. For drum-hit timing instead of
+   pitches, use `awh drums detect-onsets`, not this command.
 
 **Vary an existing loop** (transform — "make me N variations", "more
 syncopated", "denser", etc. on material that already exists in the Set):
@@ -401,6 +608,67 @@ beat trap", "humanize my drums", "variations of my drum loop"):
    `awh drums humanize` (groove) — NOT plain `vary`/hand edits.
 3. Audition loop as with vary: name the slots, let the owner listen, sweep.
 
+**Mine rhythm stats from real drum loops / check the drum grammar against
+real data** ("how do real house kicks actually sit on the grid", "check our
+trap pattern against real loops", "mine this sample pack for rhythm
+stats"):
+1. Confirm there's a folder of drum-loop audio files (not a single file —
+   `mine` aggregates across a whole directory for a statistically
+   meaningful position-probability table).
+2. `awh drums mine <dir> --dataset <name> [--bpm N | --no-bpm-from-name]
+   [--save <name> --attribution "<license/credit line>"]` — BPM comes from
+   the filename by default (e.g. `138bpm_...`); pass `--bpm` for packs that
+   don't encode it. `--save` only when the dataset's license permits
+   reuse — put the EXACT required credit line in `--attribution`, verbatim,
+   not paraphrased.
+3. Relay the printed per-band (low/mid/high — a kick/snare-clap/hat PROXY,
+   say so) position-probability table, density, and swing estimate
+   verbatim — never invent a number the tool didn't print. Zero audio files
+   found is a normal result (exit 0, states it) — not an error.
+4. This is REPORTING ONLY: never edit `HOUSE_STYLE_SPEC`/
+   `TECHNO_STYLE_SPEC`/`TRAP_STYLE_SPEC` in `grammars.ts`/`styleSpec.ts`
+   from a mining result — those are hand-authored and locked. If the
+   numbers are worth acting on, write/extend a `knowledge/rhythm/` entry
+   comparing them to the built-in assumptions (see
+   `waivops-drum-stats-pilot` for the format) and let the owner decide on
+   any spec change separately, as its own reviewed edit.
+5. Always state the sample size and caveat small-n pilots as suggestive,
+   not definitive — a folder of a few dozen loops is a starting hypothesis,
+   not a verdict.
+
+**Answer a call clip with a response** ("give me some responses to this
+lead", "answer this vocal chop with a bass growl", "write a call and
+response for my drop"):
+1. `awh status --json` → find the call clip (or transcribe/write one first
+   — `awh clip from-audio` for a hummed/recorded idea, `awh clip create`
+   for hand notation) and a target TRACK for the response voice (a
+   different sound/track than the call — this is a PAIR, not a stack).
+2. `awh drop respond <callClip> <targetTrack>` — don't hand-compose a low
+   growl part yourself; this reads the call's actual notes and derives
+   several reproducible candidates (default: one per recipe), each
+   respecting the rest-before-entry and resolve-to-tonic/fifth rules. Zero
+   notes in the call clip is a normal result (nothing to respond to yet) —
+   it says so and writes nothing. `--dry-run` first to preview note counts
+   before committing slots.
+3. Name the candidate slots for the owner (`resp <recipe> s<seed>`) and let
+   them audition; `awh sweep <targetTrack> --prefix resp` clears the rest
+   once they've picked a favorite.
+
+**Cold-start a call-and-response drop skeleton** ("write me a dubstep drop
+from scratch", "give me an 8-bar call and response idea", "build a
+call/response skeleton in this key"):
+1. `awh status --json` → the Set's scale (or plan a `--key`), and two empty
+   targets (or one, for the single-clip register-split form) — two
+   different tracks/sounds for the two-voice pairing.
+2. `awh drop phrase <callTarget> [responseTarget] --bars 8|16 [--style s]` —
+   generates BOTH voices from a spec (weighted call cells, an evolution
+   plan that varies the call while the response anchors, a turnaround reset
+   at the phrase boundary) rather than one flat loop. `--dry-run` first;
+   `--variant` to pin a specific call-cell feel.
+3. Tell the owner plainly this is a SKELETON to audition and shape, never a
+   finished drop — the engine writes notes, not sound design (the growl/
+   chop timbre is still theirs to pick).
+
 **Mix feedback / "how does my mix measure?"** ("check my low end", "is this
 loud enough for clubs", "did that EQ change help"):
 1. Get audio: `awh mix capture` (tap on the master, see m4l/README.md) or
@@ -409,11 +677,40 @@ loud enough for clubs", "did that EQ change help"):
    — quote the findings' numbers verbatim; never state a measurement the
    report didn't print. Offer `--save` so the measurement becomes a
    retrievable record (`awh mix records`).
-3. Comparisons: `awh mix ab <before> <after>` (loudness-matched). This is
-   also THE way to verify a sidechain: capture with the compressor on and
-   bypassed, ab the pair — single-file pump shape alone can't prove it.
+3. Comparisons: `awh mix ab <before> <after>` (loudness-matched). For
+   sidechain verification use `awh mix pump-check <SidechainBusCapture>
+   --trigger-clip <Trigger>` — trigger-locked fit with a ducking/no-duck/
+   inconclusive verdict (capture the ISOLATED ducked bus; it warns on
+   full-mix bleed). The on/off `ab` pair remains the gold-standard proof.
 4. No target yet? Offer `awh mix target <owner's reference tracks> --save
    <genre>` first — comparisons run against THEIR references, not folklore.
+
+**Sound-design an Operator patch** ("give me a growl bass on Operator",
+"make this sound like <sample>", "dial in a pluck patch"):
+1. Starting from craft knowledge: `awh op recipes` → pick a slug, then
+   `awh op apply <recipe> <devicePath> [--dry-run] [--audition]` — validates
+   every param NAME against the live device before writing anything (fails
+   loudly, writes nothing, on a mistyped/missing param); `--audition` drops
+   the recipe's playNotes into an empty session slot to press play.
+2. Starting from a reference sound: get the audio (owner-provided, or
+   rendered/captured from the Set), then `awh op match <sample.wav>` — a
+   TIERED proposal, never a guess dressed as certainty. Tier 3 ("outside
+   Operator's reachable set") is a NORMAL, expected result for
+   noisy/inharmonic/formant-heavy material — relay the specific measured
+   reason (harmonicity/pitch drift/inharmonic partials), don't push the
+   owner toward a patch Operator can't actually produce.
+3. On a tier-1/2 match: relay the oscillator/envelope/filter targets and
+   the honest confidence (residual). ALWAYS hand the owner the
+   `drawThesePartials` list too — Operator's user-drawable harmonics are
+   believed UI-only (unverified, not automatable), a 30-second manual step
+   when the stock-wave residual is high. `--apply <devicePath>` pushes only
+   the addressable subset (same validate-first flow as `apply`); its raw
+   values are an explicitly-labeled heuristic, not a calibrated curve — say
+   so plainly, don't claim precision the system doesn't have.
+4. To verify against the real sound (owner's machine, needs the AWH Capture
+   Tap on the device's bus, m4l/README.md): `awh op verify <ref.wav>
+   <devicePath>` — NOT auto-iterated; report the score, let the owner
+   tweak, then re-verify (measure→adjust→verify, same discipline as mixing).
 
 **Sidechain ducking** ("tune my sidechain", "duck the bass to my kick",
 "set up sidechaining"). Read knowledge/setup/sidechain-template.md first —
@@ -443,8 +740,18 @@ MIDI "Trigger" track. Always start from the fit, then pick a strategy:
    sharp-corner points for dip/hold, smooth for release; Favorites /
    LFO copy-paste for reuse. Preset FILES cannot be generated — never
    offer to write one.
-4. VERIFY (either): `awh mix duck measure <SidechainBusCapture>
-   --trigger-clip ...` (achieved depth) or an on/off `awh mix ab` pair.
+4. M4L DUCKER strategy (full-auto, no routing clicks): needs the AWH
+   Ducker device placed ONCE by hand on the Sidechain bus (m4l/README.md —
+   this one manual step remains, the SDK cannot insert M4L devices).
+   `awh mix duck fit <drumsCapture> --trigger-clip <Trigger clip> --json >
+   fit.json` then `awh mix duck push --fit fit.json --trigger-clip
+   <Trigger clip>` — pings the device, pushes the envelope + trigger
+   pattern over OSC, and turns it on. `--off` bypasses it (unity gain).
+   No Trigger clip? `--pattern "0,1,2,3" --length 4` (raw beats). An empty
+   Trigger clip is a no-op — it says so and sends nothing, not an error.
+5. VERIFY (any strategy): `awh mix duck measure <SidechainBusCapture>
+   --trigger-clip ...` (achieved depth) or an on/off `awh mix ab` pair
+   (for the M4L Ducker, "on/off" = `duck push` / `duck push --off`).
    If the measured kick tail forces a groove-killing duck, suggest
    tightening the kick's own decay.
 Volume-automation ducking is NOT possible via the gateway (no automation
@@ -473,6 +780,30 @@ in F minor", "give me chords under this"):
    `draft` (or `sourced` with citations), never `verified`.
 3. End-of-session: `awh distill -o /tmp/distill.md` dumps the project;
    curate the notable clips into `awh save` and the lessons into entries.
+
+**Build an endless/infinite web version of a song to share** ("make an
+endless version of my track", "build me a Bronze-style infinite player",
+"I want a version of this song that's different every time"):
+1. This is OUTSIDE the Live Set entirely — don't reach for `awh sections`
+   (that writes an arrangement INTO Live from source clips) or hand-compose
+   anything; it's a standalone static web page built from the owner's own
+   bounced/mixed audio stems.
+2. Confirm the owner has (or will bounce) bar-exact loops per section per
+   layer — if unsure what "bar-exact" means here, offer `awh endless demo -o
+   <dir>` first so they can hear the engine work with zero real assets.
+3. `awh endless plan --sections "intro:8,drop:16,..." --bpm <bpm> -o
+   endless.yaml` (or `--from-ref <name>` if they have a corrected reference
+   section map from `awh ref`) → an editable, fully-commented scaffold with
+   EMPTY pools. Don't skip straight to `build` — the owner fills in real
+   audio file paths first.
+4. `awh endless build endless.yaml -o dist/<name>` → validates every file/
+   duration/reachability/pool loudly before writing anything; relay every
+   listed problem plainly (missing file, wrong duration, unreachable
+   section, empty pool) rather than guessing a fix. `--single-file` for a
+   single shareable HTML.
+5. Point them at the emitted `endless-README.md`'s serve instruction — a
+   multi-file build needs `python3 -m http.server`, not double-clicking
+   `index.html` (browsers block `fetch()` on `file://`).
 
 **Tweak a device:** `awh call device.get` first (params carry name/min/max/
 current value; values are RAW Live-internal numbers — check min/max, not

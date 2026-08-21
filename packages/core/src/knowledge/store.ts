@@ -42,6 +42,14 @@ export interface ReferenceRecordSummary {
   sectionCount?: number;
 }
 
+export interface DrumStatsRecordSummary {
+  name: string;
+  saved: string;
+  dataset: string;
+  nLoops: number;
+  nSources: number;
+}
+
 export class KnowledgeStore {
   /**
    * @param root the knowledge/ directory
@@ -121,12 +129,22 @@ export class KnowledgeStore {
     return [...topics].sort();
   }
 
+  /**
+   * library/measurements/ holds TWO record kinds sharing one directory:
+   * single-file mix reports (`report.save_record`, no `kind` field) and
+   * multi-file drum-stats records (`drumstats.save_record`, `kind:
+   * "drumstats"` — see `awh drums mine --save`). This lists only the
+   * mix-report kind (its own shape); drum-stats records are skipped here
+   * and surfaced separately by `listDrumStatsRecords`, so neither crashes
+   * trying to read fields the other kind doesn't have.
+   */
   async listMeasurementRecords(): Promise<MeasurementRecordSummary[]> {
     if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
     const out: MeasurementRecordSummary[] = [];
     for (const f of (await readdir(this.measurementsDir)).filter((x) => x.endsWith(".json")).sort()) {
       try {
-        const r = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
+        const raw = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
+          kind?: string;
           saved: string;
           file: string;
           measurements: {
@@ -136,17 +154,46 @@ export class KnowledgeStore {
           };
           findings: unknown[];
         };
+        if (raw.kind === "drumstats") continue;
         out.push({
           name: f.replace(/\.json$/, ""),
-          saved: r.saved,
-          file: r.file,
-          lufsIntegrated: r.measurements.loudness.lufs_integrated,
-          tiltDbPerOct: r.measurements.spectrum.tilt_db_per_oct,
-          ...(r.measurements.bpm ? { bpm: r.measurements.bpm } : {}),
-          findingsCount: r.findings.length,
+          saved: raw.saved,
+          file: raw.file,
+          lufsIntegrated: raw.measurements.loudness.lufs_integrated,
+          tiltDbPerOct: raw.measurements.spectrum.tilt_db_per_oct,
+          ...(raw.measurements.bpm ? { bpm: raw.measurements.bpm } : {}),
+          findingsCount: raw.findings.length,
         });
       } catch (err) {
         throw new Error(`Bad measurement record ${f}: ${(err as Error).message}`);
+      }
+    }
+    return out;
+  }
+
+  /** The `awh drums mine --save` half of library/measurements/ — see
+   * `listMeasurementRecords` for why the two kinds are split. */
+  async listDrumStatsRecords(): Promise<DrumStatsRecordSummary[]> {
+    if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
+    const out: DrumStatsRecordSummary[] = [];
+    for (const f of (await readdir(this.measurementsDir)).filter((x) => x.endsWith(".json")).sort()) {
+      try {
+        const raw = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
+          kind?: string;
+          saved: string;
+          n_sources: number;
+          stats: { dataset: string; n_loops: number };
+        };
+        if (raw.kind !== "drumstats") continue;
+        out.push({
+          name: f.replace(/\.json$/, ""),
+          saved: raw.saved,
+          dataset: raw.stats.dataset,
+          nLoops: raw.stats.n_loops,
+          nSources: raw.n_sources,
+        });
+      } catch (err) {
+        throw new Error(`Bad drum-stats record ${f}: ${(err as Error).message}`);
       }
     }
     return out;
@@ -217,6 +264,22 @@ export class KnowledgeStore {
           `| [${r.name}](../library/measurements/${r.name}.json) | ${r.saved} | ` +
             `${r.lufsIntegrated.toFixed(1)} | ${r.tiltDbPerOct.toFixed(1)} | ${r.bpm ?? ""} | ` +
             `${r.findingsCount} | ${basename(r.file)} |`,
+        );
+      }
+    }
+    const drumStats = await this.listDrumStatsRecords();
+    if (drumStats.length > 0) {
+      lines.push(
+        "",
+        "## drum-stats records (library/measurements/ — `awh drums mine --save` records)",
+        "",
+        "| record | saved | dataset | loops | sources |",
+        "|---|---|---|---|---|",
+      );
+      for (const r of drumStats) {
+        lines.push(
+          `| [${r.name}](../library/measurements/${r.name}.json) | ${r.saved} | ` +
+            `${r.dataset} | ${r.nLoops} | ${r.nSources} |`,
         );
       }
     }

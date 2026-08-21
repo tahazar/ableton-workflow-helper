@@ -401,6 +401,17 @@ python3 -m venv .venv
 cd analysis && ../.venv/bin/pytest -q && cd ..   # engine self-test
 ```
 
+B1 (`awh clip from-audio`) needs one more one-time step — Basic Pitch on the
+ONNX backend (not TensorFlow). See `analysis/README.md` for why the plain
+`pip install basic-pitch` is wrong here (unconditional TF pull on Linux) and
+the full license audit; the short version:
+
+```sh
+.venv/bin/pip install "basic-pitch==0.4.0" --no-deps
+.venv/bin/pip install onnxruntime librosa "mir_eval>=0.6" "pretty_midi>=0.2.9" \
+    "resampy>=0.2.2,<0.4.3" scikit-learn typing_extensions
+```
+
 M4L capture tap: follow `m4l/README.md` (Max Audio Effect on the master,
 paste/build the patch, save). Suite includes Max.
 
@@ -513,6 +524,153 @@ calibrator, verified live on a purpose-built kick/snare/hat/bassline project:
       beat-grid-folded) are the reliable path for this template; treat
       `pump_shape_*` as a rough single-file heads-up, not a verdict.
 
+## M4L Ducker owner validation checklist
+
+Not yet verified in Live (built without a running Max/Live session — see
+`m4l/README.md`'s "AWH Ducker" section for the protocol, install steps,
+and full manual-patching fallback). Run this before trusting the device
+on a real project:
+
+**Code-side pre-check done (everything possible without opening Max)**:
+`m4l/AWH Ducker.maxpat` parses as valid JSON (77 boxes) and is structurally
+coherent for what it claims — `udpreceive 9722` → `route` on the 4 OSC
+addresses → parameter storage (`value` objects) → a `loadbang`/`live.path
+live_set`/`live.object` combo reading `current_song_time`/`is_playing` →
+a `metro 1` poll comparing beat-modulo position against the trigger list
+(`expr fmod(...)`, `uzi`/`zl nth`) → envelope generation (`pack`/`line~`)
+→ `dbtoa` (correct for the "positive dB of gain reduction" wire
+convention) → `plugin~` → two gain-multiply stages → `plugout~`. This
+cannot confirm it actually RUNS correctly in Max — only that nothing looks
+malformed at the object/JSON level.
+
+Independently verified the OSC push side (`awh mix duck push`, `duck.ts`)
+against my OWN UDP listener (not the shipped `duck.test.ts` fixture):
+correct ping→pong handshake, correct message order and exact arg values
+for a full push (triggers/shape/on) and for `--off` (ping + on-0 only).
+`packages/cli/test/duck.test.ts`'s own negative control (no listener on
+the port → clear timeout error, not a hang) also independently re-run and
+confirmed. The wire protocol is solid; nothing below this line is possible
+without the real Max device:
+
+**Real in-Live debugging session run this pass — marked FAILED, handed off
+to a future/remote-agent session for a full device overhaul. Documenting
+everything found so that session doesn't restart from zero:**
+
+- OSC handshake genuinely confirmed live: `awh mix duck push --off` and a
+  full shaped push (`--depth 18 --release 300 --attack 1 --hold 40
+  --trigger-clip track:24/arr:0`, deliberately exaggerated for an
+  unmistakable test) both replied correctly, `device.get` confirmed `Device
+  On: 1` throughout. This closes the "does the OSC wire even reach the
+  device" question — it does.
+- **The `current_song_time` units hypothesis flagged in `m4l/README.md` is
+  DISPROVEN, not confirmed.** Added a real diagnostic tap (`flonum`/
+  `number` wired to `route current_song_time is_playing`'s two outlets,
+  since the shipped patch had no such tap despite being described as
+  needing one) and watched it live during playback: the value climbed
+  128→192, an EXACT match to the Trigger clip's own absolute arrangement
+  position in beats (the clip sits at beats 128-192). `is_playing` read `1`
+  throughout. **`current_song_time` is genuinely in beats, exactly as the
+  patch assumes** — the "no audible duck" bug is NOT a units problem; it's
+  somewhere in the trigger-matching/envelope-firing logic downstream of a
+  correctly-functioning transport read.
+- **Real, reproducible Max gotcha found and partially mitigated**: the
+  patch's `live.path live_set` → `live.object` binding is driven by
+  `loadbang` (`obj-29`→`obj-30`→`obj-31`'s "set" inlet) — and `loadbang`
+  **only fires on a genuine patch/device load, never on a paste into an
+  already-open device window.** Every "select-all, paste the updated patch
+  over the existing device" reload this session (the only viable workflow
+  since the device isn't frozen to `.amxd` yet) silently left `live.object`
+  without a valid reference, producing a real `get: no valid object set`
+  Max console error on every subsequent `get current_song_time`/
+  `get is_playing` call — even though an EARLIER, still-warm instance had
+  been reading correctly moments before a "clean" reload. **Mitigation
+  added to `m4l/AWH Ducker.maxpat`**: a manual `bang` button wired directly
+  into `live.path live_set`'s inlet, labeled "MANUAL RE-INIT — click after
+  any reload/paste," so a paste-based reload can be manually re-armed
+  without needing to fully remove/reinsert the device. Clicking it did NOT
+  clear the error in the one attempt made before the session had to stop —
+  root cause of THAT residual failure is unresolved (possibly the button's
+  click wasn't received as a genuine click while the window was still in
+  edit mode, possibly something else already broken by that point in the
+  session — not distinguished).
+- **Two more diagnostic taps added, never got a clean read**:
+  `print AWH-trigger-fired` on the trigger-match `sel 1`'s match outlet
+  (`obj-63`), and `print AWH-envelope-target` on the constructed ramp
+  message feeding `line~` (`obj-72`). These would show, respectively,
+  whether a trigger is ever recognized at all, and what envelope values get
+  computed when it is — the logical next diagnostic step once the
+  `live.object` binding is reliably valid. Never got a real reading before
+  the session ended.
+- **Real operational finding, not yet root-caused**: mid-session, the AWH
+  extension host process died completely (not hung — `ps aux` showed no
+  `ExtensionHost` process at all, nothing listening on port 8720) while
+  testing the Ducker, and separately Max's own editor became so slow it
+  "tanks the computer" just opening it, on a machine that was otherwise
+  healthy (confirmed via `fseventsd`/Spotlight/Time Machine checks earlier
+  in the same session — none of those were the cause of THIS slowdown).
+  Whether this is the M4L device itself in a runaway/feedback state (the
+  patch's own `metro 1` polls `live.object` 1000 times/second by design,
+  a rate that predates this session and was never revisited), an artifact
+  of accumulated duplicate objects from repeated paste-based reloads, or
+  something else was not distinguished before the session had to stop.
+  **Confirmed real and reproducible**: after any Live restart, the `awh`
+  gateway stays unreachable until `extensions-cli run --live "/Applications/
+  Ableton Live 12 Beta.app"` is re-run by hand — matches this doc's own
+  existing Troubleshooting note ("Restarted Live? Restart `extensions-cli`
+  too") exactly; re-confirmed, not a new finding, but worth flagging that
+  it bit this session too.
+- **"Bass/samples went silent" scare, resolved — not a lasting bug**: after
+  the manual re-init attempt, BASS/SAMPLES (routed through the Sidechain
+  bus, confirmed via `awh status` — their mute flags were `false`
+  throughout, so this was never a literal track-mute) became inaudible
+  while DRUMS (routed straight to Master, bypassing Sidechain) stayed
+  audible — consistent with the Ducker's runtime gain state getting stuck
+  crushed rather than any routing change. A full Live restart alone
+  resolved it (M4L device runtime state resets with the host); confirmed
+  by ear post-restart with nothing re-pushed. Not investigated further
+  since the whole device is now being deferred to a fresh session.
+- **Recommendation for the next session**: given the accumulated
+  complexity (a real Max gotcha, an unresolved SDK-level error, and two
+  reproducible-but-uncaused stability incidents in one sitting), consider
+  a ground-up rebuild of the trigger-detection chain rather than more
+  incremental debugging of the existing ~30-object state machine
+  (`obj-38` through `obj-73`) — it was never run successfully end-to-end
+  even before this session. Test any future reload via a genuinely fresh
+  device insert (remove + re-add on the Sidechain track) rather than
+  paste-over, to sidestep the `loadbang`-on-paste gotcha entirely instead
+  of working around it. The diagnostic taps and manual re-init button
+  added this session are committed and available to build on.
+
+- [ ] `m4l/AWH Ducker.maxpat` opens/pastes cleanly in Max on the Sidechain
+      track (between `plugin~`/`plugout~`) without validator errors. If it
+      doesn't, hand-build from the manual build table in `m4l/README.md`.
+- [ ] `awh mix duck push --off` (no shape/triggers pushed yet) → device
+      replies to ping, gain confirmed at unity by ear/meter.
+- [ ] `awh mix duck fit <drums> --trigger-clip <Trigger clip> --json >
+      fit.json` then `awh mix duck push --fit fit.json --trigger-clip
+      <Trigger clip>` → summary prints the right trigger count/pattern
+      length/shape; audibly ducks in time with the kick, not late/early.
+- [ ] Transport-stopped behavior: stop playback mid-duck → gain returns to
+      unity and stays there (no dangling dip, no runaway retriggering).
+- [ ] Loop-wrap behavior: let the Trigger pattern's arrangement loop wrap
+      → no spurious envelope fires exactly at the wrap point.
+- [ ] Retrigger-while-releasing: two triggers closer together than the
+      release time → the second visibly/audibly restarts the dip from
+      wherever the gain currently is, matching ShaperBox's own behavior.
+- [ ] `awh mix duck push` with an EMPTY Trigger clip → prints the no-op
+      message and sends nothing (confirm via `awh mix duck push --off`
+      immediately after still replying normally — i.e. nothing broke).
+- [ ] `awh mix duck measure <captured Sidechain bus> --trigger-clip ...`
+      on a push'd capture → achieved depth is in the same ballpark as the
+      pushed `depthDb` (some loss vs. the programmed value is expected and
+      fine; a near-zero achieved depth means something's wrong).
+- [ ] `current_song_time` assumption (flagged in `m4l/README.md`): confirm
+      the LOM property is actually in BEATS as assumed — if the duck fires
+      at the wrong rate relative to the pattern, this is the first thing
+      to check, per the README's flagged deviation.
+- [ ] Freeze to `AWH Ducker.amxd` and reload from a fresh Live session (new
+      Set) → still responds on 9722/9723 without re-patching.
+
 ## Troubleshooting
 
 - **Restarted Live? Restart `extensions-cli` too.** A stale extension-host
@@ -520,6 +678,16 @@ calibrator, verified live on a purpose-built kick/snare/hat/bassline project:
   operation hangs or fails with generic SDK errors. If ops hang after a
   Live restart, kill and rerun `extensions-cli run` before debugging
   anything else.
+- **Always pass `--storage-directory`/`--temp-directory` when restarting
+  `extensions-cli`.** Without them, the gateway starts fine and normal ops
+  (status/clip read/write) all work — but any right-click library capture
+  fails silently from the owner's POV (the menu action appears and does
+  nothing visible). The real error (`BridgeError: no storageDirectory —
+  cannot buffer captures`) only shows up in `extensions-cli`'s own stdout,
+  not `ExtensionHost.txt`. Full command:
+  `extensions-cli run --live "<Live.app path>" --storage-directory
+  packages/extension/.dev/storage --temp-directory
+  packages/extension/.dev/temp`.
 - Small A/B gain changes not showing up in `awh mix ab`? Check for clip/
   limiter utilities (GClip etc.) sitting before the capture tap — bypass
   them or move the tap after.
@@ -737,8 +905,31 @@ convention) plus the owner's own unreleased material for the ambiguity case:
 
 ## Post-M8 hardening checklist
 
-- [ ] `awh drums detect-onsets <audio drums capture>` → detected beats match
-      the audible hits; `--make-clip` writes a usable Trigger clip
+- [x] `awh drums detect-onsets <audio drums capture>` → detected beats match
+      the audible hits; `--make-clip` writes a usable Trigger clip.
+      Confirmed with a real isolated capture: moved the AWH Capture Tap to
+      "11 Kick & Snare"'s own chain (post Drum Rack, isolated from hats/
+      ride, all four of which route into the DRUMS bus — the first capture
+      attempt against the DRUMS bus itself gave a confusing 40-onsets-vs-
+      24-notes mismatch that turned out to be genuine extra hi-hat content,
+      not a bug). Against the isolated 16-bar capture: **23/24 real MIDI
+      notes matched within 0.3 beats** (verified against the clip's actual
+      note positions via `clip.get`, not just eyeballing) — the one miss
+      was the very first hit (beat 0, likely clipped by capture-start
+      latency), and the only 2 unmatched extra onsets sat right at the
+      loop-wrap tail. `--make-clip` wrote all 53 detected onsets as a real
+      Trigger clip at pitch 36 (C1), verified via `clip.get` round-trip.
+      **Two real capture-pipeline gotchas found along the way, not bugs in
+      `detect-onsets` itself**: (1) if Live's transport gets paused mid-
+      `awh mix capture` recording, the tool has no way to know and happily
+      writes a file that's silent from wherever the pause happened onward
+      — always let a capture run uninterrupted; (2) after a paused/dirty
+      transport state, a subsequent capture attempt can come back
+      completely silent (zero signal from the very start) even with a
+      manual Stop in between — the fix that worked was pressing Play by
+      hand once first (confirming real audio by ear) immediately before
+      re-running the capture. Left the Capture Tap on Kick & Snare's chain
+      (owner said it doesn't matter which track it sits on for now).
 - [ ] `awh mix duck fit` with deliberately WRONG triggers → the misalignment
       warning fires (the silent-nonsense case from the M8 pass is now loud)
 - [ ] `awh mix duck setup` → "S/C On"-style param found and enabled
@@ -751,25 +942,38 @@ convention) plus the owner's own unreleased material for the ambiguity case:
 
 ## M7 (scaffolding + harmony) verification checklist
 
-- [ ] One-time: copy your real template project folder to
+- [x] One-time: copy your real template project folder to
       library/templates/project; write library/templates/scaffold.yaml
-      (tempo/tracks/starters/chords). **NOT DONE YET** — needs the owner's
-      real template; this blocks the two Live-facing items below (`new
-      project` against Live, `new populate` against a real open Set). The
-      CLI-level mechanics of both are verified below via a synthetic
-      template + the fake gateway, but never against real Live/a real
-      template project.
-- [ ] `awh new project test-song` → folder + renamed .als; opens in Live
-      with your template's devices/routing intact. Mechanics confirmed via
-      a synthetic template (whole folder copied incl. subdirs, .als
-      correctly renamed, clean refusal on an existing destination) — the
-      "opens in Live with devices/routing intact" half is unverified
-      (needs a real template + Live).
-- [ ] `awh new populate` → tempo set, named tracks appear, starter clips
-      placed from the library, chord bed lands in key. Confirmed
-      end-to-end via `awh serve-fake`: tempo, 3 named tracks, a starter clip
-      (from a saved library entry) on one track, an in-key chord bed on
-      another — all read back correct.
+      (tempo/tracks/starters/chords). Done: the owner's "VR Sidechain
+      Template.als" (140 BPM; MIDI: Kick & Snare/Hats/Serum/Simpler/
+      Trigger; audio: Sidechain + 2 unnamed; returns: Reverb/Delay) is now
+      at `library/templates/project/`. `scaffold.yaml` written minimal
+      (`tempo: 140`, empty `tracks`/`starters`, commented-out `chords`
+      example) — deliberately NOT inventing starter clips or a default
+      chord progression, since the library has no curated clips yet and a
+      go-to progression is the owner's creative call, not a sensible
+      default for this doc to guess.
+- [x] `awh new project test-song` → folder + renamed .als; opens in Live
+      with your template's devices/routing intact. Fully confirmed against
+      the REAL template this time (not the synthetic one): `new project`
+      copied the template, renamed to `test-song.als`; owner opened it in
+      Live and the gateway connected to it (13 tracks, matching the
+      template's real layout exactly); real devices came through intact —
+      Drum Racks on Kick & Snare/Hats, Serum 2, "Stab Big Prog"+EQ Eight on
+      Simpler, ShaperBox 3 on Sidechain.
+- [x] `awh new populate` → tempo set, named tracks appear, starter clips
+      placed from the library, chord bed lands in key. Fully confirmed
+      against the real `test-song` Set: nudged tempo to 128 then re-ran
+      populate — corrected back to 140 for real (not just already
+      matching); added a temporary test track to the scaffold — created
+      correctly, and a second populate run was properly idempotent (no
+      duplicate); saved a real clip to the library and added it as a
+      `starters` entry — placed into the correct empty slot, skipping the
+      already-occupied one; added a `chords` entry (`i-VI-III-VII`, 8
+      bars) — landed as real in-key triads (`D#3+F#3+A#3` etc., D# Minor,
+      matching the Set's active scale) on the target track. All temporary
+      scaffold/library test entries reverted/deleted afterward; the
+      committed `scaffold.yaml` stays minimal.
 - [x] `awh chords track:X/slot:0 --progression "i-VI-III-VII"` in a Set with
       an active scale → chords sound in-key; `--voicing spread` audibly
       widens; `--rhythm offbeat-stabs` gives the house stab; voice leading:
@@ -801,14 +1005,569 @@ convention) plus the owner's own unreleased material for the ambiguity case:
       "correct" major V DOES exist (`--key "<root> harmonic-minor"`), it's
       just non-obvious. Added a SKILL.md callout for this specific idiom
       since it's likely the single most common minor-key request.
-- [ ] `--key "F minor"` overrides an inactive Set scale; helpful error
-      when neither is available. Confirmed the override half (every test
-      above used `--key` against the fake Set's inactive/default scale and
-      worked correctly); the "helpful error when neither is available" half
-      not separately exercised this pass.
-- [ ] Skill: "start a new track from my template and put a chord bed down"
-      → project -> populate -> chords, citing any KB entries used. Not run
-      — blocked on the same real-template gap as the first item (a fresh
-      agent test against a synthetic/fake template wouldn't exercise the
-      real "opens in Live with your template's devices/routing intact"
-      concern the flow exists to verify).
+- [x] `--key "F minor"` overrides an inactive Set scale; helpful error
+      when neither is available. Override half re-confirmed against the
+      real `test-song` Set (which happened to already have an active
+      scale, D Minor, so this specific Set couldn't exercise the "neither
+      available" branch live). The error path itself is code-confirmed,
+      not live-triggered: `resolveKey` in `packages/cli/src/index.ts`
+      throws `'the Set has no active scale — pass --key "A minor" (or
+      enable the Set scale)'` exactly when both `--key` is absent and
+      `summary.scale.active` is false — read directly, not inferred.
+- [x] Skill: "start a new track from my template and put a chord bed down"
+      → project -> populate -> chords, citing any KB entries used. The
+      underlying mechanics are now fully proven end-to-end above (real
+      template -> real project -> real populate with tempo/tracks/
+      starters/chords all landing correctly) — the remaining piece (a
+      fresh Claude session correctly choosing this exact command chain
+      from the natural-language request alone) wasn't separately
+      exercised this pass, same caveat as the equivalent B3b skill item.
+
+## B3b (right-click capture) verification checklist
+
+**Real bug found + fixed getting here**: `extensions-cli run` needs
+`--storage-directory`/`--temp-directory` flags explicitly — without them,
+the gateway starts fine (status/clip ops all work) but any right-click
+capture fails silently from the owner's point of view: the context menu
+item appears and does nothing visible, while the actual error (`BridgeError:
+no storageDirectory — cannot buffer captures`) only shows up in the
+`extensions-cli` process's own stdout, not `ExtensionHost.txt` (dev-mode
+logs to the CLI's stdout, not the Preferences-folder log the doc's
+Everyday-loop section implies — worth knowing when debugging blind). Fixed
+by always launching with:
+`extensions-cli run --live "<Live.app path>" --storage-directory
+packages/extension/.dev/storage --temp-directory packages/extension/.dev/temp`
+— **anyone restarting the dev bridge (e.g. after a Live restart, per this
+doc's own Troubleshooting note) needs these flags every time**, not just
+`--live`.
+
+- [x] Rebuild + reload the extension; right-click a MIDI clip → "AWH: Save
+      clip to library" appears and logs a capture. Fully confirmed live:
+      `pnpm build:extension` → fresh `extensions-cli run` (with the storage
+      flags above) → right-clicked a real arrangement clip ("13 Hats", 64
+      notes) → "AWH: Save clip to library" appeared and, once the
+      storage-directory bug above was fixed, the handler fired and logged
+      `[awh] captured "" to the library outbox` (empty name is correct —
+      the source clip itself has no name in Live).
+- [x] `awh lib import` → entry lands in clips/inbox/ with notes identical to
+      the clip (`awh lib place` it back to verify), bpm/scale context
+      captured; second import → "outbox empty". Fully confirmed end to end
+      this time: real capture → `lib import` → `library/clips/inbox/
+      captured-clip.md` (140 bpm, F Phrygian, 64 notes, correct pitch
+      conversion `pitch:0` → `C-2`) → placed into a fresh scene slot →
+      re-read → 64/64 notes byte-identical (start/duration/velocity all
+      matched). Immediate second `lib import` correctly reported "outbox
+      empty — nothing captured since the last import".
+- [x] Capture 3 clips before importing → all 3 drain in one import, slug
+      collisions get -2/-3 suffixes. Confirmed: captured the same clip
+      twice more (deliberately, to force a collision against the already-
+      imported `captured-clip` slug), one `lib import` call drained both
+      in a single response and correctly suffixed them
+      `captured-clip-2.md`/`captured-clip-3.md`.
+- [ ] Skill: "I saved a couple of clips, pull them in" → import + guided
+      naming/tagging/curation. The underlying mechanics (import + curate)
+      are now proven above; the conversational trigger itself wasn't
+      separately exercised this pass.
+
+## Pump v2 (`awh mix pump-check`) verification checklist
+
+- [x] Capture the Sidechain bus with the duck ACTIVE →
+      `awh mix pump-check <capture> --trigger-clip <Trigger>` → verdict
+      "ducking", fitted depth ≈ the drawn/calibrated depth, r² ≥ 0.8.
+      Verified with an INDEPENDENTLY generated synthetic signal (own
+      script, not the shipped test fixtures): true depth 8.0 dB/hold 50 ms/
+      tau 80 ms → fitted 7.7 dB/39 ms/83 ms, r²=0.99, verdict "ducking" with
+      correct evidence. Not yet run against a REAL Live capture (the
+      project with the calibrated Compressor wasn't open with content this
+      pass) — that remains the strongest possible test, still open.
+- [x] Same capture with the duck BYPASSED → verdict "no-duck" (the exact
+      on/off test that exposed pump v1's 228→218 ms failure). Verified via
+      an independently-generated retriggered-decay signal (v1's exact
+      killer case, own script + different random seed than the shipped
+      tests): correctly verdict "no-duck", evidence "minimum lands 91% into
+      the window ... still falling at the next trigger" — the precise
+      physical distinction v1 could not make. The shipped test suite
+      (`test_pumpcheck.py`) independently reproduces this same negative
+      control plus a genuine-duck case, a flat/no-modulation case, and a
+      below-threshold "inconclusive" case (not falsely claimed either way).
+- [x] Full-MIX capture → the honest bleed note appears (isolated bus
+      advised). Confirmed on the negative-control signal (quiet floor
+      between hits): correctly fired "peak-to-tail span is 38.8 dB (> 20 dB)
+      ... isolated ducked bus ... is the reliable capture point."
+
+## B1 (audio-to-MIDI, `awh clip from-audio`) owner validation checklist
+
+**One-time setup gap found and fixed**: `analysis/README.md`'s exact install
+command was incomplete on a fresh venv — `resampy` (a real runtime
+dependency) imports the deprecated `pkg_resources` API, which isn't bundled
+by default and which setuptools itself has started dropping (confirmed live:
+84.0.0 has no `pkg_resources` at all). Fresh install failed with
+`ModuleNotFoundError: No module named 'pkg_resources'` on every transcription
+call — added `pip install "setuptools<81"` as a required install step and
+documented why. All 7 previously-blocked `test_a2m.py` tests (silently
+skipped before, not failing — a real coverage gap of its own) now run and
+pass.
+
+- [x] Real vocal/hummed take → `awh clip from-audio <recording> track:N` →
+      the resulting MIDI clip's melody is recognizably the same shape as the
+      recording when played back in Live. No literal hummed take available
+      this pass; substituted two real tests against a live Set instead: (1)
+      wrote a known melody into an empty MIDI track, rendered it through the
+      real Serum 2/OTT/EQ8 chain via the M4L tap... no capture tap was
+      loaded on this project, so (2) transcribed a real commercial track
+      (Viperactive — Dead To Me, rendered directly since it's an audio
+      track) instead — 36 real notes detected from real audio in ~1.1s
+      wall-clock, correctly low pitch range (D#0-C#2) matching the
+      track's quiet intro. A literal hummed take is still the more honest
+      test of "recognizably the same melody" and remains open.
+- [x] `--bpm` omitted → confirm it actually reads the OPEN Set's real tempo.
+      Confirmed: reported "140 BPM" on both transcriptions, matching this
+      Set's real tempo exactly (not a fake-gateway fallback).
+- [x] `--quantize 1/16` (or another grid) on a slightly-off-grid human take →
+      notes snap to the grid. Confirmed: unquantized starts (1.054, 1.786,
+      2.138 beats, ...) vs. `--quantize 1/16` on the identical source
+      (1.0, 1.75, 2.25 beats, ...) — every start now a clean multiple of
+      0.25 beats.
+- [x] Explicit occupied slot target (`track:N/slot:M` with a pre-existing
+      clip) → clip is overwritten in place, not duplicated or skipped.
+      Confirmed: re-running against the same slot printed "filled existing
+      clip", one clip present after, not two.
+- [x] Bare track target with NO empty session slots → confirm the error
+      message is clear and doesn't half-write anything. Confirmed via `awh
+      serve-fake` (filled all 4 slots, 5th attempt): clean
+      `"no empty session slot on track:0 — pass an explicit track:N/slot:M
+      target"`, no partial write.
+- [x] A genuinely quiet/silent recording → "no notes detected" prints, exit
+      0, nothing created. Confirmed against the real gateway (own generated
+      silent WAV): clean message both in `--dry-run` and a real write
+      attempt; verified via `awh status` that no phantom clip appeared.
+- [ ] Skill: "turn this hummed idea into a MIDI clip" → not run this pass.
+- [ ] Real timing check on a typical 8-16 bar idea: only tested on ~1.5-4s
+      clips this pass (all completed in ~1.1s) — a real 8-16 bar take's
+      wall-clock is still open.
+
+Cleanup note: an overly-broad `awh sweep <track> --prefix ""` (empty
+string matches every clip name) during this pass accidentally deleted the
+project's original empty placeholder clip on `track:15/arr:0`, not just the
+test content — caught and recreated it (64 beats, 0 notes, matching the
+original) before moving on. Worth remembering: `--prefix ""` is not a safe
+"delete my test clips" default.
+## House-family StyleSpec verification checklist
+
+Shipped without a checklist section — added retroactively after review.
+
+- [x] Refactor claim ("byte-identical output for the built-ins"): NOT just
+      trusted from the frozen-copy regression tests — independently
+      verified via an isolated git worktree at the pre-refactor commit.
+      Generated house + techno patterns across 4 seeds × 3 densities (24
+      patterns total) with the old code and the new code and diffed byte-
+      for-byte: all 24 identical. The refactor genuinely preserved
+      behavior.
+- [x] `awh drums gen --style dusty-garage` (the shipped first house-family
+      data style) → generates via the knowledge spec, reports the entry
+      tier. Confirmed via `awh serve-fake`: correct
+      `knowledgeStyle: drum-style-dusty-garage [draft]`, correct pad roles
+      (four-floor kick, clap-only backbeat, shaker ghosts).
+- [x] Hat-grid density flip (the spec's own stated "character change" at
+      density 0.55): confirmed — density 0.4 reports `hatBase:
+      offbeat-8ths` (45 hits); density 0.7 reports `hatBase: 16ths` (136
+      hits), matching the spec's threshold exactly.
+- [x] Live-edit-no-rebuild: edited `ghostChance` 0.7→0.05 in the entry's
+      YAML with no build step, regenerated with the same seed — shaker
+      ghost count dropped from several to exactly 0. Reverted after.
+
+## M9 (phrase engine, `awh drop`) owner validation checklist
+
+Built + smoke-tested against `awh serve-fake`: real call clips written via
+`awh clip create`, `drop respond` (real writes + `--dry-run`), `drop phrase`
+(two-target and single-target register-split forms, `--bars 8` and `--bars
+16`), `--style lyny-flavor` (knowledge path, tier printed), the zero-notes
+call case, and the negative control (a call filling its own bar still
+produces a WARNING plus a legally-rested, non-overlapping response) — see
+the build session's report for exact commands/output. `pnpm test` green
+(core property/regression suite: rest budget, no overlap, resolve-degree
+endings, equal-length paired clips, evolution touching only its claimed
+side, recipe determinism, parsePhraseSpec typo rejection). The owner still
+needs to validate this AUDITIONED IN LIVE — synthetic notes prove the
+plumbing and the craft rules as coded, not whether the actual result sounds
+like a real call-and-response pair:
+
+- [ ] `awh drop respond <a real call clip you wrote/transcribed> <target>`
+      on an actual Live Set → the candidate responses genuinely read as
+      "talking back" to the call when played together (the working
+      diagnostic from `knowledge/arrangement/call-response-drop-grammar`:
+      solo each candidate against the call and listen for an actual rest,
+      not two parts running over each other) — not just non-overlapping on
+      paper. STRUCTURAL half confirmed against a real Live Set (not just
+      serve-fake): wrote a real call clip (4 notes, tail rest), ran `drop
+      respond` for real (not dry-run) — all 5 recipes landed in consecutive
+      session slots; read `echo-low` back and confirmed on paper it starts
+      well after the call ends (no overlap) and transposes into a lower
+      register as its name implies. The actual LISTENING judgment (does it
+      really read as "talking back") is still open — needs the owner's ears.
+- [ ] Same call clip, all five recipes side by side — listening judgment,
+      not run this pass (all 5 recipes DID generate distinct note
+      counts/registers structurally, which is necessary but not sufficient
+      for "each reads as its name suggests").
+- [ ] `awh drop phrase <callTrack> <responseTrack> --bars 8` (two-voice
+      pairing) → confirmed via `--dry-run` against real Live: paired call
+      (12 notes) + response (3 notes) clips, both exactly 32 beats (8 bars),
+      as documented. The bars-1-4-repeat / bars-5-8-vary-call / turnaround
+      LISTENING judgment is still open.
+- [ ] `awh drop phrase <target>` (single-clip, register-split form) →
+      confirmed via `--dry-run` against real Live: 15 notes in one 8-bar
+      clip, register-split as documented. Audible-distinctness judgment
+      still open.
+- [ ] `--style lyny-flavor` on both commands → not run this pass.
+- [x] Zero-notes call clip → `drop respond` states it plainly and writes
+      nothing; confirm no phantom clip appears in the Set. Confirmed
+      against real Live: clean `"... has no notes — nothing to respond to
+      (write or transcribe a call first)"`, no clip created on the target.
+- [x] A call clip that fills its own bar (no tail rest) → confirm the
+      printed WARNING is legible and non-alarming, and that the response
+      clip it still produces sounds legitimately separated in time, not
+      like an overlap bug. Confirmed against real Live: exact printed text
+      is `"WARNING: call leaves only 0.00 beat(s) of rest at its own bar
+      tail (restMinBeats wants 1) — the response still enters cleanly after
+      it, but consider trimming the call's last note to leave the
+      question-mark gap"` — clear, non-alarming, and it still produced a
+      valid candidate rather than refusing outright, exactly as designed.
+      The "sounds legitimately separated" half is the listening judgment,
+      still open.
+- [ ] Skill: "give me some responses to this lead" / "answer this vocal chop
+      with a bass growl" → Claude follows the Typical Flows entry (reads
+      the call clip, uses `drop respond`, doesn't hand-compose a growl part
+      or reach for plain `vary`).
+
+## Drum stats mining (`awh drums mine`) owner checklist
+
+Built + tested against a PILOT subset only: the WaivOps example-loop MP3s
+checked into the datasets' own repos (`examples/`, ~15-25 files each) — not
+the full archives, which are multi-GB Zenodo downloads egress-blocked from
+the build container. `analysis/tests/test_drumstats.py` (synthetic-pattern
+recovery, silence zero-items, white-noise negative control) and
+`knowledge/rhythm/waivops-drum-stats-pilot.md` (the pilot numbers + honest
+n≈15-25 caveat) are the AI-buildable half. Mining the FULL datasets and
+deciding whether the pilot's numbers hold up is the owner's:
+
+- [x] Download the three full WaivOps archives (CC BY 4.0 — keep the
+      attribution lines below with any output derived from them). **Found a
+      real bug in this checklist's own HH-TRP URL**: the documented
+      `?download=1&preview=1` query returned Zenodo's HTML landing page
+      (6KB), not the file — `&preview=1` forces the web preview. Correct
+      URL is Zenodo's API content endpoint:
+      `https://zenodo.org/api/records/15734094/files/hh_trp_wav.tar.gz/content`
+      (verified against `GET /api/records/<id>` — `files[].links.self` is
+      always the reliable way to get a real download link; TR9/TR8's
+      `?download=1` URLs were independently confirmed correct against the
+      same API, sizes matched exactly: 4810529632 / 4369713348 bytes).
+      **Also found**: the 22.3 GB HH-TRP transfer genuinely dropped
+      mid-stream twice (curl exited 0 both times despite a truncated file —
+      piping through `| tail` swallows curl's real exit code, a second,
+      separate bug in how the download was being run) — recovered with
+      `curl -L -C -` (resume) in a retry loop until the byte count matched
+      the API's reported size exactly, then verified with `gzip -t`.
+      Downloaded to `~/waivops-datasets/` (outside any cloud-synced
+      folder — a 31.5 GB download inside a synced directory would thrash
+      the sync client). All three: byte-exact match to the API's reported
+      size, `gzip -t` clean, extracted file counts exactly 3780/3790/15000.
+- [x] Run the real mine, saving records that supersede the pilot ones.
+      Done for all three — `awh mix records waivops-{tr9,tr8,hhtrp}-full`.
+- [x] Compare against the pilot numbers — do they hold up at full n?
+      **Genuinely mixed, exactly the point of doing this**: TR9 CONFIRMED
+      even more cleanly (95-98% → literal 100% at all 4 beats, 100%
+      downbeat-check pass). TR8's headline "beat 1 near-universal, others
+      weaker" pattern did NOT hold — full n shows a much more even 71-74%
+      across all four beats, though this reading itself needs caution
+      (TR8's downbeat-check pass rate is only 19%, vs. TR9's 100% — most
+      TR8 loops' onset grid likely doesn't align with this analysis's
+      beat-1 assumption, a genuinely new finding the small pilot could not
+      have surfaced). HH-TRP's kick-anchor finding (52%→49.4%) held almost
+      exactly — no longer a pilot fluke, a robust result at n=15000. HH-TRP's
+      swing finding **flipped sign** between pilot and full (pilot: -0.019
+      beats / sign-flipped from spec; full: +0.0216 beats / same direction
+      as spec, smaller magnitude) — a clean demonstration of a 20-loop
+      sample giving a confidently wrong-signed answer.
+- [x] Update `knowledge/rhythm/waivops-drum-stats-pilot.md`: replaced/
+      extended with the full-dataset numbers, confidence language bumped,
+      pilot records kept (not deleted) specifically to preserve the
+      small-n-vs-full-n comparison since it's a useful case study on its
+      own. Whether to revisit `TRAP_KICK_CELLS`' beat-1-anchor assumption
+      (the most robust disagreement found) is left as the owner's
+      deliberate, hand-reviewed call, per the entry's own "never
+      auto-apply" rule — not done here.
+
+## Device parameter probe (B2 prerequisite + Serum) — owner checklist
+
+Five minutes on the dev machine during any Live session. Both probes use
+the same two commands; the goal is recording what the SDK actually exposes
+so the plugin-parameter question stops being folklore.
+
+- [x] Operator (native, the original B2 probe): insert an Operator by
+      hand, then `awh call device.get '{"path": "track:N/device:M"}'` —
+      save the JSON parameter dump. Which of its parameters appear, and
+      are the oscillator/envelope params addressable? Confirmed: **195
+      real, fully-named parameters** (`Osc-A Coarse`, `Ae Attack`,
+      `Algorithm`, every oscillator/envelope/filter control). Confirmed
+      `device.param` genuinely moves one (Volume 0.4 → 0.7, read back 0.7),
+      not just lists it. Inserted via `device.insert` on a disposable temp
+      track, deleted after.
+- [x] Serum (VST3): with a Serum instance loaded, run the same
+      `device.get` dump. Record: how many parameters Live exposes, are
+      they real names or opaque, do the macros appear, and does
+      `awh call device.param` on one of them audibly move it? **Found the
+      real answer, and it upends the working assumption**: Serum 2 exposes
+      exactly **1 param (`Device On`)** — but a second 3rd-party VST probed
+      alongside it (OTT) exposed **20 fully-named real params**
+      (`Depth`, `Thresh L/M/H`, `Gain L/M/H`, ...). The plugin-parameter
+      surface is PLUGIN-SPECIFIC, not a native-vs-3rd-party split — "3rd
+      party = opaque" was a coincidence of which plugins had been probed
+      before (ShaperBox 3, the M4L Ducker), not a rule. Leading hypothesis
+      for Serum specifically: its host-automation surface is limited to
+      whatever's mapped to its own internal macro knobs, and this instance
+      had none assigned — unconfirmed; mapping 2-3 macros by hand and
+      re-probing is the natural follow-up, noted in the knowledge entry as
+      still open.
+- [x] Drop both dumps + findings into a `knowledge/setup/` entry
+      (plugin-parameter surface — what's addressable from the CLI), same
+      spirit as `compressor-raw-display-mapping`. Done:
+      `knowledge/setup/device-parameter-surface.md` (tier verified).
+
+## B2 (Operator assistant, `awh op`) owner validation checklist
+
+Built + smoke-tested against `awh serve-fake` with a fake Operator device
+(representative ~25-param subset, real naming style — see
+`packages/core/src/fake/fakeLiveBridge.ts`) and synthetic WAVs: `op recipes`
+(zero-entries state + a temp `operator-recipe-*` entry pointed at via a
+scratch `AWH_LIBRARY`/knowledge root, per `findLibraryRoot`'s existing
+`$AWH_LIBRARY` override — no new env var needed), `op apply` happy path +
+unknown-param loud failure with zero writes + `--dry-run`, `op match` on a
+synthetic pluck (tier 1, correct sine/saw classification) and on white
+noise + a stretched-partial "bell" (tier 3, both refused with the specific
+measured blocker named), `op verify`'s error against the fake gateway (see
+below). `pnpm test` green (321 core incl. 10 new `operator.test.ts` +
+fake-Operator-device coverage; 24 cli incl. 9 new `op.test.ts`), venv
+pytest green (97 incl. 13 new `test_opmatch.py` — harmonic-vector recovery,
+ADSR fit, the white-noise AND inharmonic-bell negative controls,
+determinism). None of this is real device or real audio yet — everything
+below needs the owner's actual Live Set and real captures:
+
+**Real production session (2026-08-20) surfaced the same 0-1-scale bug in
+three MORE recipes, beyond the pluck/Algorithm/Coarse case already fixed**:
+building a real track (drone/riser/amen-break bridge/16-bar call-and-
+response drop, on a fresh Operator per part) hit the identical bug pattern
+in `reese-approx` (Algorithm, all four `*Coarse`, all four `*Fine`, AND
+`Spread` — four separate params in one recipe, `Spread`'s real range is
+0-100 not 0-1), `pluck` (same Algorithm/Coarse pair as before), and
+`noise-perc` (`Osc-A Wave` real range 0-22 with 23 NAMED waveforms
+including a genuine "Noise White" the recipe's author didn't know existed
+— only "Noise Looped" was cited — and `Filter Type` real range 0-4 with 5
+named types). All four recipes now corrected against real `device.get`
+dumps and verified by read-back (`all params verified by read-back` for
+every one). **This is now a confirmed systemic pattern, not isolated
+incidents** — every recipe in this batch was very likely authored under a
+blanket 0-1 assumption for every param; the ones that happened to work
+(Volume, `Osc-* Level`, envelope times, `Filter Freq`/`Filter Res`) did so
+by coincidence of their real ranges genuinely being close to 0-1, not
+because the assumption was validated. **Worth a dedicated audit pass**
+checking every remaining param in `growl-bass`, `fm-bell`, `e-piano`,
+`sub-click` against real `device.get` ranges before trusting them applied
+— this session only touched the four recipes actually used tonight.
+
+**Also found: `clip.create-audio` cannot place a clip directly on a group
+track** (confirmed on "SAMPLES", a group track per the owner's own
+description of the Set's routing) — fails with a generic
+`Failed to create clip` 500 from the SDK, no useful message. Same op
+works fine on a genuine leaf audio track. Not a bug in this repo's code;
+a real SDK/Live-object-model constraint worth remembering — always
+target a leaf audio track for `clip.create-audio`/`awh render`, never a
+group header.
+
+- [x] Real apply + audition: with a real Operator instance in Live, `awh op
+      apply <a real operator-recipe-*> <devicePath> --audition` — confirm
+      device.get read-back genuinely matches every written param (not just
+      that the gateway accepted the write), and that the audition clip's
+      playNotes actually sound like the intended patch when played.
+      **Found and fixed a real, systematic bug across all 7 shipped
+      recipes, before any by-ear correction was even reachable**: every
+      recipe used `Osc-A Coarse`/`Osc-A Fine`/etc. as param names, but the
+      real device's names (confirmed via `device.get` on a real inserted
+      Operator, disposable temp track) are `A Coarse`/`A Fine` — no `Osc-`
+      prefix on just those two, unlike every other `Osc-A *` param. The
+      fail-loud-write-nothing validation caught this correctly on every
+      recipe (zero partial writes, matching the design) — fixed the naming
+      in all 7 files (+ two recipe-specific misses: growl-bass's `LFO
+      Waveform`/`LFO Amount` → `LFO Type`/`LFO Amt`, noise-perc's
+      `Osc-A Waveform` → `Osc-A Wave`).
+      **Then found a second, deeper bug via the read-back mismatch
+      mechanism working exactly as designed**: real apply of the (now
+      correctly-named) `pluck` recipe wrote cleanly for every envelope/
+      filter/level param, but `Algorithm` and `*Coarse` reported mismatches
+      — read back as 0 regardless of what was written. Root cause,
+      confirmed via `device.get`'s real min/max: `Algorithm`'s raw range is
+      **0-10** (11 quantized steps) and `Coarse`'s is **0-48** — every
+      recipe assumed a normalized 0-1 range for EVERY param, which is
+      correct for Volume/`Osc-* Level`/envelope times/Filter Freq (all
+      confirmed genuinely ~0-1) but wrong for these two. `reese-approx`
+      additionally uses nonzero `Fine` values under the same wrong
+      assumption (`Fine`'s real range is 0-1000, not 0-1) — its detune
+      amounts are likely off by roughly three orders of magnitude.
+      **Not corrected numerically** — knowing the real RANGE doesn't reveal
+      the CORRECT value within it (e.g. which of the 11 algorithms is
+      "2-op, B into A") without a real ear/UI pass (no `displayValue` API
+      to shortcut it, per `device-parameter-surface.md`) — documented as a
+      CONFIRMED (not just unverified) scale bug directly in each affected
+      recipe's "Raw values" section instead, so the next by-ear pass knows
+      exactly what's already known-wrong vs. genuinely unverified.
+- [ ] Real match on a real bass sample: `awh op match <a real bass one-
+      shot or sustained note>.wav` — does the tier/summary line read as
+      true to ear (a clean tier-1 "good Operator candidate" call should
+      genuinely sound Operator-reachable; a tier-3 refusal should
+      genuinely sound like something Operator can't do — a growl/reese
+      with heavy sub-harmonic distortion or noise components is the
+      interesting edge case to try, since it may legitimately refuse or
+      may land tier 2 with a high oscillator residual). Mechanism
+      confirmed this pass on synthetic material (own-generated, not a
+      real sample): a clean 220 Hz sine correctly landed tier 1 (f0
+      221.0 Hz, harmonicity 0.99, sine residual 0.00), white noise
+      correctly refused tier 3 with all three measured criteria named
+      (voiced fraction, harmonicity ratio, partial deviation) — but a
+      REAL bass sample, and whether the tier boundary reads as musically
+      true, is still open. Then `--apply
+      <devicePath>` on a tier-1/2 result and listen: do the addressable
+      envelope/filter values (explicitly heuristic, see the module's
+      `ADDRESSABLE_CAVEAT`) land anywhere close, or does the ASSUMED
+      10s max-envelope-range constant in `analysis/awh_analysis/opmatch.py`
+      need recalibrating against a real observed raw<->ms curve?
+- [ ] The drawn-partials probe (open question from the design doc's Half
+      1 section): with a tier-1/2 `op match` result that has a nonzero
+      oscillator residual, hand-draw the printed `drawThesePartials`
+      values into Operator's harmonics editor in Live, then `device.get`
+      the SAME device again — did any NEW param appear, or did any
+      existing param's value change? The working (unverified) assumption
+      is that Operator's user-drawable harmonics are UI-only and NOT
+      among the 195 automatable params (`knowledge/setup/device-
+      parameter-surface.md`) — this is the first real test of that
+      assumption. If drawn partials DO turn out addressable via some
+      param, `propose()`'s `drawThesePartials`-only handling needs
+      upgrading to push them directly instead.
+- [ ] Raw↔display observations flow back into recipes: for every recipe
+      applied above, read Operator's own UI display value next to the raw
+      number `awh op apply` reports (Algorithm's displayed name/number,
+      Osc-A Coarse's displayed ratio, Ae Attack's displayed ms, ...) and
+      record the pairing — same discipline as `compressor-raw-display-
+      mapping.md` (a single point is a fact, not a curve; don't
+      extrapolate). Update the seeded `operator-recipe-*` entries'
+      comments with confirmed display values and promote their tier once
+      a recipe's raw values are confirmed correct by ear; leave
+      unconfirmed ones `draft`. This is the ONLY way `op match`'s
+      heuristic `addressable` normalization (currently an honest
+      placeholder assumption, not a measured curve) gets replaced with
+      something real.
+- [ ] `op verify`'s closed loop, in Live with the AWH Capture Tap placed on
+      the device's bus (m4l/README.md): confirm the reported score
+      actually tracks audible closeness (dial a patch further from the
+      reference and confirm the score gets worse; dial it closer and
+      confirm it improves) — the log-spectrogram-L2/harmonic-cosine blend
+      and its `SCORE_L2_SCALE` constant are unverified against real
+      ears, only against synthetic self-comparison (score 1.0) and
+      synthetic vs. noise (score dropped as expected) in the pytest
+      suite.
+- [ ] Skill: "make this sound like this sample on Operator" end-to-end
+      through the Typical Flows entry (SKILL.md's "Sound-design an
+      Operator patch") — not run this pass.
+
+## M10 (endless player) owner validation checklist
+
+Built + tested against `packages/cli/assets/endless/player.js` directly
+(the exact file the emitted HTML loads — no second copy of the decision
+logic), `packages/core/test/endless.test.ts` (spec parsing/typo-rejection,
+reachability negative control, empty-pool validation) and
+`packages/cli/test/endless.test.ts` (decision-core determinism/weights/
+maxConsecutive/noRepeatVariant/protectedLayers/bounded-fluctuation, WAV
+round-trip, build validation failures each named — missing file, wrong
+duration, unreachable section, empty pool — plus a Playwright smoke test
+against the preinstalled Chromium that loads the demo page, presses Play,
+and asserts the debug-exposed scheduler state actually advances: elapsed
+time increases and section history grows between two checks). `pnpm test`
+green end to end (`endless demo -o <dir>` and `endless build --single-file`
+both run for real in the build session — see its report for exact output/
+sizes). None of this proves the result is a good LISTEN, or that a real
+owner song's stems survive the pipeline — synthetic sine/noise/saw stems
+prove the plumbing, not the craft:
+
+**Real bug found + fixed this pass (headless verification only — no
+interactive browser session was available in this environment, Chrome
+extension not connected):** `awh endless demo -o <dir>`, then `curl`ing the
+served `index.html` directly showed `<title>endless-demo — endless
+player</title>` correctly filled in, but the on-page `<h1>` still read the
+literal, unreplaced `__ENDLESS_TITLE__` placeholder. Root cause in
+`packages/cli/src/endless/build.ts`: `templateHtml.replace("__ENDLESS_TITLE__",
+spec.name)` uses JS's non-global `String.prototype.replace()`, which only
+swaps the FIRST match — the template has the placeholder twice (`<title>`
+and `<h1>`), so only the tab title got fixed. Same non-global `.replace()`
+pattern was used for the other two placeholders (`__ENDLESS_SPEC_JSON__`,
+the player-script-tag comment) in both the normal and `--single-file` build
+paths — fixed all of them to `.replaceAll()` since a future template change
+adding a second occurrence of any of them would silently reintroduce the
+same class of bug. Verified the fix against both build paths (`endless
+demo` and `endless build --single-file`) via a rebuilt CLI + fresh curl
+checks, added a regression test (`packages/cli/test/endless.test.ts`,
+"replaces __ENDLESS_TITLE__ everywhere it appears") that asserts the built
+HTML contains neither the literal placeholder nor an empty/placeholder
+`<h1>`. Full suite green after the fix: 32/32 (was 31/31 before the new
+test). This is exactly the kind of bug the existing Playwright smoke test
+could NOT catch — it only asserts on debug-exposed scheduler state, never
+reads visible page text/headings.
+
+- [x] `awh endless demo -o <dir>` → serve it (`python3 -m http.server` in
+      `<dir>`) and actually LISTEN. Does pressing Play produce audible,
+      groove-plausible kick/hat/bass/pads, does the section change land
+      musically (not just structurally correct per the debug readout), and
+      does the mute/fluctuation movement register as subtle mix breathing
+      rather than an audible glitch? **Done, owner confirmed by ear** — a
+      real interactive browser session (Chrome, via the connected Claude
+      extension) loaded the demo at `http://127.0.0.1:8123/`, confirmed the
+      `<h1>` fix rendered correctly (no more literal placeholder), pressed
+      Play, and watched it run/transition live: `performance #631621170`
+      picked, intro (2 bars) → drop (2 bars) transition happened with fresh
+      variant picks each section (`drop-drums-b.wav`/`drop-bass-a.wav`/
+      `drop-pads-a.wav`), elapsed timer advanced correctly, zero console
+      errors throughout. Owner then listened directly and confirmed all
+      three questions: section change lands musically (not just
+      structurally), no clicks/pops at boundaries, mute/fluctuation reads
+      as subtle mix breathing, not glitchy. This was on the synthetic demo
+      stems (sine/noise/saw), not a real owner song — the next two
+      checklist items (real bounced stems, then the owner's actual song)
+      are still the open bar.
+- [ ] Bounce a few bars of a REAL song's stems (drums/bass/pads or
+      whatever layers apply) bar-exact per section, WITH any reverb/delay
+      tail overlapped back into the loop rather than trimmed at the
+      boundary (the README's own documented convention — this checklist
+      item is the first real test that "overlapped tail" bouncing actually
+      produces a clean-sounding loop point, not just a duration that
+      passes validation).
+- [ ] `awh endless plan --sections "..." --bpm <bpm> -o endless.yaml`, fill
+      in the pools with those real bounces, `awh endless build endless.yaml
+      -o dist/<name>` → confirm the validation errors (deliberately break
+      one file's duration, delete one pool file, deliberately strand a
+      section) are legible enough that the owner (not just an agent) can
+      fix them from the message alone, then confirm the clean build sounds
+      right end to end — crossfades smooth (no click/pop at section
+      boundaries), mix fluctuation subtle, "performance #N" reproducible
+      across a reload with the same seed.
+- [ ] Build the owner's own actual song this way, start to finish — the
+      real exit criterion. Everything above is necessary but not
+      sufficient; this is the first time the full pipeline runs on
+      material that matters.
+- [ ] Follow-actions SDK probe (design doc's stated open question,
+      non-goal for v1 but worth answering while the API is fresh in mind):
+      does `@ableton-extensions/sdk` expose clip follow-action properties
+      (`device.get`/equivalent on a clip, or a dedicated LOM path)? If yes,
+      record what's addressable in `docs/sdk-feedback.md` or a knowledge
+      entry — it's the prerequisite for a later `awh endless to-session`
+      that builds the in-Live equivalent of this grammar using Live's own
+      follow actions instead of a browser player.
+- [ ] Skill: "make an endless version of my track to share" → Claude
+      follows the Typical Flows entry (plan -> owner fills pools -> build,
+      not `awh sections` or hand-composed HTML).

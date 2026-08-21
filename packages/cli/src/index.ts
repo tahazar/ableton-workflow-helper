@@ -12,7 +12,21 @@ import { spawn } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
 import { Command } from "commander";
 import { TAP_PORT, sendToTap } from "./osc.js";
+import { DUCK_PORT, DUCK_REPLY_PORT, pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from "./duck.js";
+import {
+  RECIPE_SLUG_PREFIX,
+  applyRecipePlan,
+  loadRecipeFromEntry,
+  planRecipeApply,
+  setDeviceParam as opSetDeviceParam,
+  summarizeRecipeEntries,
+  type OpCaller,
+  type RecipePlan,
+} from "./op.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
+import { buildEndlessPlayer, SINGLE_FILE_WARN_BYTES } from "./endless/build.js";
+import { buildEndlessPlanYaml, parseSectionsArg, sectionsFromReference, type RefSectionLike } from "./endless/plan.js";
+import { buildEndlessDemo } from "./endless/demo.js";
 import {
   listForms,
   planFromForm,
@@ -44,6 +58,8 @@ import {
   writePack,
   GM_DRUM_KIT,
   KnowledgeStore,
+  clampNotesToLength,
+  clipLengthBeats,
   drumFill,
   extractFencedBlock,
   generateDrumPatternDetailed,
@@ -54,15 +70,33 @@ import {
   midiToPitch,
   parseDrumStyleSpec,
   parseProgression,
+  parseQuantizeGrid,
+  quantizeNotes,
   renderChords,
+  secondsToBeats,
   voiceProgression,
   varyDrums,
-  type TrapFamilyStyleSpec,
+  BASS_MUSIC_CR_SPEC,
+  RESPONSE_RECIPE_NAMES,
+  generatePhrase,
+  generateResponses,
+  listPhraseStyles,
+  listPhraseVariants,
+  parsePhraseSpec,
+  parseOperatorRecipe,
+  parsePath,
+  formatPath,
+  sortNotes,
+  type PhraseSpec,
+  type ResponseRecipeName,
+  type DrumStyleSpec,
   type ClipDetail,
   type ClipEntry,
+  type DeviceDetail,
   type DrumContext,
   type DrumKit,
   type NoteSpec,
+  type OperatorRecipe,
   type PackItem,
   type SetSummary,
   type TransformContext,
@@ -324,6 +358,201 @@ clip
     },
   );
 
+interface A2mTranscription {
+  notes: { start_s: number; dur_s: number; pitch: number; velocity: number }[];
+  params: {
+    onset_thresh: number;
+    frame_thresh: number;
+    min_note_len_ms: number;
+    min_freq: number | null;
+    max_freq: number | null;
+    melodia_trim: boolean;
+  };
+  model: string;
+  n_notes: number;
+}
+
+clip
+  .command("from-audio <audioFile> <target>")
+  .description(
+    "Transcribe melodic audio to a MIDI clip via Basic Pitch (polyphonic pitch " +
+      "estimate to audition and correct — NOT ground truth; for drums use " +
+      "`awh drums detect-onsets` instead). Target: a track path (auto-picks an " +
+      "empty session slot) or an explicit slot (track:0/slot:2) — an existing " +
+      "clip there is overwritten with the transcription (same occupied-target " +
+      "convention as `awh lib place`).",
+  )
+  .option("--bpm <bpm>", "tempo for seconds -> beats conversion (default: the Set's tempo)")
+  .option(
+    "--quantize <grid>",
+    "snap note starts to a grid (1/4|1/8|1/16|1/32|off) — lengths >= one grid unit snap too",
+    "off",
+  )
+  .option("--onset-thresh <n>", "onset sensitivity (Basic Pitch default 0.5)")
+  .option("--frame-thresh <n>", "frame/pitch confidence threshold (Basic Pitch default 0.3)")
+  .option("--min-len <ms>", "minimum note length in ms (Basic Pitch default 127.7)")
+  .option("--min-freq <hz>", "ignore pitches below this frequency")
+  .option("--max-freq <hz>", "ignore pitches above this frequency")
+  .option("--name <name>", "clip name (default: the audio file's basename)")
+  .option("--dry-run", "print the note summary without touching Live")
+  .action(
+    async (
+      audioFile: string,
+      target: string,
+      cmdOpts: {
+        bpm?: string;
+        quantize: string;
+        onsetThresh?: string;
+        frameThresh?: string;
+        minLen?: string;
+        minFreq?: string;
+        maxFreq?: string;
+        name?: string;
+        dryRun?: boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const beatsPerBar = 4;
+      // Validate --quantize before spending time running the model.
+      const gridBeats = parseQuantizeGrid(cmdOpts.quantize);
+
+      const analysisArgs = ["a2m", audioFile];
+      if (cmdOpts.onsetThresh) analysisArgs.push("--onset-thresh", cmdOpts.onsetThresh);
+      if (cmdOpts.frameThresh) analysisArgs.push("--frame-thresh", cmdOpts.frameThresh);
+      if (cmdOpts.minLen) analysisArgs.push("--min-len", cmdOpts.minLen);
+      if (cmdOpts.minFreq) analysisArgs.push("--min-freq", cmdOpts.minFreq);
+      if (cmdOpts.maxFreq) analysisArgs.push("--max-freq", cmdOpts.maxFreq);
+      const transcription = (await runAnalysisJson(
+        analysisArgs,
+      )) as unknown as A2mTranscription;
+      const p = transcription.params;
+      const paramsLine =
+        `onset=${p.onset_thresh} frame=${p.frame_thresh} minLen=${p.min_note_len_ms}ms` +
+        (p.min_freq !== null ? ` minFreq=${p.min_freq}Hz` : "") +
+        (p.max_freq !== null ? ` maxFreq=${p.max_freq}Hz` : "");
+
+      // Zero notes is a STATE, not an error (docs/lessons-learned.md #5):
+      // no clip is created, exit 0.
+      if (transcription.n_notes === 0) {
+        output(opts, transcription, () =>
+          `no notes detected (silence or below thresholds) in ${audioFile} — ${paramsLine} (${transcription.model})`,
+        );
+        return;
+      }
+
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const bpm = cmdOpts.bpm ? Number(cmdOpts.bpm) : summary.tempo;
+
+      let notes: NoteSpec[] = transcription.notes.map((n) => ({
+        start: secondsToBeats(n.start_s, bpm),
+        duration: secondsToBeats(n.dur_s, bpm),
+        pitch: n.pitch,
+        velocity: n.velocity,
+      }));
+      if (gridBeats !== null) notes = quantizeNotes(notes, gridBeats);
+
+      const lastEnd = notes.reduce((max, n) => Math.max(max, n.start + n.duration), 0);
+      const lengthBeats = clipLengthBeats(lastEnd, beatsPerBar);
+      const pitches = notes.map((n) => n.pitch);
+      const loPitch = Math.min(...pitches);
+      const hiPitch = Math.max(...pitches);
+      const summaryLine =
+        `${notes.length} notes, ${midiToPitch(loPitch)}(${loPitch})-${midiToPitch(hiPitch)}(${hiPitch}), ` +
+        `${lengthBeats / beatsPerBar} bars @ ${bpm} BPM — ${paramsLine} (${transcription.model})`;
+      const estimateNote = "estimate only — audition and correct in Live.";
+
+      // Resolve the target (reads only — clip.get/set.summary) even in
+      // --dry-run, same as `sections apply`: a dry run should still catch
+      // "no such track"/"no empty slot" instead of only surfacing that on
+      // the real run. Only the WRITE ops below are skipped for --dry-run.
+      const name = cmdOpts.name ?? basename(audioFile).replace(/\.[^./]+$/, "");
+      const isSlot = /\/slot:\d+$/.test(target);
+
+      let targetSpec: unknown;
+      let where: string;
+      let existing: { path: string; lengthBeats: number } | undefined;
+      if (isSlot) {
+        try {
+          const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
+          existing = { path: target, lengthBeats: detail.duration };
+        } catch {
+          // nothing there yet -> create fresh below
+        }
+        targetSpec = { type: "session", slotPath: target };
+        where = target;
+      } else {
+        const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
+        if (!track) {
+          throw new Error(
+            `track not found: ${target} (pass a session slot like track:0/slot:2 to target an occupied clip)`,
+          );
+        }
+        const occupied = new Set(
+          track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+        );
+        const free = Array.from({ length: track.slotCount }, (_, i) => i).find(
+          (i) => !occupied.has(i),
+        );
+        if (free === undefined) {
+          throw new Error(
+            `no empty session slot on ${target} — pass an explicit track:N/slot:M target`,
+          );
+        }
+        where = `${target}/slot:${free}`;
+        targetSpec = { type: "session", slotPath: where };
+      }
+
+      if (cmdOpts.dryRun) {
+        output(
+          opts,
+          { notes, lengthBeats, bpm, params: p, model: transcription.model, target: where },
+          () =>
+            [
+              `dry run: ${summaryLine} -> ${where}${existing ? " (fills an existing clip)" : ""}`,
+              estimateNote,
+            ].join("\n"),
+        );
+        return;
+      }
+
+      let placedNotes = notes;
+      let result: { path: string };
+      if (existing) {
+        // Occupied target: overwrite in place (same convention as `awh lib
+        // place`). The gateway has no clip-resize op, so a transcription
+        // longer than the existing clip is clamped to fit rather than
+        // silently sending notes Live would never play.
+        placedNotes = clampNotesToLength(notes, existing.lengthBeats);
+        await op(opts, "clip.notes", { path: existing.path, notes: placedNotes });
+        await op(opts, "clip.update", { path: existing.path, name });
+        result = { path: existing.path };
+      } else {
+        result = (await op(opts, "clip.create-midi", {
+          target: targetSpec,
+          lengthBeats,
+          notes: placedNotes,
+          name,
+        })) as { path: string };
+      }
+
+      const clampedNote =
+        existing && placedNotes.length < notes.length
+          ? ` — existing clip is ${existing.lengthBeats} beats, ${notes.length - placedNotes.length} ` +
+            "note(s) past its end were dropped (it can't be resized via the gateway)"
+          : "";
+
+      output(
+        opts,
+        { path: result.path, notes: placedNotes, lengthBeats, params: p, model: transcription.model },
+        () =>
+          [
+            `transcribed -> ${result.path}: ${summaryLine}${existing ? ", filled existing clip" : ""}${clampedNote}`,
+            estimateNote,
+          ].join("\n"),
+      );
+    },
+  );
+
 program
   .command("transforms")
   .description("List the deterministic variation transforms")
@@ -477,8 +706,16 @@ program
   .command("sweep <trackPath>")
   .description("Delete session clips on a track whose name starts with --prefix")
   .requiredOption("--prefix <prefix>", "name prefix to match (e.g. bass-v)")
-  .action(async (trackPath: string, cmdOpts: { prefix: string }) => {
+  .option("--all", "allow an empty --prefix (matches EVERY clip on the track)")
+  .action(async (trackPath: string, cmdOpts: { prefix: string; all?: boolean }) => {
     const opts = program.opts<GlobalOpts>();
+    // An empty prefix matches every clip name — a validation pass lost a
+    // placeholder clip to it. Deleting everything must be said out loud.
+    if (cmdOpts.prefix === "" && !cmdOpts.all) {
+      throw new Error(
+        `--prefix "" matches EVERY clip on ${trackPath} — pass --all if you really mean that`,
+      );
+    }
     const summary = (
       (await callGateway(opts, "/api/ops/set.summary", { method: "POST" })) as {
         result: SetSummary;
@@ -763,7 +1000,7 @@ drums
 
       // built-in style, or a data-driven one from the knowledge base:
       // a `drum-style-<name>` entry with an ```awh-style-spec``` block
-      let styleSpec: TrapFamilyStyleSpec | undefined;
+      let styleSpec: DrumStyleSpec | undefined;
       let styleTier: string | undefined;
       if (!listDrumStyles().includes(cmdOpts.style)) {
         let entry;
@@ -1064,6 +1301,507 @@ drums
   );
 
 // ---------------------------------------------------------------------------
+// Drum-loop rhythm-statistics mining (owner request): band-split onset
+// mining across a folder of drum loops, reported for comparison against the
+// built-in style specs — never auto-applied to them (grammars.ts/styleSpec.ts
+// stay hand-authored and locked).
+// ---------------------------------------------------------------------------
+
+interface DrumStatsBand {
+  position_prob: number[];
+  density: number;
+  onsets_total: number;
+}
+
+interface DrumStatsResult {
+  dataset: string;
+  n_loops: number;
+  bpm_range: [number, number];
+  bpm_mean: number;
+  grid: number;
+  per_band: { low: DrumStatsBand; mid: DrumStatsBand; high: DrumStatsBand };
+  swing_estimate: {
+    band: string;
+    on8_mean_offset_steps: number | null;
+    off16_mean_offset_steps: number | null;
+    delay_frac_of_16th_step: number | null;
+    delay_equivalent_beats: number | null;
+    n_on8_onsets: number;
+    n_off16_onsets: number;
+  };
+  downbeat_check: { loops_checked: number; loops_near_zero: number; near_zero_threshold_s: number | null };
+  mp3_decode_mode: string | null;
+  assumptions: string[];
+  files: string[];
+  skipped: { file: string; reason: string }[];
+  generated_by: string;
+}
+
+function renderDrumStatsTable(result: DrumStatsResult): string {
+  const bands: Array<"low" | "mid" | "high"> = ["low", "mid", "high"];
+  const grid = result.grid;
+  const header = "position   " + Array.from({ length: grid }, (_, i) => String(i).padStart(5)).join("");
+  const lines = [
+    `${result.dataset} — ${result.n_loops} loop(s), BPM ${result.bpm_range[0].toFixed(0)}-` +
+      `${result.bpm_range[1].toFixed(0)} (mean ${result.bpm_mean.toFixed(1)}), ` +
+      `mp3 decode: ${result.mp3_decode_mode ?? "n/a"}`,
+    "",
+    "Position-hit probability (% of bars with an onset at that grid step):",
+    header,
+  ];
+  for (const b of bands) {
+    const pb = result.per_band[b];
+    const row = pb.position_prob.map((p) => String(Math.round(p * 100)).padStart(5)).join("");
+    lines.push(`${b.padEnd(10)} ${row}`);
+  }
+  lines.push("");
+  for (const b of bands) {
+    const pb = result.per_band[b];
+    lines.push(`${b.padEnd(4)} density  ${pb.density.toFixed(2)} onsets/bar (${pb.onsets_total} onsets total)`);
+  }
+  lines.push("");
+  const sw = result.swing_estimate;
+  lines.push(
+    sw.delay_frac_of_16th_step !== null
+      ? `swing (high band, off-16th vs on-8th timing): ${(sw.delay_frac_of_16th_step * 100).toFixed(1)}% ` +
+          `of a 16th step late (${sw.delay_equivalent_beats!.toFixed(3)} beats equiv.; n=${sw.n_on8_onsets} on-8th / ` +
+          `${sw.n_off16_onsets} off-16th onsets)`
+      : "swing: not enough high-band onsets to estimate",
+  );
+  lines.push("");
+  lines.push("Assumptions (read before trusting these numbers):");
+  for (const a of result.assumptions) lines.push(`  - ${a}`);
+  if (result.skipped.length > 0) {
+    lines.push("");
+    lines.push("Skipped files:");
+    for (const s of result.skipped) lines.push(`  - ${s.file}: ${s.reason}`);
+  }
+  return lines.join("\n");
+}
+
+drums
+  .command("mine <dirs...>")
+  .description(
+    "Mine rhythm statistics (band-split 16th-grid hit-position probabilities) from " +
+      "a folder of drum-loop audio files — REPORTS numbers to compare against the " +
+      "built-in style specs, never auto-tunes them",
+  )
+  .option("--no-bpm-from-name", "disable parsing BPM from loop filenames (e.g. '138bpm_...') — requires --bpm")
+  .option("--bpm <bpm>", "fixed BPM fallback (or forced for every loop with --no-bpm-from-name)")
+  .option("--grid <n>", "grid steps per bar", "16")
+  .option("--dataset <name>", "dataset name for the output (default: single input directory's basename)")
+  .option(
+    "--attribution <text>",
+    "license/attribution note embedded verbatim in the saved record (e.g. the exact CC BY 4.0 credit line)",
+  )
+  .option(
+    "--save [name]",
+    "also save a measurement record to library/measurements/ (default name: the dataset name)",
+  )
+  .action(
+    async (
+      dirs: string[],
+      cmdOpts: {
+        bpmFromName: boolean;
+        bpm?: string;
+        grid: string;
+        dataset?: string;
+        attribution?: string;
+        save?: string | boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const datasetName =
+        cmdOpts.dataset ?? (dirs.length === 1 ? basename(resolve(dirs[0]!)) : undefined);
+
+      const args = ["drumstats", ...dirs];
+      if (!cmdOpts.bpmFromName) args.push("--no-bpm-from-name");
+      if (cmdOpts.bpm) args.push("--bpm", cmdOpts.bpm);
+      args.push("--grid", cmdOpts.grid);
+      if (datasetName) args.push("--dataset", datasetName);
+
+      let recordPath: string | undefined;
+      if (cmdOpts.save !== undefined) {
+        const name =
+          typeof cmdOpts.save === "string" ? cmdOpts.save : slugify(datasetName ?? "drumstats-record");
+        recordPath = join(findLibraryRoot(), "measurements", `${name}.json`);
+        await mkdir(dirname(recordPath), { recursive: true });
+        args.push("--save-record", recordPath);
+        if (cmdOpts.attribution) {
+          args.push("--attribution", JSON.stringify({ note: cmdOpts.attribution }));
+        }
+        process.stderr.write(`record -> ${recordPath}\n`);
+      }
+
+      const result = (await runAnalysisJson(args)) as unknown as DrumStatsResult;
+
+      // Zero audio files found is a STATE, not an error (docs/lessons-learned.md #5).
+      if (result.n_loops === 0) {
+        output(opts, result, () =>
+          `no audio files found in: ${dirs.join(", ")} (looked for .mp3/.wav/.aif/.aiff/.flac/.ogg)`,
+        );
+        return;
+      }
+
+      output(opts, result, () => renderDrumStatsTable(result));
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Phrase engine (M9): call-and-response drop writing.
+// ---------------------------------------------------------------------------
+
+const PHRASE_BEATS_PER_BAR = 4;
+
+/** Resolve --style: built-in first, else a `phrase-style-<name>` knowledge
+ *  entry's ```awh-phrase-spec``` block — same convention as `drums gen`. */
+async function resolvePhraseSpec(style: string): Promise<{ spec: PhraseSpec; styleTier?: string }> {
+  if (listPhraseStyles().includes(style)) {
+    return { spec: BASS_MUSIC_CR_SPEC };
+  }
+  let entry;
+  try {
+    entry = await knowledgeStore().loadEntry(`phrase-style-${style}`);
+  } catch {
+    throw new Error(
+      `unknown phrase style "${style}" — built-ins: ${listPhraseStyles().join(", ")}; ` +
+        `data styles need a knowledge entry with slug phrase-style-${style} (see knowledge/README.md)`,
+    );
+  }
+  const specText = extractFencedBlock(entry.body, "awh-phrase-spec");
+  if (!specText) {
+    throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-phrase-spec block`);
+  }
+  return { spec: parsePhraseSpec(specText), styleTier: entry.tier };
+}
+
+/** Resolve a `drop phrase` target: explicit slot/arr path, track + --at-bar,
+ *  or a bare track path (auto-picks an empty session slot) — same
+ *  conventions as `drums gen`/`lib place`/`clip from-audio`. An existing
+ *  clip at the target is filled in place (same occupied-target convention). */
+async function resolvePhraseTarget(
+  opts: GlobalOpts,
+  summary: SetSummary,
+  target: string,
+  atBar: string | undefined,
+  lengthBeats: number,
+): Promise<{ targetSpec: unknown; where: string; existing?: { path: string; lengthBeats: number } }> {
+  const isSlotPath = /\/slot:\d+$/.test(target);
+  const isArrPath = /\/arr:\d+$/.test(target);
+  if (isSlotPath || isArrPath) {
+    let existing: { path: string; lengthBeats: number } | undefined;
+    try {
+      const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
+      existing = { path: target, lengthBeats: detail.duration };
+    } catch {
+      if (isArrPath) {
+        throw new Error(`no clip at ${target} — arr paths must point at an existing clip to fill`);
+      }
+    }
+    return { targetSpec: { type: "session", slotPath: target }, where: target, existing };
+  }
+  const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
+  if (!track) throw new Error(`track not found: ${target}`);
+  if (atBar !== undefined) {
+    const startBeat = (Number(atBar) - 1) * PHRASE_BEATS_PER_BAR;
+    const endBeat = startBeat + lengthBeats;
+    const overlap = track.arrangementClips.find(
+      (c) => startBeat < (c.endTime ?? 0) && endBeat > (c.startTime ?? 0),
+    );
+    const existing = overlap ? { path: overlap.path, lengthBeats: overlap.duration } : undefined;
+    return { targetSpec: { type: "arrangement", trackPath: target, startBeat }, where: `${target} @ bar ${atBar}`, existing };
+  }
+  const occupied = new Set(track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])));
+  const free = Array.from({ length: track.slotCount }, (_, i) => i).find((i) => !occupied.has(i));
+  if (free === undefined) {
+    throw new Error(`no empty session slot on ${target} — pass --at-bar or an explicit slot/arr path`);
+  }
+  const slotPath = `${target}/slot:${free}`;
+  return { targetSpec: { type: "session", slotPath }, where: slotPath };
+}
+
+/** Write (or fill) a phrase voice's clip. Occupied targets are filled in
+ *  place (notes clamped to the existing clip's length), same convention as
+ *  `awh lib place` / `awh clip from-audio`. */
+async function writePhraseClip(
+  opts: GlobalOpts,
+  resolved: { targetSpec: unknown; where: string; existing?: { path: string; lengthBeats: number } },
+  lengthBeats: number,
+  notes: NoteSpec[],
+  name: string,
+): Promise<{ path: string; notes: NoteSpec[]; clamped: number }> {
+  if (resolved.existing) {
+    const placed = clampNotesToLength(notes, resolved.existing.lengthBeats);
+    await op(opts, "clip.notes", { path: resolved.existing.path, notes: placed });
+    await op(opts, "clip.update", { path: resolved.existing.path, name });
+    return { path: resolved.existing.path, notes: placed, clamped: notes.length - placed.length };
+  }
+  const result = (await op(opts, "clip.create-midi", {
+    target: resolved.targetSpec,
+    lengthBeats,
+    notes,
+    name,
+  })) as { path: string };
+  return { path: result.path, notes, clamped: 0 };
+}
+
+const drop = program
+  .command("drop")
+  .description(
+    "Call-and-response phrase engine (M9): answer an existing call clip, or " +
+      "cold-start a call/response skeleton from a spec",
+  );
+
+drop
+  .command("respond <callClip> <target>")
+  .description(
+    "THE core call-and-response feature: reads an existing call clip and " +
+      "emits N candidate RESPONSE clips (default: one per recipe) into " +
+      "consecutive empty session slots on <target> (a track path), each " +
+      `named "resp <recipe> s<seed>".`,
+  )
+  .option("--recipe <recipe>", `pin one recipe (${RESPONSE_RECIPE_NAMES.join(", ")}) instead of one-per-recipe`)
+  .option("-n, --count <n>", "number of candidates (default: one per eligible recipe)")
+  .option("--seed <seed>", "base random seed (same seed = same candidates)", "1")
+  .option("--key <key>", 'e.g. "A minor" (default: the Set scale)')
+  .option(
+    "--style <style>",
+    `phrase spec: built-in (${listPhraseStyles().join(", ")}) or a knowledge phrase-style-<name>`,
+    "bass-music-cr",
+  )
+  .option("--dry-run", "print the candidates without touching Live")
+  .action(
+    async (
+      callClip: string,
+      target: string,
+      cmdOpts: {
+        recipe?: string;
+        count?: string;
+        seed: string;
+        key?: string;
+        style: string;
+        dryRun?: boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const detail = (await op(opts, "clip.get", { path: callClip })) as ClipDetail;
+      if (detail.kind !== "midi" || !detail.notes) {
+        throw new Error(`${callClip} is not a MIDI clip`);
+      }
+
+      // Zero notes is a STATE, not an error (docs/lessons-learned.md #5):
+      // nothing to respond to, nothing written, exit 0.
+      if (detail.notes.length === 0) {
+        output(opts, { callClip, created: [] }, () =>
+          `${callClip} has no notes — nothing to respond to (write or transcribe a call first)`,
+        );
+        return;
+      }
+
+      const { spec, styleTier } = await resolvePhraseSpec(cmdOpts.style);
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const keyCtx = resolveKey(summary, cmdOpts.key);
+
+      let recipes: ResponseRecipeName[];
+      if (cmdOpts.recipe) {
+        if (!RESPONSE_RECIPE_NAMES.includes(cmdOpts.recipe as ResponseRecipeName)) {
+          throw new Error(`unknown recipe "${cmdOpts.recipe}" (one of: ${RESPONSE_RECIPE_NAMES.join(", ")})`);
+        }
+        recipes = [cmdOpts.recipe as ResponseRecipeName];
+      } else {
+        recipes = spec.responseRecipes;
+      }
+      const count = cmdOpts.count !== undefined ? Number(cmdOpts.count) : recipes.length;
+      const candidates = generateResponses(detail.notes, keyCtx, spec, {
+        recipes,
+        count,
+        seed: Number(cmdOpts.seed),
+      });
+      const warnings = [...new Set(candidates.flatMap((c) => c.warnings))];
+      const specLine = `spec ${cmdOpts.style}${styleTier ? ` [${styleTier}]` : ""}, key ${keyCtx.label}`;
+
+      const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
+      if (!track) throw new Error(`track not found: ${target}`);
+      const occupied = new Set(track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])));
+      const free = Array.from({ length: track.slotCount }, (_, i) => i).filter((i) => !occupied.has(i));
+      if (free.length < candidates.length) {
+        throw new Error(
+          `need ${candidates.length} empty session slots on ${target}, found ${free.length} — ` +
+            "add scenes or sweep old auditions",
+        );
+      }
+
+      if (cmdOpts.dryRun) {
+        output(opts, { candidates, warnings }, () =>
+          [
+            `dry run: ${candidates.length} response candidate(s) for ${callClip} -> ${target} (${specLine}):`,
+            ...candidates.map((c) => `  resp ${c.recipe} s${c.seed} — ${c.notes.length} notes, ${c.lengthBeats} beats`),
+            ...warnings.map((w) => `  WARNING: ${w}`),
+            "candidates are starting points to audition, not a finished part.",
+          ].join("\n"),
+        );
+        return;
+      }
+
+      const created: { path: string; name: string }[] = [];
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i]!;
+        const slotPath = `${target}/slot:${free[i]}`;
+        const name = `resp ${c.recipe} s${c.seed}`;
+        await op(opts, "clip.create-midi", {
+          target: { type: "session", slotPath },
+          lengthBeats: c.lengthBeats,
+          notes: c.notes,
+          name,
+        });
+        created.push({ path: slotPath, name });
+      }
+
+      output(opts, { created, warnings }, () =>
+        [
+          `${created.length} response candidate(s) for ${callClip} -> ${target} (${specLine}):`,
+          ...created.map((c) => `  ${c.path.padEnd(22)} ${c.name}`),
+          ...warnings.map((w) => `  WARNING: ${w}`),
+          "candidates are starting points — audition, then keep/tweak your favorite.",
+        ].join("\n"),
+      );
+    },
+  );
+
+drop
+  .command("phrase <target> [responseTarget]")
+  .description(
+    "Cold-start an 8/16-bar call-and-response skeleton from a spec. One " +
+      "target = single clip, register-split; two targets = paired call/" +
+      "response clips of equal length (each voice silent during the " +
+      "other's bars).",
+  )
+  .option("--bars <bars>", "8 or 16", "8")
+  .option(
+    "--style <style>",
+    `phrase spec: built-in (${listPhraseStyles().join(", ")}) or a knowledge phrase-style-<name>`,
+    "bass-music-cr",
+  )
+  .option("--seed <seed>", "random seed (same seed = same phrase)", "1")
+  .option("--variant <variant>", "force a named call-cell variant (see the style's callCells) or its index")
+  .option("--key <key>", 'e.g. "A minor" (default: the Set scale)')
+  .option("--at-bar <bar>", "arrangement position (1-based bar) for track targets")
+  .option("--dry-run", "print the notation preview without touching Live")
+  .action(
+    async (
+      target: string,
+      responseTarget: string | undefined,
+      cmdOpts: {
+        bars: string;
+        style: string;
+        seed: string;
+        variant?: string;
+        key?: string;
+        atBar?: string;
+        dryRun?: boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const bars = Number(cmdOpts.bars);
+      if (bars !== 8 && bars !== 16) {
+        throw new Error(`--bars must be 8 or 16 (got "${cmdOpts.bars}")`);
+      }
+
+      const { spec, styleTier } = await resolvePhraseSpec(cmdOpts.style);
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const keyCtx = resolveKey(summary, cmdOpts.key);
+
+      let variant: number | undefined;
+      if (cmdOpts.variant !== undefined) {
+        const names = listPhraseVariants(spec);
+        variant = /^\d+$/.test(cmdOpts.variant) ? Number(cmdOpts.variant) : names.indexOf(cmdOpts.variant);
+        if (variant < 0) {
+          throw new Error(`unknown variant "${cmdOpts.variant}" (available: ${names.join(", ")})`);
+        }
+      }
+
+      const phrase = generatePhrase(spec, keyCtx, {
+        bars: bars as 8 | 16,
+        seed: Number(cmdOpts.seed),
+        ...(variant !== undefined ? { variant } : {}),
+      });
+      const specLine =
+        `spec ${cmdOpts.style}${styleTier ? ` [${styleTier}]` : ""} — cell ${phrase.meta.callCell}, ` +
+        `recipe ${phrase.meta.recipe}, seed ${cmdOpts.seed}, key ${keyCtx.label}`;
+
+      if (responseTarget) {
+        const callResolved = await resolvePhraseTarget(opts, summary, target, cmdOpts.atBar, phrase.lengthBeats);
+        const respResolved = await resolvePhraseTarget(
+          opts,
+          summary,
+          responseTarget,
+          cmdOpts.atBar,
+          phrase.lengthBeats,
+        );
+
+        if (cmdOpts.dryRun) {
+          output(
+            opts,
+            { call: phrase.callNotes, response: phrase.responseNotes, lengthBeats: phrase.lengthBeats, warnings: phrase.warnings },
+            () =>
+              [
+                `dry run: ${bars}-bar phrase (${specLine}):`,
+                `  call -> ${callResolved.where} (${phrase.callNotes.length} notes, ${phrase.lengthBeats} beats)`,
+                `  response -> ${respResolved.where} (${phrase.responseNotes.length} notes, ${phrase.lengthBeats} beats)`,
+                ...phrase.warnings.map((w) => `  WARNING: ${w}`),
+                "this is a skeleton — audition both voices together, then shape it into a real drop.",
+              ].join("\n"),
+          );
+          return;
+        }
+
+        const callResult = await writePhraseClip(opts, callResolved, phrase.lengthBeats, phrase.callNotes, `call ${spec.name}`);
+        const respResult = await writePhraseClip(
+          opts,
+          respResolved,
+          phrase.lengthBeats,
+          phrase.responseNotes,
+          `response ${spec.name}`,
+        );
+
+        output(opts, { call: callResult, response: respResult, warnings: phrase.warnings }, () =>
+          [
+            `${bars}-bar phrase (${specLine}):`,
+            `  call -> ${callResult.path} (${callResult.notes.length} notes)`,
+            `  response -> ${respResult.path} (${respResult.notes.length} notes)`,
+            ...phrase.warnings.map((w) => `  WARNING: ${w}`),
+            "this is a skeleton, not a finished drop — audition both voices together and shape it from there.",
+          ].join("\n"),
+        );
+      } else {
+        const resolved = await resolvePhraseTarget(opts, summary, target, cmdOpts.atBar, phrase.lengthBeats);
+        const merged = sortNotes([...phrase.callNotes, ...phrase.responseNotes]);
+
+        if (cmdOpts.dryRun) {
+          output(opts, { notes: merged, lengthBeats: phrase.lengthBeats, warnings: phrase.warnings }, () =>
+            [
+              `dry run: ${bars}-bar phrase (${specLine}) -> ${resolved.where} ` +
+                `(${merged.length} notes, register-split call/response in one clip)`,
+              ...phrase.warnings.map((w) => `  WARNING: ${w}`),
+              "this is a skeleton — audition, then shape it into a real drop.",
+            ].join("\n"),
+          );
+          return;
+        }
+
+        const result = await writePhraseClip(opts, resolved, phrase.lengthBeats, merged, spec.name);
+        output(opts, { path: result.path, notes: result.notes, warnings: phrase.warnings }, () =>
+          [
+            `${bars}-bar phrase (${specLine}) -> ${result.path} (${result.notes.length} notes, register-split)`,
+            ...phrase.warnings.map((w) => `  WARNING: ${w}`),
+            "this is a skeleton, not a finished drop — audition and shape it from there.",
+          ].join("\n"),
+        );
+      }
+    },
+  );
+
+// ---------------------------------------------------------------------------
 // Library (B3): save clips from the Set, browse, place back, mirror to Live.
 // ---------------------------------------------------------------------------
 
@@ -1291,6 +2029,71 @@ lib
     const store = libraryStore(cmdOpts);
     const content = await store.buildIndex();
     output(opts, { root: store.root }, () => content.trimEnd());
+  });
+
+lib
+  .command("import")
+  .description(
+    "Drain right-click captures ('AWH: Save clip to library' in Live) into " +
+      "library/clips/inbox/ as draft entries for naming/tagging later",
+  )
+  .option("--library <dir>", "library root")
+  .action(async (cmdOpts: { library?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const entries = (await op(opts, "library.outbox")) as {
+      name: string;
+      notes: NoteSpec[];
+      lengthBeats: number;
+      tempo: number;
+      scale: { rootNote: number; name: string; active: boolean } | null;
+      capturedAt: string;
+    }[];
+    if (entries.length === 0) {
+      output(opts, [], () => "outbox empty — nothing captured since the last import");
+      return;
+    }
+    const store = libraryStore(cmdOpts);
+    const existing = new Set((await store.listClips()).map((e) => e.slug));
+    const imported: string[] = [];
+    for (const captured of entries) {
+      let base: string;
+      try {
+        base = slugify(captured.name || "captured-clip");
+      } catch {
+        base = "captured-clip";
+      }
+      let slug = base;
+      for (let n = 2; existing.has(slug); n++) slug = `${base}-${n}`;
+      existing.add(slug);
+      const file = await store.saveClip({
+        slug,
+        kind: "midi",
+        category: "inbox",
+        tags: [],
+        bpm: captured.tempo,
+        scale: captured.scale?.active
+          ? `${PITCH_CLASSES[captured.scale.rootNote % 12]} ${captured.scale.name}`
+          : null,
+        lengthBeats: captured.lengthBeats,
+        source: {
+          project: null,
+          path: "right-click capture",
+          saved: captured.capturedAt.slice(0, 10),
+        },
+        tier: "draft",
+        title: captured.name || slug,
+        notation: serializeNotation(captured.notes, { beatsPerBar: 4 }),
+      });
+      imported.push(file);
+    }
+    await store.buildIndex();
+    output(opts, { imported }, () =>
+      [
+        `${imported.length} capture(s) imported:`,
+        ...imported.map((f) => `  ${f}`),
+        "curate: rename/re-categorize (edit category + move the file), tag, then lib index",
+      ].join("\n"),
+    );
   });
 
 // --- B3d: Live browser mirror ------------------------------------------
@@ -1766,22 +2569,54 @@ mix
   .action(async (name: string | undefined) => {
     const opts = program.opts<GlobalOpts>();
     const dir = join(findLibraryRoot(), "measurements");
+
+    // Two record "kinds" share library/measurements/: single-file mix
+    // reports (report.save_record, `kind` field absent) and multi-file
+    // drumstats records (drumstats.save_record, `kind: "drumstats"`) —
+    // both must render (not crash) in `mix records`/`mix records <name>`.
+    interface DrumStatsRecordFile {
+      kind: "drumstats";
+      saved: string;
+      n_sources: number;
+      stats: DrumStatsResult;
+      attribution?: { note?: string; [k: string]: unknown };
+    }
+    interface MixReportRecordFile {
+      kind?: undefined;
+      saved: string;
+      file: string;
+      measurements: {
+        loudness: { lufs_integrated: number; true_peak_db: number; psr: { min_psr_loud: number } };
+        spectrum: { tilt_db_per_oct: number };
+        bpm?: number;
+      };
+      findings: { severity: string; explanation: string; suggestion: string }[];
+    }
+    type RecordFile = DrumStatsRecordFile | MixReportRecordFile;
+
     if (name !== undefined) {
       const file = join(dir, `${name}.json`);
       if (!existsSync(file)) throw new Error(`no measurement record ${file}`);
-      const record = JSON.parse(readFileSync(file, "utf8")) as {
-        saved: string;
-        file: string;
-        measurements: Record<string, never>;
-        findings: { severity: string; explanation: string; suggestion: string }[];
-      };
-      output(opts, record, () => {
-        const m = record.measurements as unknown as {
-          loudness: { lufs_integrated: number; true_peak_db: number; psr: { min_psr_loud: number } };
-          spectrum: { tilt_db_per_oct: number };
-          bpm?: number;
-        };
-        return [
+      const record = JSON.parse(readFileSync(file, "utf8")) as RecordFile;
+      if (record.kind === "drumstats") {
+        const s = record.stats;
+        output(opts, record, () =>
+          [
+            `${name} — saved ${record.saved} (drumstats: ${s.dataset})`,
+            `  n_loops ${s.n_loops}  sources ${record.n_sources}  ` +
+              `bpm ${s.bpm_range[0].toFixed(0)}-${s.bpm_range[1].toFixed(0)}`,
+            `  density  low ${s.per_band.low.density.toFixed(2)}/bar · ` +
+              `mid ${s.per_band.mid.density.toFixed(2)}/bar · high ${s.per_band.high.density.toFixed(2)}/bar`,
+            ...(record.attribution?.note ? [`  attribution: ${record.attribution.note}`] : []),
+            ``,
+            `full JSON: ${file} (or --json); re-run: awh drums mine <dir> --dataset ${s.dataset}`,
+          ].join("\n"),
+        );
+        return;
+      }
+      const m = record.measurements;
+      output(opts, record, () =>
+        [
           `${name} — saved ${record.saved}`,
           `  source  ${record.file}`,
           `  LUFS-I ${m.loudness.lufs_integrated.toFixed(2)} · TP ${m.loudness.true_peak_db.toFixed(2)} dBTP · ` +
@@ -1793,8 +2628,8 @@ mix
           ),
           ``,
           `full JSON: ${file} (or --json)`,
-        ].join("\n");
-      });
+        ].join("\n"),
+      );
       return;
     }
     if (!existsSync(dir)) {
@@ -1805,32 +2640,27 @@ mix
       .filter((f) => f.endsWith(".json"))
       .sort()
       .map((f) => {
-        const r = JSON.parse(readFileSync(join(dir, f), "utf8")) as {
-          saved: string;
-          file: string;
-          measurements: {
-            loudness: { lufs_integrated: number };
-            spectrum: { tilt_db_per_oct: number };
+        const r = JSON.parse(readFileSync(join(dir, f), "utf8")) as RecordFile;
+        const name = f.replace(/\.json$/, "");
+        if (r.kind === "drumstats") {
+          return {
+            name,
+            saved: r.saved,
+            summary: `drumstats: ${r.stats.n_loops} loop(s), ${r.stats.dataset}`,
           };
-        };
+        }
         return {
-          name: f.replace(/\.json$/, ""),
+          name,
           saved: r.saved,
-          lufs: r.measurements.loudness.lufs_integrated,
-          tilt: r.measurements.spectrum.tilt_db_per_oct,
-          file: basename(r.file),
+          summary:
+            `${r.measurements.loudness.lufs_integrated.toFixed(1).padStart(6)} LUFS  ` +
+            `${r.measurements.spectrum.tilt_db_per_oct.toFixed(1).padStart(5)} dB/oct  ${basename(r.file)}`,
         };
       });
     output(opts, rows, () =>
       rows.length === 0
         ? "no measurement records yet — awh mix report <file> --save"
-        : rows
-            .map(
-              (r) =>
-                `${r.name.padEnd(32)} ${r.saved}  ${r.lufs.toFixed(1).padStart(6)} LUFS  ` +
-                `${r.tilt.toFixed(1).padStart(5)} dB/oct  ${r.file}`,
-            )
-            .join("\n"),
+        : rows.map((r) => `${r.name.padEnd(32)} ${r.saved}  ${r.summary}`).join("\n"),
     );
   });
 
@@ -1838,7 +2668,9 @@ mix
  * Typed wrapper for device.param — op() args are `unknown`, so a wrong field
  * name compiles fine and only fails at runtime inside Live (the {name} vs
  * {param} bug found in live verification). Repeat-use ops get typed wrappers;
- * see docs/lessons-learned.md.
+ * see docs/lessons-learned.md. Delegates to op.ts's caller-based version
+ * (packages/cli/src/op.ts) — the SAME wrapper the `awh op` (B2) engine uses,
+ * just bound to this file's opts-based `op()` gateway caller.
  */
 async function setDeviceParam(
   opts: GlobalOpts,
@@ -1846,7 +2678,7 @@ async function setDeviceParam(
   param: string,
   value: number,
 ): Promise<void> {
-  await op(opts, "device.param", { path, param, value });
+  await opSetDeviceParam((name, args) => op(opts, name, args), path, param, value);
 }
 
 /** Resolve trigger positions (seconds) from the Trigger MIDI clip or manual beats. */
@@ -1881,6 +2713,59 @@ function triggerArgs(t: { seconds: number[]; cycle?: number }): string[] {
   const args = ["--triggers", t.seconds.map((s) => s.toFixed(6)).join(",")];
   if (t.cycle !== undefined) args.push("--cycle", t.cycle.toFixed(6));
   return args;
+}
+
+/**
+ * Resolve trigger positions in raw BEATS (not seconds) plus the pattern's
+ * loop length in beats — what the M4L Ducker needs (it runs its own
+ * transport-beat math, see m4l/README.md). Distinct from
+ * resolveTriggerSeconds, which the analysis-engine flows use instead.
+ */
+async function resolveDuckTriggerBeats(
+  opts: GlobalOpts,
+  cmdOpts: { triggerClip?: string; pattern?: string; length?: string },
+): Promise<DuckTriggerSet> {
+  if (!cmdOpts.triggerClip && !cmdOpts.pattern) {
+    throw new Error("pass --trigger-clip <path> (the Trigger MIDI clip) or --pattern <beats> --length <beats>");
+  }
+  if (cmdOpts.triggerClip) {
+    const detail = (await op(opts, "clip.get", { path: cmdOpts.triggerClip })) as ClipDetail;
+    if (detail.kind !== "midi") {
+      throw new Error(`${cmdOpts.triggerClip} is not a MIDI clip`);
+    }
+    const beats = [...new Set((detail.notes ?? []).map((n) => n.start))].sort((a, b) => a - b);
+    return { patternLengthBeats: detail.duration, beats };
+  }
+  if (!cmdOpts.length) {
+    throw new Error("--pattern requires --length <beats> (the pattern's loop length)");
+  }
+  const beats = cmdOpts.pattern!.trim().length
+    ? [...new Set(cmdOpts.pattern!.split(",").map((b) => Number(b.trim())))].sort((a, b) => a - b)
+    : [];
+  return { patternLengthBeats: Number(cmdOpts.length), beats };
+}
+
+/** Shape source for `duck push`: --fit <path> (duck-fit --json output) or explicit flags. */
+function resolveDuckShape(cmdOpts: {
+  fit?: string;
+  depth?: string;
+  release?: string;
+  attack?: string;
+  hold?: string;
+}): DuckShape {
+  if (cmdOpts.fit) {
+    const fit = JSON.parse(readFileSync(cmdOpts.fit, "utf8")) as unknown;
+    return shapeFromFitJson(fit);
+  }
+  if (cmdOpts.depth === undefined || cmdOpts.release === undefined) {
+    throw new Error("pass --fit <duck-fit.json> or --depth <dB> --release <ms>");
+  }
+  return {
+    depthDb: Number(cmdOpts.depth),
+    releaseMs: Number(cmdOpts.release),
+    attackMs: cmdOpts.attack !== undefined ? Number(cmdOpts.attack) : 2,
+    holdMs: cmdOpts.hold !== undefined ? Number(cmdOpts.hold) : 0,
+  };
 }
 
 /** Drive the M4L tap through one loop-record-play-stop cycle. */
@@ -1930,8 +2815,9 @@ const duckCmd = mix
   .command("duck")
   .description(
     "Sidechain ducking toolkit: fit the ideal envelope to your drums, set up an " +
-      "automatic stock-Compressor duck, measure/calibrate the result. ShaperBox " +
-      "hand-drawing is one strategy; the compressor path is the automatic one.",
+      "automatic stock-Compressor duck, push it straight to the AWH M4L Ducker " +
+      "(full-auto), or measure/calibrate the result. ShaperBox hand-drawing is one " +
+      "strategy among several — see `awh mix duck push` for the no-routing-clicks one.",
   );
 
 duckCmd
@@ -2139,6 +3025,104 @@ duckCmd
     },
   );
 
+duckCmd
+  .command("push")
+  .description(
+    "FULL-AUTO strategy: push the fitted duck envelope to the AWH Ducker M4L device " +
+      "(m4l/) over OSC — transport-synced, no compressor/ShaperBox routing needed. " +
+      "The device must already be placed once by hand on the Sidechain bus (m4l/README.md).",
+  )
+  .option("--fit <path>", "duck-fit JSON file (`awh mix duck fit ... --json > fit.json`)")
+  .option("--depth <db>", "explicit duck depth in dB (alternative to --fit)")
+  .option("--release <ms>", "explicit release time in ms (required with --depth)")
+  .option("--attack <ms>", "explicit attack time in ms", "2")
+  .option("--hold <ms>", "explicit hold time in ms", "0")
+  .option("--trigger-clip <clipPath>", "the Trigger MIDI clip (note starts + loop length, in BEATS)")
+  .option("--pattern <beats>", "manual comma-separated trigger positions in BEATS")
+  .option("--length <beats>", "pattern loop length in BEATS (required with --pattern)")
+  .option("--off", "bypass the Ducker (ping + /awh/duck/on 0) — ignores shape/trigger options")
+  .option("--duck-port <port>", "Ducker OSC port", String(DUCK_PORT))
+  .option("--duck-reply-port <port>", "Ducker OSC reply port", String(DUCK_REPLY_PORT))
+  .action(
+    async (cmdOpts: {
+      fit?: string;
+      depth?: string;
+      release?: string;
+      attack?: string;
+      hold?: string;
+      triggerClip?: string;
+      pattern?: string;
+      length?: string;
+      off?: boolean;
+      duckPort: string;
+      duckReplyPort: string;
+    }) => {
+      const opts = program.opts<GlobalOpts>();
+      const port = Number(cmdOpts.duckPort);
+      const replyPort = Number(cmdOpts.duckReplyPort);
+
+      if (cmdOpts.off) {
+        const result = await pushDuck({ port, replyPort, off: true });
+        output(opts, result, () => `Ducker bypassed (${result.version ? `v${result.version}, ` : ""}port ${port})`);
+        return;
+      }
+
+      if (!cmdOpts.fit && cmdOpts.depth === undefined) {
+        throw new Error("pass --fit <duck-fit.json> or --depth <dB> --release <ms>");
+      }
+      if (!cmdOpts.triggerClip && !cmdOpts.pattern) {
+        throw new Error("pass --trigger-clip <clip path> or --pattern <beats> --length <beats>");
+      }
+
+      const shape = resolveDuckShape(cmdOpts);
+      const triggers = await resolveDuckTriggerBeats(opts, cmdOpts);
+
+      // Zero triggers is a STATE, not an error (docs/lessons-learned.md rule
+      // 5): a duck with nothing to trigger on is a documented no-op — say
+      // so, send nothing (not even a ping), exit 0.
+      if (triggers.beats.length === 0) {
+        output(opts, { sent: false, reason: "no triggers" }, () =>
+          "no trigger positions found (empty Trigger clip / empty --pattern) — " +
+            "nothing to duck; sent nothing to the Ducker",
+        );
+        return;
+      }
+
+      const result = await pushDuck({ port, replyPort, shape, triggers });
+      output(opts, result, () =>
+        [
+          `Ducker updated (v${result.version}, port ${port}):`,
+          `  triggers   ${result.triggerCount} at pattern length ${result.patternLengthBeats} beats`,
+          `  shape      depth ${shape.depthDb.toFixed(1)} dB, attack ${shape.attackMs.toFixed(0)} ms, ` +
+            `hold ${shape.holdMs.toFixed(0)} ms, release ${shape.releaseMs.toFixed(0)} ms`,
+          `  state      on`,
+          "",
+          "Verify: `awh mix duck measure <SidechainBusCapture> --trigger-clip ...` " +
+            "on a capture of the Sidechain bus post-Ducker.",
+        ].join("\n"),
+      );
+    },
+  );
+
+mix
+  .command("pump-check <busCapture>")
+  .description(
+    "Trigger-locked sidechain verification (pump v2): fits the fixed dip " +
+      "model per trigger and gives a ducking/no-duck/inconclusive verdict. " +
+      "Capture the ISOLATED ducked bus (Sidechain track), not the full mix",
+  )
+  .option("--trigger-clip <clipPath>", "the Trigger MIDI clip")
+  .option("--triggers <beats>", "manual trigger positions in BEATS")
+  .action(
+    async (busCapture: string, cmdOpts: { triggerClip?: string; triggers?: string }) => {
+      const opts = program.opts<GlobalOpts>();
+      const t = await resolveTriggerSeconds(opts, cmdOpts);
+      const args = ["pumpcheck", busCapture, ...triggerArgs(t)];
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
 mix
   .command("capture")
   .description(
@@ -2176,6 +3160,413 @@ mix
       const summary = (await op(opts, "set.summary")) as SetSummary;
       output(opts, { file: outPath, seconds }, () =>
         `captured -> ${outPath}\nanalyze with: awh mix report ${outPath} --bpm ${summary.tempo}`,
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Operator assistant (B2): recipe knowledge base + audio-sample sound
+// matching. docs/design/operator-assistant.md. Engine lives in op.ts
+// (validate-first apply flow) + analysis/awh_analysis/opmatch.py.
+// ---------------------------------------------------------------------------
+
+interface OpMatchF0 {
+  hz: number | null;
+  drift_semitones: number | null;
+  voiced_fraction: number;
+}
+interface OpMatchAdsr {
+  attack_s: number;
+  decay_s: number;
+  sustain_db: number;
+  sustain_s: number;
+  release_s: number;
+  peak_db: number;
+  floor_db: number;
+  has_sustain: boolean;
+  r_squared: number;
+}
+interface OpMatchCentroid {
+  direction: "rising" | "falling" | "flat";
+  start_hz: number | null;
+  end_hz: number | null;
+  slope_hz_per_s: number;
+}
+interface OpMatchAnalysis {
+  file: string;
+  duration_s: number;
+  samplerate: number;
+  f0: OpMatchF0;
+  adsr: OpMatchAdsr;
+  centroid: OpMatchCentroid;
+  harmonic_vector: number[];
+  harmonic_amplitudes: number[];
+  harmonicity_ratio: number;
+  partial_deviation_semitones: number | null;
+  noise_floor_ratio: number;
+}
+interface OpMatchProposal {
+  oscillator: { waveform: string; residual: number; note: string };
+  envelope: { attack_s: number; decay_s: number; sustain_db: number; release_s: number; fit_r_squared: number };
+  filter: { direction: string; note: string };
+  drawThesePartials: number[];
+  addressable: Record<string, number>;
+  addressable_caveat: string;
+}
+interface OpMatchResult {
+  analysis: OpMatchAnalysis;
+  tier: 1 | 2 | 3;
+  reasons: string[];
+  proposal: OpMatchProposal | null;
+  summary: string;
+}
+interface OpCompareResult {
+  log_spectrogram_l2: number;
+  harmonic_cosine: number | null;
+  score: number;
+}
+
+/** Resolve an `op apply`/`op match --apply` recipe-name argument to its
+ *  `operator-recipe-<name>` knowledge entry, same slug-prefix convention as
+ *  resolvePhraseSpec's `phrase-style-<name>`. */
+async function loadOperatorRecipeEntry(name: string) {
+  const slug = name.startsWith(RECIPE_SLUG_PREFIX) ? name : `${RECIPE_SLUG_PREFIX}${name}`;
+  try {
+    return await knowledgeStore().loadEntry(slug);
+  } catch {
+    throw new Error(
+      `unknown operator recipe "${name}" — run \`awh op recipes\` to list them (slug "${slug}" not found)`,
+    );
+  }
+}
+
+/** A device path's owning track path (its root segment). */
+function deviceTrackPath(devicePath: string): string {
+  const segments = parsePath(devicePath);
+  const root = segments[0];
+  if (!root) throw new Error(`bad device path: ${devicePath}`);
+  return formatPath([root]);
+}
+
+function renderRecipeWriteLines(results: { param: string; target: number; actual: number; matched: boolean }[]): string[] {
+  return results.map(
+    (r) => `  ${r.param}: -> ${r.target}${r.matched ? "" : `  ** actual ${r.actual} (MISMATCH)`}`,
+  );
+}
+
+function renderOpMatchText(result: OpMatchResult): string {
+  const a = result.analysis;
+  const lines = [
+    `tier ${result.tier}: ${result.summary}`,
+    "",
+    `f0: ${a.f0.hz !== null ? `${a.f0.hz.toFixed(1)} Hz` : "n/a"}  ` +
+      `harmonicity ${a.harmonicity_ratio.toFixed(2)}  ` +
+      `partial deviation ${a.partial_deviation_semitones !== null ? `${a.partial_deviation_semitones.toFixed(2)} semitones` : "n/a"}  ` +
+      `noise floor ratio ${a.noise_floor_ratio.toFixed(2)}`,
+  ];
+  if (result.tier === 3) {
+    lines.push("", "reasons:", ...result.reasons.map((r) => `  - ${r}`));
+    return lines.join("\n");
+  }
+  const p = result.proposal!;
+  lines.push(
+    "",
+    `oscillator: ${p.oscillator.waveform} (residual ${p.oscillator.residual.toFixed(2)})`,
+    `envelope target: attack ${(p.envelope.attack_s * 1000).toFixed(0)}ms  ` +
+      `decay ${(p.envelope.decay_s * 1000).toFixed(0)}ms  sustain ${p.envelope.sustain_db.toFixed(1)}dB  ` +
+      `release ${(p.envelope.release_s * 1000).toFixed(0)}ms  (fit r^2=${p.envelope.fit_r_squared.toFixed(2)})`,
+    `filter: ${p.filter.direction}`,
+    "",
+    "drawThesePartials (16 normalized amplitudes — hand-draw in Operator's " +
+      "harmonics editor if the stock-wave residual above is high):",
+    "  " + p.drawThesePartials.map((v) => v.toFixed(2)).join(", "),
+    "",
+    `addressable (raw device.param values, HEURISTIC): ` +
+      (Object.keys(p.addressable).length === 0
+        ? "(none — advisory only)"
+        : Object.entries(p.addressable).map(([k, v]) => `${k}=${v.toFixed(3)}`).join(", ")),
+    p.addressable_caveat,
+  );
+  return lines.join("\n");
+}
+
+const opGroup = program
+  .command("op")
+  .description("Operator assistant (B2): recipes + audio-sample sound matching");
+
+opGroup
+  .command("recipes")
+  .description("List operator-recipe-* knowledge entries")
+  .action(async () => {
+    const opts = program.opts<GlobalOpts>();
+    const entries = await knowledgeStore().listEntries();
+    const recipes = summarizeRecipeEntries(entries);
+    output(opts, recipes, () =>
+      recipes.length === 0
+        ? "no operator recipes yet — knowledge/sound-design/operator-recipe-*.md " +
+          "(see docs/design/operator-assistant.md)"
+        : recipes
+            .map(
+              (r) =>
+                `${r.slug.padEnd(30)} [${r.tier}] ${String(r.paramCount).padStart(3)} params` +
+                `${r.hasPlayNotes ? "  (playNotes)" : ""}  ${r.title}`,
+            )
+            .join("\n"),
+    );
+  });
+
+opGroup
+  .command("apply <recipe> <devicePath>")
+  .description(
+    "Apply a recipe's params to a live device: validates every param NAME " +
+      "against device.get FIRST (fails loudly, writes nothing, on any unknown " +
+      "name), then writes and reads back every param to report mismatches.",
+  )
+  .option("--dry-run", "print the planned moves without writing anything")
+  .option("--audition", "write the recipe's playNotes to an empty session slot on the device's track")
+  .option("--sig <beatsPerBar>", "beats per bar for --audition notation", "4")
+  .action(
+    async (
+      recipeName: string,
+      devicePath: string,
+      cmdOpts: { dryRun?: boolean; audition?: boolean; sig: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const entry = await loadOperatorRecipeEntry(recipeName);
+      const recipe = loadRecipeFromEntry(entry);
+      const detail = (await op(opts, "device.get", { path: devicePath })) as DeviceDetail;
+      const plan: RecipePlan = planRecipeApply(detail, recipe, devicePath);
+
+      if (plan.unknownParams.length > 0) {
+        throw new Error(
+          `recipe "${recipe.name}" [${entry.tier}] references params not on ${devicePath} ` +
+            `(${detail.name}): ${plan.unknownParams.join(", ")}\n` +
+            `known params: ${plan.knownParamNames.join(", ")}`,
+        );
+      }
+
+      if (cmdOpts.dryRun) {
+        output(opts, { plan }, () =>
+          [
+            `${recipe.name} [${entry.tier}] -> ${devicePath} (${detail.name}) — DRY RUN, nothing written`,
+            ...plan.moves.map((m) => `  ${m.param}: ${m.from} -> ${m.to}`),
+          ].join("\n"),
+        );
+        return;
+      }
+
+      const caller: OpCaller = (name, args) => op(opts, name, args);
+      const results = await applyRecipePlan(caller, plan);
+      const mismatches = results.filter((r) => !r.matched);
+
+      let auditionLine = "";
+      if (cmdOpts.audition) {
+        if (!recipe.playNotes) {
+          auditionLine = "\n--audition: recipe has no playNotes to write";
+        } else {
+          const beatsPerBar = Number(cmdOpts.sig);
+          const parsed = parseNotation(recipe.playNotes, { beatsPerBar });
+          const trackPath = deviceTrackPath(devicePath);
+          const summary = (await op(opts, "set.summary")) as SetSummary;
+          const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
+          if (!track) {
+            auditionLine = `\n--audition: track not found: ${trackPath}`;
+          } else {
+            const occupied = new Set(
+              track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+            );
+            const free = Array.from({ length: track.slotCount }, (_, i) => i).find((i) => !occupied.has(i));
+            if (free === undefined) {
+              auditionLine = `\n--audition: no empty session slot on ${trackPath} — pick one manually`;
+            } else {
+              const slotPath = `${trackPath}/slot:${free}`;
+              await op(opts, "clip.create-midi", {
+                target: { type: "session", slotPath },
+                lengthBeats: parsed.suggestedLengthBeats,
+                notes: parsed.notes,
+                name: `${recipe.name} audition`,
+              });
+              auditionLine = `\naudition clip -> ${slotPath} (press play in Live to hear it)`;
+            }
+          }
+        }
+      }
+
+      output(opts, { plan, results, mismatches }, () =>
+        [
+          `${recipe.name} [${entry.tier}] -> ${devicePath} (${detail.name})`,
+          ...renderRecipeWriteLines(results),
+          mismatches.length === 0
+            ? "all params verified by read-back"
+            : `${mismatches.length} param(s) did not verify — read-back value differs from what was written`,
+        ].join("\n") + auditionLine,
+      );
+    },
+  );
+
+opGroup
+  .command("match <sample>")
+  .description(
+    "Analyze an audio sample and propose an Operator patch, tiered by " +
+      "reachability (tier 3 = outside Operator's reachable set — a normal " +
+      "result, not an error).",
+  )
+  .option("--apply <devicePath>", "push the addressable subset of the proposal to a live device")
+  .action(async (sample: string, cmdOpts: { apply?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const result = (await runAnalysisJson(["opmatch", sample])) as unknown as OpMatchResult;
+
+    if (!cmdOpts.apply) {
+      output(opts, result, () => renderOpMatchText(result));
+      return;
+    }
+
+    if (result.tier === 3) {
+      output(opts, result, () => `${renderOpMatchText(result)}\n\n--apply: tier-3 refusal — nothing to apply.`);
+      return;
+    }
+
+    const proposal = result.proposal!;
+    if (Object.keys(proposal.addressable).length === 0) {
+      output(opts, result, () =>
+        `${renderOpMatchText(result)}\n\n--apply: nothing addressable in this proposal (advisory only) — nothing written.`,
+      );
+      return;
+    }
+
+    const devicePath = cmdOpts.apply;
+    const detail = (await op(opts, "device.get", { path: devicePath })) as DeviceDetail;
+    const syntheticRecipe: OperatorRecipe = {
+      name: `${basename(sample)} match`,
+      device: detail.name,
+      params: proposal.addressable,
+    };
+    const plan: RecipePlan = planRecipeApply(detail, syntheticRecipe, devicePath);
+    if (plan.unknownParams.length > 0) {
+      throw new Error(
+        `proposal references params not on ${devicePath} (${detail.name}): ${plan.unknownParams.join(", ")}\n` +
+          `known params: ${plan.knownParamNames.join(", ")}`,
+      );
+    }
+    const caller: OpCaller = (name, args) => op(opts, name, args);
+    const results = await applyRecipePlan(caller, plan);
+    const mismatches = results.filter((r) => !r.matched);
+
+    output(opts, { ...result, applied: { devicePath, results, mismatches } }, () =>
+      [
+        renderOpMatchText(result),
+        "",
+        `applied addressable subset -> ${devicePath} (${detail.name}):`,
+        ...renderRecipeWriteLines(results),
+        "",
+        "drawThesePartials (always yours to hand-draw, even applied):",
+        "  " + proposal.drawThesePartials.map((v) => v.toFixed(2)).join(", "),
+      ].join("\n"),
+    );
+  });
+
+opGroup
+  .command("verify <ref> <devicePath>")
+  .description(
+    "Closed-loop verification: writes an audition note (at the reference's " +
+      "own detected pitch) onto the device's track, captures it via the M4L " +
+      "tap, and reports a spectral-distance score against the reference. " +
+      "Requires the AWH Capture Tap device (m4l/README.md) — NOT auto-iterated: " +
+      "report, owner tweaks, re-verify.",
+  )
+  .option("--from-bar <bar>", "arrangement position to write/play the audition note", "1")
+  .option("--bars <bars>", "capture span length in bars (default: enough to cover the reference)")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--tap-port <port>", "capture tap OSC port", String(TAP_PORT))
+  .option("--out <file>", "capture destination (default: a scratch file under .dev/)")
+  .action(
+    async (
+      ref: string,
+      devicePath: string,
+      cmdOpts: { fromBar: string; bars?: string; sig: string; tapPort: string; out?: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const detail = (await op(opts, "device.get", { path: devicePath })) as DeviceDetail;
+
+      const refAnalysis = (await runAnalysisJson(["opmatch", ref])) as unknown as OpMatchResult;
+      const hz = refAnalysis.analysis.f0.hz;
+      if (hz === null) {
+        throw new Error(
+          `${ref} has no stable pitch to audition — op verify needs a tonal reference ` +
+            `(run \`awh op match ${ref}\` for the full analysis)`,
+        );
+      }
+      const midiPitch = Math.max(0, Math.min(127, Math.round(69 + 12 * Math.log2(hz / 440))));
+
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const beatsPerBar = Number(cmdOpts.sig);
+      const trackPath = deviceTrackPath(devicePath);
+      const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
+      if (!track) throw new Error(`track not found: ${trackPath}`);
+
+      const fromBar = Number(cmdOpts.fromBar);
+      const startBeat = (fromBar - 1) * beatsPerBar;
+      const noteLengthBeats = Math.max(
+        beatsPerBar,
+        clipLengthBeats(secondsToBeats(refAnalysis.analysis.duration_s, summary.tempo), beatsPerBar),
+      );
+      const bars = cmdOpts.bars ? Math.ceil(Number(cmdOpts.bars)) : noteLengthBeats / beatsPerBar;
+      const endBeat = startBeat + bars * beatsPerBar;
+
+      const overlap = track.arrangementClips.find(
+        (c) => startBeat < (c.endTime ?? 0) && endBeat > (c.startTime ?? 0),
+      );
+      const notes: NoteSpec[] = [{ pitch: midiPitch, start: 0, duration: noteLengthBeats, velocity: 100 }];
+      if (overlap) {
+        if (overlap.kind !== "midi") {
+          throw new Error(`${overlap.path} at bar ${fromBar} is an audio clip — pick a different --from-bar`);
+        }
+        const clamped = clampNotesToLength(notes, overlap.duration);
+        await op(opts, "clip.notes", { path: overlap.path, notes: clamped });
+        await op(opts, "clip.update", { path: overlap.path, name: "op verify audition" });
+      } else {
+        await op(opts, "clip.create-midi", {
+          target: { type: "arrangement", trackPath, startBeat },
+          lengthBeats: noteLengthBeats,
+          notes,
+          name: "op verify audition",
+        });
+      }
+
+      const out =
+        cmdOpts.out ??
+        join(repoRoot(), ".dev", "op-verify", `${slugify(basename(ref).replace(/\.[^.]+$/, "") || "capture")}.wav`);
+      await mkdir(dirname(out), { recursive: true });
+
+      let captured: number;
+      try {
+        captured = await captureSpan(opts, {
+          fromBar,
+          bars,
+          beatsPerBar,
+          tapPort: Number(cmdOpts.tapPort),
+          out,
+          tailS: 0.3,
+        });
+      } catch (err) {
+        throw new Error(
+          `op verify requires the AWH Capture Tap M4L device (m4l/README.md) — ${(err as Error).message}`,
+        );
+      }
+
+      const compareResult = (await runAnalysisJson(["opcompare", ref, out])) as unknown as OpCompareResult;
+      output(
+        opts,
+        { devicePath, deviceName: detail.name, capture: out, seconds: captured, compare: compareResult },
+        () =>
+          [
+            `${detail.name} @ ${devicePath} vs ${ref}`,
+            `audition note: pitch ${midiPitch} (from ${ref}'s detected f0 ${hz.toFixed(1)} Hz)`,
+            `captured -> ${out} (${captured.toFixed(1)}s)`,
+            `log-spectrogram L2: ${compareResult.log_spectrogram_l2.toFixed(3)}`,
+            `harmonic cosine: ${compareResult.harmonic_cosine !== null ? compareResult.harmonic_cosine.toFixed(3) : "n/a"}`,
+            `score: ${compareResult.score.toFixed(3)} (1.0 = identical — ears decide the rest)`,
+          ].join("\n"),
       );
     },
   );
@@ -2661,6 +4052,138 @@ refSections
           (s) => `  bar ${String(s.start_bar).padStart(3)}-${String(s.end_bar).padEnd(3)} ${s.name}`,
         ),
         ...(savedTo ? [`merged into ${savedTo} — run \`awh kb index\` to refresh the index`] : []),
+      ].join("\n"),
+    );
+  });
+
+const endless = program
+  .command("endless")
+  .description(
+    "Endless player (M10): seeded, ever-different arrangements built from YOUR own " +
+      "produced/mixed stems — see docs/design/endless-player.md",
+  );
+
+endless
+  .command("plan")
+  .description(
+    "Emit a fully-commented endless.yaml starter scaffold — from --sections \"id:bars,...\" " +
+      "or --from-ref <name> (reuses a saved reference's corrected section map, M8)",
+  )
+  .option("--sections <spec>", 'section list, e.g. "intro:8,build:8,drop:16,break:8"')
+  .option(
+    "--from-ref <file>",
+    "a saved library/references/<name>.json, or a `ref sections read -o <file>` JSON — " +
+      "mutually exclusive with --sections",
+  )
+  .option("--name <name>", 'song name for the spec (default: derived, or "my-song")')
+  .option("--bpm <bpm>", "tempo — required with --sections; taken from the reference with --from-ref")
+  .option("-o, --out <file>", "output path", "endless.yaml")
+  .option("--force", "overwrite an existing file")
+  .action(
+    async (cmdOpts: {
+      sections?: string;
+      fromRef?: string;
+      name?: string;
+      bpm?: string;
+      out: string;
+      force?: boolean;
+    }) => {
+      const opts = program.opts<GlobalOpts>();
+      if (!cmdOpts.sections === !cmdOpts.fromRef) {
+        throw new Error('pass exactly one of --sections "id:bars,..." or --from-ref <file>');
+      }
+      if (existsSync(cmdOpts.out) && !cmdOpts.force) {
+        throw new Error(`${cmdOpts.out} already exists — refusing to overwrite (pass --force)`);
+      }
+
+      let sections: { id: string; bars: number }[];
+      let bpm: number;
+      let name: string;
+      if (cmdOpts.sections) {
+        sections = parseSectionsArg(cmdOpts.sections);
+        if (!cmdOpts.bpm) throw new Error("--bpm is required with --sections");
+        bpm = Number(cmdOpts.bpm);
+        if (!Number.isFinite(bpm) || bpm <= 0) throw new Error(`--bpm must be a positive number`);
+        name = cmdOpts.name ?? "my-song";
+      } else {
+        const requested = cmdOpts.fromRef!;
+        let refFile = requested;
+        if (!existsSync(refFile)) {
+          const candidate = join(findLibraryRoot(), "references", `${requested}.json`);
+          if (!existsSync(candidate)) {
+            throw new Error(`--from-ref: no file at "${requested}" or "${candidate}"`);
+          }
+          refFile = candidate;
+        }
+        const parsed = JSON.parse(await readFile(refFile, "utf8")) as {
+          sections?: RefSectionLike[];
+          bpm?: number;
+          reference?: { sections: RefSectionLike[]; bpm: number };
+        };
+        const refSections = parsed.reference?.sections ?? parsed.sections;
+        const refBpm = parsed.reference?.bpm ?? parsed.bpm;
+        if (!refSections) throw new Error(`${refFile} has no sections`);
+        sections = sectionsFromReference(refSections);
+        if (cmdOpts.bpm) {
+          bpm = Number(cmdOpts.bpm);
+          if (!Number.isFinite(bpm) || bpm <= 0) throw new Error(`--bpm must be a positive number`);
+        } else if (refBpm) {
+          bpm = Math.round(refBpm * 100) / 100;
+        } else {
+          throw new Error(`${refFile} has no bpm — pass --bpm to set one`);
+        }
+        name = cmdOpts.name ?? basename(refFile).replace(/\.json$/, "");
+      }
+
+      const yamlText = buildEndlessPlanYaml({ name, bpm, sections });
+      await writeFile(cmdOpts.out, yamlText, "utf8");
+      output(opts, { path: cmdOpts.out, name, bpm, sections: sections.length }, () =>
+        [
+          `wrote ${cmdOpts.out} (${sections.length} section(s), ${bpm} BPM) — fill in the pools, then:`,
+          `  awh endless build ${cmdOpts.out} -o dist/${name}`,
+        ].join("\n"),
+      );
+    },
+  );
+
+endless
+  .command("build <spec>")
+  .description(
+    "Validate an endless.yaml LOUDLY — every file, duration, reachability, empty-pool " +
+      "problem at once, before writing anything — then emit the player",
+  )
+  .requiredOption("-o, --out <dir>", "output directory")
+  .option("--single-file", "inline player.js + every audio file as data: URIs into one index.html")
+  .action(async (specPath: string, cmdOpts: { out: string; singleFile?: boolean }) => {
+    const opts = program.opts<GlobalOpts>();
+    const result = await buildEndlessPlayer(specPath, cmdOpts.out, { singleFile: cmdOpts.singleFile });
+    const sizeNote =
+      result.singleFileBytes !== undefined
+        ? ` (${(result.singleFileBytes / (1024 * 1024)).toFixed(1)} MB${
+            result.singleFileBytes > SINGLE_FILE_WARN_BYTES ? ", over the 12 MB single-file guideline" : ""
+          })`
+        : "";
+    output(opts, result, () =>
+      [
+        `built -> ${result.outDir}${sizeNote}`,
+        cmdOpts.singleFile
+          ? `open ${join(result.outDir, "index.html")} directly — no server needed`
+          : `serve it (fetch() is blocked on file://): cd ${result.outDir} && python3 -m http.server 8000`,
+      ].join("\n"),
+    );
+  });
+
+endless
+  .command("demo")
+  .description("Generate a tiny synthetic 3-layer song (kick/hat + bass + pads) + spec, and build it")
+  .requiredOption("-o, --out <dir>", "output directory")
+  .action(async (cmdOpts: { out: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const result = await buildEndlessDemo(cmdOpts.out);
+    output(opts, result, () =>
+      [
+        `demo built -> ${result.outDir} (spec: ${result.specPath})`,
+        `serve it: cd ${result.outDir} && python3 -m http.server 8000`,
       ].join("\n"),
     );
   });

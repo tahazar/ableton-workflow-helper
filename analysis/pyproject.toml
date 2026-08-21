@@ -15,6 +15,22 @@ dependencies = [
     "pyloudnorm",
 ]
 
+# B1 (audio-to-MIDI, `a2m`): the ONNX-backend runtime deps for basic-pitch,
+# WITHOUT basic-pitch itself — its own PyPI metadata unconditionally requires
+# tensorflow on Linux/py>=3.11 (not gated behind an extra), so it must be
+# installed separately with --no-deps. See analysis/README.md for the exact
+# two-step install command and the license audit of everything it pulls in.
+[project.optional-dependencies]
+a2m = [
+    "onnxruntime",
+    "librosa",
+    "mir_eval",
+    "pretty_midi",
+    "resampy",
+    "scikit-learn",
+    "typing_extensions",
+]
+
 [project.scripts]
 awh-analysis = "awh_analysis.__main__:main"
 
