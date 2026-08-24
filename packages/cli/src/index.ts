@@ -23,6 +23,20 @@ import {
   type OpCaller,
   type RecipePlan,
 } from "./op.js";
+import {
+  REMOTE_PORT,
+  REMOTE_REPLY_PORT,
+  auditionEnd,
+  auditionSlug,
+  parseLaunchTarget,
+  remoteFire,
+  remoteJump,
+  remotePlay,
+  remoteScene,
+  remoteStop,
+  remoteStopClips,
+  type AuditionState,
+} from "./remote.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { buildEndlessPlayer, SINGLE_FILE_WARN_BYTES } from "./endless/build.js";
 import { buildEndlessPlanYaml, parseSectionsArg, sectionsFromReference, type RefSectionLike } from "./endless/plan.js";
@@ -745,6 +759,143 @@ program
         : `deleted ${doomed.length} clips: ${doomed.map((c) => c.name).join(", ")}`,
     );
   });
+
+// ---------------------------------------------------------------------------
+// AWH Remote (M12, m4l/): transport + clip launch over OSC — the SDK has no
+// play/stop/position or session-clip-launch API (docs/sdk-feedback.md), so
+// this device (which supersedes the AWH Capture Tap: same 9720/9721 ports,
+// superset protocol) is the only way `awh` can press play. Wire logic lives
+// in remote.ts (testable without spawning the CLI, see remote.test.ts).
+// ---------------------------------------------------------------------------
+
+interface RemotePortOpts {
+  remotePort: string;
+  remoteReplyPort: string;
+}
+
+function remoteOscOpts(cmdOpts: RemotePortOpts): { port: number; replyPort: number } {
+  return { port: Number(cmdOpts.remotePort), replyPort: Number(cmdOpts.remoteReplyPort) };
+}
+
+function addRemotePortOptions<T extends Command>(cmd: T): T {
+  return cmd
+    .option("--remote-port <port>", "AWH Remote OSC port", String(REMOTE_PORT))
+    .option("--remote-reply-port <port>", "AWH Remote OSC reply port", String(REMOTE_REPLY_PORT)) as T;
+}
+
+addRemotePortOptions(
+  program
+    .command("play")
+    .description(
+      "Start the transport via the AWH Remote M4L device (m4l/README.md). " +
+        "--from-bar jumps the arrangement playhead first.",
+    )
+    .option("--from-bar <bar>", "1-based arrangement bar to jump to before playing")
+    .option("--sig <beatsPerBar>", "beats per bar", "4"),
+).action(
+  async (cmdOpts: RemotePortOpts & { fromBar?: string; sig: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const fromBeats =
+      cmdOpts.fromBar !== undefined ? (Number(cmdOpts.fromBar) - 1) * Number(cmdOpts.sig) : undefined;
+    const result = await remotePlay({ ...remoteOscOpts(cmdOpts), fromBeats });
+    output(opts, result, () =>
+      cmdOpts.fromBar !== undefined
+        ? `playing from bar ${cmdOpts.fromBar} (beat ${fromBeats})`
+        : "playing",
+    );
+  },
+);
+
+addRemotePortOptions(
+  program.command("stop").description("Stop the transport via the AWH Remote M4L device"),
+).action(async (cmdOpts: RemotePortOpts) => {
+  const opts = program.opts<GlobalOpts>();
+  await remoteStop(remoteOscOpts(cmdOpts));
+  output(opts, { stopped: true }, () => "stopped");
+});
+
+addRemotePortOptions(
+  program
+    .command("jump <bar>")
+    .description("Set the arrangement playhead (current_song_time) via the AWH Remote M4L device")
+    .option("--sig <beatsPerBar>", "beats per bar", "4"),
+).action(async (bar: string, cmdOpts: RemotePortOpts & { sig: string }) => {
+  const opts = program.opts<GlobalOpts>();
+  const beats = (Number(bar) - 1) * Number(cmdOpts.sig);
+  const result = await remoteJump({ beats, ...remoteOscOpts(cmdOpts) });
+  output(opts, { beats, reply: result }, () => `jumped to bar ${bar} (beat ${beats})`);
+});
+
+addRemotePortOptions(
+  program
+    .command("launch <target>")
+    .description(
+      "Fire a session clip slot (track:N/slot:M) or a scene (scene:N) via the AWH Remote " +
+        "M4L device — respects Live's launch quantization",
+    ),
+).action(async (target: string, cmdOpts: RemotePortOpts) => {
+  const opts = program.opts<GlobalOpts>();
+  const parsed = parseLaunchTarget(target);
+  const result =
+    parsed.kind === "fire"
+      ? await remoteFire({ trackIdx: parsed.trackIdx, slotIdx: parsed.slotIdx, ...remoteOscOpts(cmdOpts) })
+      : await remoteScene({ sceneIdx: parsed.sceneIdx, ...remoteOscOpts(cmdOpts) });
+  output(opts, { target, reply: result }, () => `launched ${target} -> ${result.join(" ")}`);
+});
+
+addRemotePortOptions(
+  program
+    .command("stop-clips [track]")
+    .description(
+      "Stop all clips on a track (track:N), or the whole Set when omitted, via the AWH Remote " +
+        "M4L device (call stop_all_clips)",
+    ),
+).action(async (track: string | undefined, cmdOpts: RemotePortOpts) => {
+  const opts = program.opts<GlobalOpts>();
+  if (track !== undefined && !/^track:\d+$/.test(track)) {
+    throw new Error(`awh stop-clips needs a plain track path like track:2 (got "${track}")`);
+  }
+  const trackIdx = track !== undefined ? Number(track.match(/^track:(\d+)$/)![1]) : -1;
+  const result = await remoteStopClips({ trackIdx, ...remoteOscOpts(cmdOpts) });
+  output(opts, { track: track ?? "all", reply: result }, () =>
+    track !== undefined ? `stopped clips on ${track}` : "stopped all clips",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// `awh lib audition` state: which auditioned clip (if any) is still pending
+// a sweep — persisted between CLI invocations (this is the ONLY CLI command
+// with cross-invocation state; docs/design/live-remote.md). AWH_AUDITION_STATE
+// overrides the file location (used by tests to avoid touching the real
+// repo's .dev/); default lives under .dev/ (gitignored), same scratch
+// convention as `op verify`'s capture files.
+// ---------------------------------------------------------------------------
+
+function auditionStateFile(): string {
+  return process.env.AWH_AUDITION_STATE
+    ? resolve(process.env.AWH_AUDITION_STATE)
+    : join(repoRoot(), ".dev", "audition-state.json");
+}
+
+async function readAuditionState(): Promise<AuditionState | undefined> {
+  const file = auditionStateFile();
+  if (!existsSync(file)) return undefined;
+  try {
+    return JSON.parse(await readFile(file, "utf8")) as AuditionState;
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeAuditionState(state: AuditionState | undefined): Promise<void> {
+  const file = auditionStateFile();
+  if (state === undefined) {
+    if (existsSync(file)) await rm(file);
+    return;
+  }
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(state, null, 2), "utf8");
+}
 
 const sections = program
   .command("sections")
@@ -2016,6 +2167,77 @@ lib
         `placed ${slug} [${entry.tier}] -> ${result.path} ` +
           `(${placedNotes.length} notes, ${existing ? existing.lengthBeats : entry.lengthBeats} beats` +
           `${existing ? ", filled existing clip" : ""})`,
+      );
+    },
+  );
+
+lib
+  .command("audition [slug] [track]")
+  .description(
+    "Place a library clip into an empty slot on <track> and fire it via the AWH Remote M4L " +
+      "device (m4l/README.md) so it's immediately audible. Auditioning a new slug (or --end) " +
+      "sweeps the PREVIOUS audition by its exact clip name (never a prefix sweep) — pass --keep " +
+      "to leave a clip in place permanently instead.",
+  )
+  .option("--keep", "keep this clip in place permanently (skip the sweep-on-next/--end cleanup)")
+  .option("--end", "sweep the pending (non---keep) audition and exit — no <slug>/<track> needed")
+  .option("--library <dir>", "library root")
+  .option("--remote-port <port>", "AWH Remote OSC port", String(REMOTE_PORT))
+  .option("--remote-reply-port <port>", "AWH Remote OSC reply port", String(REMOTE_REPLY_PORT))
+  .action(
+    async (
+      slug: string | undefined,
+      track: string | undefined,
+      cmdOpts: { keep?: boolean; end?: boolean; library?: string; remotePort: string; remoteReplyPort: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const caller: OpCaller = (name, args) => op(opts, name, args);
+      const pending = await readAuditionState();
+
+      if (cmdOpts.end) {
+        const swept = await auditionEnd({ caller, pending });
+        await writeAuditionState(undefined);
+        output(opts, { swept: swept ?? [] }, () =>
+          swept === undefined || swept.length === 0
+            ? "nothing to end — no pending (non---keep) audition"
+            : `swept ${swept.length} clip(s): ${swept.join(", ")}`,
+        );
+        return;
+      }
+
+      if (!slug || !track) {
+        throw new Error("pass <slug> <track> to audition, or --end to sweep the previous one");
+      }
+      const entry = await libraryStore(cmdOpts).loadClip(slug);
+      if (!entry.notation) throw new Error(`${slug} has no notation block to audition`);
+
+      const result = await auditionSlug({
+        caller,
+        source: {
+          slug,
+          notation: entry.notation,
+          lengthBeats: entry.lengthBeats,
+          beatsPerBar: entry.beatsPerBar ?? 4,
+        },
+        trackPath: track,
+        keep: cmdOpts.keep,
+        pending,
+        osc: remoteOscOpts(cmdOpts),
+      });
+      await writeAuditionState(result.nextPending);
+
+      output(opts, result, () =>
+        [
+          result.swept && result.swept.length
+            ? `swept previous audition: ${result.swept.join(", ")}`
+            : undefined,
+          `playing ${slug} [${entry.tier}] -> ${result.path} (fired track ${result.trackIdx} slot ${result.slotIdx})`,
+          cmdOpts.keep
+            ? "kept — won't be auto-swept (use `awh sweep` by hand when done)."
+            : "not kept — auditioning the next slug (or `awh lib audition --end`) will sweep this one.",
+        ]
+          .filter((line): line is string => line !== undefined)
+          .join("\n"),
       );
     },
   );

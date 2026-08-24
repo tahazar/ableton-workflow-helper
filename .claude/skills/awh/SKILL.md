@@ -71,6 +71,11 @@ awh vary <clipPath> --arrange [--at-bar N] ...
                                # after the track's last arrangement clip)
 awh sweep <trackPath> --prefix <p>   # delete audition clips by name prefix
                                      # (session AND arrangement)
+
+awh play [--from-bar N] / awh stop / awh jump <bar>   # transport (AWH Remote M4L device)
+awh launch track:0/slot:0 | scene:1                    # fire a clip slot or scene
+awh stop-clips [track:N]                               # call stop_all_clips
+awh lib audition <slug> <track> [--keep] / --end       # place + press play on a library clip
 ```
 
 Source clips can come from either view (`track:0/slot:2` or `track:0/arr:1`).
@@ -267,6 +272,41 @@ awh mix target <refFiles...> --save <name>        # measure refs -> genre target
 - capture requires the AWH Capture Tap M4L device (m4l/README.md) on the
   master; if it fails, fall back to asking the user to export the span and
   run report on that file.
+
+## AWH Remote (`awh play` / `awh stop` / `awh jump` / `awh launch` / `awh stop-clips` / `awh lib audition`) — transport + clip launch
+
+```sh
+awh play [--from-bar N] [--sig beatsPerBar]   # start the transport (optionally
+                                               # jumping the playhead first)
+awh stop                                      # stop the transport
+awh jump <bar> [--sig beatsPerBar]            # set current_song_time (arrangement playhead)
+awh launch track:2/slot:0                     # fire a session clip slot
+awh launch scene:1                            # fire a scene
+awh stop-clips [track:N]                      # call stop_all_clips (omit track = whole Set)
+awh lib audition <slug> <track> [--keep]      # place a library clip + press play on it
+awh lib audition --end                        # sweep the pending (non---keep) audition
+```
+
+- The SDK has NO transport or clip-launch API at all (docs/sdk-feedback.md)
+  — every command above is OSC to the **AWH Remote** M4L device
+  (m4l/README.md), which supersedes the older AWH Capture Tap (same 9720/9721
+  ports; `mix capture`/`op verify`/`mix duck` keep working unchanged against
+  it). Requires that device loaded once by hand; if it's not, the error says
+  so plainly ("requires the AWH Remote device...") — don't retry blindly,
+  tell the user to load it (m4l/README.md's Install section).
+- `launch`/`jump`/`stop-clips` respect Live's launch quantization and print
+  the device's echoed reply; a bad index (e.g. a track/slot/scene that
+  doesn't exist) comes back as a clear error from the device, not a hang.
+- `lib audition` is the "make me hear this now" primitive: it places (`lib
+  place`'s empty-slot logic) AND fires in one command. By default the
+  clip is EPHEMERAL — auditioning the next slug (or `awh lib audition --end`)
+  sweeps THIS one first, by its exact clip name (never a prefix sweep, so a
+  similarly-named clip the owner kept is never touched). Pass `--keep` when
+  the owner wants to keep what they're hearing — it then behaves like a
+  normal `lib place` and won't be auto-swept.
+- Zero empty session slots on the target track is a clear thrown error (same
+  convention as `lib place`/`drop respond`) — tell the user to free one up or
+  pick a different track, don't guess a slot to overwrite.
 
 ## Operator assistant (`awh op`) — recipes + audio-sample sound matching
 
@@ -684,6 +724,28 @@ loud enough for clubs", "did that EQ change help"):
    full-mix bleed). The on/off `ab` pair remains the gold-standard proof.
 4. No target yet? Offer `awh mix target <owner's reference tracks> --save
    <genre>` first — comparisons run against THEIR references, not folklore.
+
+**Press play, launch a clip/scene, or audition a library clip from chat**
+("play this back", "start from bar 33", "launch that drop clip", "trigger
+scene 2", "stop everything", "let me hear that garage hat loop on drums"):
+1. This needs the AWH Remote M4L device (m4l/README.md) — the SDK has no
+   transport or clip-launch API at all. If a command fails with "requires
+   the AWH Remote device...", tell the owner to load it once (Install
+   section); don't retry blindly or fake success.
+2. Transport: `awh play [--from-bar N]` / `awh stop` / `awh jump <bar>` —
+   jump sets the arrangement playhead (`current_song_time`), play optionally
+   jumps first via `--from-bar`.
+3. Launch: `awh launch track:2/slot:0` (session clip slot) or `awh launch
+   scene:1` (scene) — respects Live's launch quantization; `awh stop-clips
+   [track:N]` stops one track's clips or (no arg) the whole Set.
+4. "Let me hear my saved X on this track": `awh lib audition <slug> <track>`
+   — one command that places (empty-slot logic, same as `lib place`) AND
+   fires. It's EPHEMERAL by default: auditioning the next slug (or `awh lib
+   audition --end`) sweeps this one first, by its EXACT clip name (never a
+   prefix — a similarly-named clip the owner kept is safe). Pass `--keep` if
+   the owner wants to keep what they just heard.
+5. A bad track/slot/scene index comes back from the device as a clear error,
+   not a hang or silence — relay it, don't guess a different index.
 
 **Sound-design an Operator patch** ("give me a growl bass on Operator",
 "make this sound like <sample>", "dial in a pluck patch"):
