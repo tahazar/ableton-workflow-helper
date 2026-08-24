@@ -1966,3 +1966,72 @@ download):
       building as a follow-up milestone, or whether CLAP semantic search
       alone covers the "find a kick" case well enough that a separate
       tag-based filter isn't worth the second model/cache.
+
+## M11c (pitch-tagged sample search) owner checklist
+
+Built AND validated against the owner's real 20,212-file library in the
+same session (2026-08-23) — a direct follow-on from the M6b masking
+toolkit work: after `mix pitch` correctly caught a naive-FFT-peak-pick
+failure on a real Reese patch, the owner asked whether the same
+periodicity tracking could tag kicks/subs in the sample library for
+key-matched search. `test_samplepitch.py` (tuned-sine voiced/broadband-
+noise unvoiced negative control, too-short/corrupt/missing-file states,
+determinism, JSONL CLI round-trip, no NaN/Infinity) and `samples.test.ts`
+(eligibility matrix, incremental + stale re-tag, zero-candidates state,
+the octave-convention regression, `search --near-note` cents filtering
+with a negative control, real subprocess integration) are the AI-built +
+synthetic-tested half — all green (`pnpm test` + `pytest -q`, no
+regressions). Unlike most M-series entries, this one was ALSO run for
+real against the owner's actual library in the same pass, not left for a
+separate owner-validation session:
+
+- [x] `awh samples pitch-tag` on the owner's real, already-indexed
+      20,212-file library. Confirmed: exactly 2,427 files (~12%) were
+      eligible candidates (`isPitchTagCandidate`: readable one-shots whose
+      energy is low-band-dominated) — real evidence the eligibility filter
+      is well-scoped, not 0 and not everything. Tagging all 2,427 took
+      **~91 seconds** (0 failures) — fast enough to not be a real workflow
+      cost. Result split: 2,161 `voiced` (a real trackable fundamental —
+      kicks/808s in a real pack turn out to be tuned more often than
+      expected), 266 `unvoiced` (genuine broadband transients, reported
+      honestly rather than a fabricated pitch) — a sensible real-world
+      split, not all-or-nothing. Re-running immediately reported "all 2427
+      ... already pitch-tagged — nothing to do" (incremental confirmed at
+      real scale, same pattern as M11's own index incrementality).
+- [x] `awh samples search --near-note <note>` against the real,
+      pitch-tagged library — the actual "find a kick that matches my sub"
+      question this milestone exists for. `search --near-note F1` (this
+      project's own F Phrygian key root) surfaced real, correctly-tuned
+      808s/kicks from real commercial packs, including one living directly
+      in a `Drums/Kicks/` folder (`Mixed Small 808.wav`, duplicated across
+      both a `Bass/808s/` and `Drums/Kicks/` pack folder) — the exact
+      real-world result the feature was built to produce. Composing
+      `--near-note` with a plain text term (`search kick --near-note F1`)
+      correctly returned 0 (this library's path-token-labeled "kick" files
+      don't happen to include one tuned to F1) while the bare
+      `--near-note F1` query alone returned real hits — confirms the
+      filters compose as AND, not silently relaxing.
+- [x] Octave-convention correctness (the trickiest part of this feature,
+      caught during design rather than live): `pitch.py`'s `note.name` is
+      stamped in STANDARD/scientific notation (C4 = MIDI 60), a full
+      octave apart from this codebase's Ableton convention (C3 = MIDI 60)
+      used everywhere else a note name appears in this CLI. Verified the
+      fix holds: `noteNameToHz("A3") === 440` (Ableton's A3 = standard
+      A4 = concert pitch) and `pitchDisplayNote` re-derives the shown name
+      from the convention-free `note.midi`, never trusting the raw Python
+      string — both covered by explicit regression tests, not just
+      exercised incidentally.
+- [ ] Skill check: ask a fresh agent "find me a kick that matches my sub"
+      or similar and confirm it follows the new Typical Flows entry
+      (`.claude/skills/awh/SKILL.md`) — runs/confirms `pitch-tag`, then
+      `search --near-note` with the right note (the Set's active key root
+      or whatever the owner named), and is explicit that untagged/
+      unvoiced hits were never claimed to match. Not run this pass.
+- [ ] Whether the default 50-cent (quarter-tone) `--cents` tolerance is
+      the right musical default, or too tight/loose in practice — not
+      evaluated against enough real search sessions yet to have an
+      opinion; the owner's own use over time is the real signal here.
+- [ ] Loops/melodic material remain explicitly out of scope for pitch
+      tagging (v1) — `pitch.py`'s existing `per_note` mode is the natural
+      extension path if a future need for key-matching basslines/leads
+      comes up, not evaluated or built this pass.

@@ -10,7 +10,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import a2m, ab, bands, clapembed, drumstats, duck, opmatch, pitch, pumpcheck, ref, report, samplescan, targets
+from . import a2m, ab, bands, clapembed, drumstats, duck, opmatch, pitch, pumpcheck, ref, report, samplepitch, samplescan, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -598,6 +598,21 @@ def _cmd_samplescan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_samplepitch(args: argparse.Namespace) -> int:
+    from .audio import sanitize_json
+
+    files = list(args.files)
+    if not files:
+        files = [line.strip() for line in sys.stdin if line.strip()]
+    for path in files:
+        try:
+            record = samplepitch.pitch_for_sample(path)
+        except Exception as exc:  # noqa: BLE001 — never crash the batch on one bad file
+            record = {"path": path, "unreadable": True, "error": str(exc)}
+        print(json.dumps(sanitize_json(record)))
+    return 0
+
+
 def _cmd_clapembed(args: argparse.Namespace) -> int:
     from .audio import sanitize_json
 
@@ -779,6 +794,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="file paths (or read newline-separated paths from stdin if omitted)",
     )
     p_samplescan.set_defaults(func=_cmd_samplescan)
+
+    p_samplepitch = sub.add_parser(
+        "samplepitch",
+        help="Pitch-tag sample files (M11c) -> one JSONL f0/note/voiced-fraction record per line",
+    )
+    p_samplepitch.add_argument(
+        "files", nargs="*",
+        help="file paths (or read newline-separated paths from stdin if omitted)",
+    )
+    p_samplepitch.set_defaults(func=_cmd_samplepitch)
 
     p_clapembed = sub.add_parser(
         "clapembed",

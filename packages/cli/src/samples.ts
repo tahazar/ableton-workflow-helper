@@ -14,6 +14,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, extname, join, resolve } from "node:path";
+import { midiToPitch, pitchToMidi } from "@awh/core";
 
 // ---------------------------------------------------------------------------
 // Feature record (mirrors analysis/awh_analysis/samplescan.py's JSON output)
@@ -66,6 +67,39 @@ export interface ClapVector {
   v: number[];
 }
 
+/** M11c (`awh samples pitch-tag`): one `mix pitch`-style periodicity-tracked
+ * f0 record, mirroring `analysis/awh_analysis/pitch.py`'s `analyze_segment`
+ * output (via `samplepitch.pitch_for_sample`). `note.midi` is the ONLY
+ * octave-safe field here — `note.name` is stamped by the Python side using
+ * STANDARD/scientific pitch notation (C4 = MIDI 60), a full octave apart
+ * from this codebase's Ableton convention (C3 = MIDI 60, `@awh/core`'s
+ * `pitchToMidi`/`midiToPitch`). Never display `note.name` directly to the
+ * user — always re-derive the display name via `midiToPitch(note.midi)` so
+ * it matches every other note name this CLI ever prints. */
+export interface PitchInfo {
+  analysisVersion: number;
+  state: "voiced" | "unvoiced" | "too_short";
+  f0Hz: number | null;
+  note: { name: string; midi: number; cents: number } | null;
+  voicedFraction: number;
+  confidence: number;
+  f0StabilitySemitones: number | null;
+  harmonicDominance: {
+    flagged: boolean;
+    harmonic: number | null;
+    ratioDb: number | null;
+    timeS: number | null;
+    fractionOfVoicedFrames: number;
+  };
+}
+
+/** Ableton-convention display name for a pitch-tagged entry's fundamental —
+ * the one place `note.midi` should be turned back into a note name. */
+export function pitchDisplayNote(info: PitchInfo): string | null {
+  if (info.note === null) return null;
+  return midiToPitch(info.note.midi);
+}
+
 export interface SamplesIndexEntry {
   path: string;
   size: number;
@@ -73,6 +107,7 @@ export interface SamplesIndexEntry {
   tokens: string[];
   scan: ScanRecord;
   clap?: ClapVector;
+  pitch?: PitchInfo;
 }
 
 export interface SamplesIndexFile {
@@ -341,6 +376,190 @@ export async function runIndex(
 }
 
 // ---------------------------------------------------------------------------
+// M11c: pitch tagging (kicks/subs/808s -> f0/note, for key-matched search).
+// Separate, OPT-IN enrichment pass on top of the base M11 scan — same shape
+// as M11b's `clap` field/`embed` command below, not folded into `runIndex`
+// (running pyin on every file, including hats/vocals/melodic loops where a
+// single fundamental isn't meaningful, would slow down every `index` run
+// for no benefit). Built in response to a real request while validating the
+// M6b masking toolkit (2026-08-23): "find kicks tuned to match my sub."
+// ---------------------------------------------------------------------------
+
+/** Only one-shots whose energy is dominated by the low band are pitch-tag
+ * CANDIDATES — kicks/subs/808s/bass hits, not the whole library. Checked
+ * against the owner's real 20,212-file library: 2,427 files (~12%)
+ * qualify. Loops (basslines, melodic content) are out of scope for v1. */
+export function isPitchTagCandidate(entry: SamplesIndexEntry): boolean {
+  return (
+    !entry.scan.unreadable &&
+    entry.scan.type_guess === "oneshot" &&
+    entry.scan.dominant_band === "low"
+  );
+}
+
+/** Bumped in lockstep with `analysis/awh_analysis/samplepitch.py`'s
+ * `PITCH_ANALYSIS_VERSION` — a stored `analysisVersion` below this is
+ * STALE and gets re-tagged by `runPitchTag`, same spirit as M11b's
+ * CLAP model-label staleness key. */
+export const PITCH_ANALYSIS_VERSION = 1;
+
+/** Raw per-file record shape from `python -m awh_analysis samplepitch`
+ * (snake_case, mirrors samplepitch.py's JSON output verbatim). */
+export interface RawPitchRecord {
+  path: string;
+  unreadable: boolean;
+  error: string | null;
+  pitch_analysis_version?: number;
+  state?: "voiced" | "unvoiced" | "too_short";
+  f0_hz?: number | null;
+  note?: { name: string; midi: number; cents: number } | null;
+  voiced_fraction?: number;
+  confidence?: number;
+  f0_stability_semitones?: number | null;
+  harmonic_dominance?: {
+    flagged: boolean;
+    harmonic: number | null;
+    ratio_db: number | null;
+    time_s: number | null;
+    fraction_of_voiced_frames: number;
+  };
+}
+
+function toPitchInfo(rec: RawPitchRecord): PitchInfo {
+  return {
+    analysisVersion: rec.pitch_analysis_version ?? PITCH_ANALYSIS_VERSION,
+    state: rec.state ?? "unvoiced",
+    f0Hz: rec.f0_hz ?? null,
+    note: rec.note ?? null,
+    voicedFraction: rec.voiced_fraction ?? 0,
+    confidence: rec.confidence ?? 0,
+    f0StabilitySemitones: rec.f0_stability_semitones ?? null,
+    harmonicDominance: {
+      flagged: rec.harmonic_dominance?.flagged ?? false,
+      harmonic: rec.harmonic_dominance?.harmonic ?? null,
+      ratioDb: rec.harmonic_dominance?.ratio_db ?? null,
+      timeS: rec.harmonic_dominance?.time_s ?? null,
+      fractionOfVoicedFrames: rec.harmonic_dominance?.fraction_of_voiced_frames ?? 0,
+    },
+  };
+}
+
+/** files -> per-file pitch records, one `samplepitch` subprocess call per
+ * chunk (same batching contract as ScannerFn/makePythonScanner). */
+export type PitchTagFn = (files: string[]) => Promise<RawPitchRecord[]>;
+
+export const DEFAULT_PITCH_CHUNK_SIZE = 200;
+
+/** Real tagger: spawns `python -m awh_analysis samplepitch`, feeding the
+ * chunk's file list on stdin and parsing the JSONL stdout — identical shape
+ * to `makePythonScanner`, no amortized model-load cost to batch around
+ * (pyin has no expensive one-time checkpoint, unlike CLAP). */
+export function makePythonPitchTagger(python: string, cwd: string): PitchTagFn {
+  return (files) =>
+    new Promise<RawPitchRecord[]>((resolvePromise, reject) => {
+      const child = spawn(python, ["-m", "awh_analysis", "samplepitch"], { cwd });
+      let out = "";
+      let err = "";
+      child.stdout.on("data", (d: Buffer) => (out += d.toString()));
+      child.stderr.on("data", (d: Buffer) => (err += d.toString()));
+      child.on("error", (e) =>
+        reject(
+          new Error(
+            `could not run ${python} (${e.message}) — create the venv per docs/dev-loop.md ` +
+              "or set AWH_PYTHON",
+          ),
+        ),
+      );
+      child.on("close", (code) => {
+        if (code !== 0) {
+          reject(new Error(`samplepitch failed: ${err.trim() || out.trim()}`));
+          return;
+        }
+        try {
+          const lines = out
+            .split("\n")
+            .map((l) => l.trim())
+            .filter(Boolean);
+          resolvePromise(lines.map((l) => JSON.parse(l) as RawPitchRecord));
+        } catch (e) {
+          reject(
+            new Error(
+              `could not parse samplepitch output: ${(e as Error).message}\n${out.slice(0, 500)}`,
+            ),
+          );
+        }
+      });
+      child.stdin.write(`${files.join("\n")}\n`);
+      child.stdin.end();
+    });
+}
+
+export interface PitchTagRunResult {
+  tagged: number;
+  neverTagged: number;
+  stale: number;
+  upToDate: number;
+  notCandidate: number;
+  unreadable: number;
+  totalCandidates: number;
+  index: SamplesIndexFile;
+}
+
+/** load -> find CANDIDATES (isPitchTagCandidate) missing/stale a pitch tag
+ * -> tag in chunks -> save. Zero candidates is a normal STATE the caller
+ * reports, not an error (docs/lessons-learned.md #5). */
+export async function runPitchTag(opts: {
+  indexPath: string;
+  tagger: PitchTagFn;
+  chunkSize?: number;
+  onProgress?: (done: number, total: number) => void;
+}): Promise<PitchTagRunResult> {
+  const index = await loadSamplesIndex(opts.indexPath);
+
+  const allEntries = Object.values(index.files);
+  const candidates = allEntries.filter(isPitchTagCandidate);
+  const toTag = candidates.filter(
+    (e) => !e.pitch || e.pitch.analysisVersion < PITCH_ANALYSIS_VERSION,
+  );
+  const stale = toTag.filter((e) => e.pitch).length;
+  const neverTagged = toTag.length - stale;
+  const upToDate = candidates.length - toTag.length;
+
+  const chunkSize = opts.chunkSize ?? DEFAULT_PITCH_CHUNK_SIZE;
+  const paths = toTag.map((e) => e.path);
+  let tagged = 0;
+  let unreadable = 0;
+  for (let i = 0; i < paths.length; i += chunkSize) {
+    const chunk = paths.slice(i, i + chunkSize);
+    const records = await opts.tagger(chunk);
+    for (const rec of records) {
+      const entry = index.files[rec.path];
+      if (!entry) continue;
+      if (rec.unreadable) {
+        unreadable++;
+        continue;
+      }
+      entry.pitch = toPitchInfo(rec);
+      tagged++;
+    }
+    opts.onProgress?.(Math.min(i + chunk.length, paths.length), paths.length);
+  }
+
+  await saveSamplesIndex(opts.indexPath, index);
+
+  return {
+    tagged,
+    neverTagged,
+    stale,
+    upToDate,
+    notCandidate: allEntries.length - candidates.length,
+    unreadable,
+    totalCandidates: candidates.length,
+    index,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // M11b: CLAP embeddings (docs/design/sample-semantic.md) — batch embed,
 // incremental, model-mismatch re-embed. Reuses the SAME index file as M11
 // (a `clap` field added per entry), never a second index.
@@ -566,6 +785,21 @@ export async function resolveReferenceClapVector(
 // ---------------------------------------------------------------------------
 
 export const DEFAULT_BPM_TOL = 4;
+export const DEFAULT_CENTS_TOL = 50; // a quarter-tone
+
+/** "F1" (Ableton convention, same as every other note name this CLI takes —
+ * `@awh/core`'s `pitchToMidi`) -> its equal-tempered A440 frequency. The
+ * MIDI-to-Hz step is convention-independent (standard A440 formula); only
+ * the NAME-to-MIDI step needs to agree with the rest of the codebase, which
+ * `pitchToMidi` already handles. */
+export function noteNameToHz(name: string): number {
+  const midi = pitchToMidi(name);
+  return 440 * 2 ** ((midi - 69) / 12);
+}
+
+function centsBetween(hzA: number, hzB: number): number {
+  return 1200 * Math.log2(hzA / hzB);
+}
 
 export interface SearchOptions {
   any?: boolean;
@@ -575,6 +809,12 @@ export interface SearchOptions {
   bpm?: number;
   bpmTol?: number;
   band?: Band;
+  /** M11c: only entries with a VOICED pitch tag within `centsTol` (default
+   * `DEFAULT_CENTS_TOL`) of this frequency. Untagged/unvoiced/broadband
+   * entries never match — same "never silently ignore missing data"
+   * discipline as `search --semantic`'s not-embedded gate. */
+  nearNoteHz?: number;
+  centsTol?: number;
 }
 
 export interface SearchHit {
@@ -607,6 +847,12 @@ export function searchIndex(
       if (bpm == null || Math.abs(bpm - opts.bpm) > tol) continue;
     }
     if (opts.band && entry.scan.dominant_band !== opts.band) continue;
+    if (opts.nearNoteHz !== undefined) {
+      const f0 = entry.pitch?.state === "voiced" ? entry.pitch.f0Hz : null;
+      if (f0 == null) continue;
+      const tol = opts.centsTol ?? DEFAULT_CENTS_TOL;
+      if (Math.abs(centsBetween(f0, opts.nearNoteHz)) > tol) continue;
+    }
     hits.push({ path: entry.path, matchedTerms: matched, entry });
   }
   hits.sort((a, b) => b.matchedTerms - a.matchedTerms || a.path.localeCompare(b.path));
@@ -645,10 +891,25 @@ export function suggestRelaxations(
     opts.minDurS !== undefined ||
     opts.maxDurS !== undefined ||
     opts.bpm !== undefined ||
-    opts.band !== undefined;
+    opts.band !== undefined ||
+    opts.nearNoteHz !== undefined;
   if (hasFilters) {
     const noFilterCount = searchIndex(index, terms, { any: opts.any }).length;
     suggestions.push({ terms, count: noFilterCount, note: "without the trait filters" });
+  }
+
+  if (opts.nearNoteHz !== undefined) {
+    const candidateCount = Object.values(index.files).filter(isPitchTagCandidate).length;
+    const taggedCount = Object.values(index.files).filter(
+      (e) => isPitchTagCandidate(e) && e.pitch,
+    ).length;
+    if (taggedCount < candidateCount) {
+      suggestions.push({
+        terms,
+        count: candidateCount - taggedCount,
+        note: `${candidateCount - taggedCount} eligible kick/sub one-shot(s) not yet pitch-tagged — run \`awh samples pitch-tag\``,
+      });
+    }
   }
 
   return suggestions;
@@ -841,6 +1102,10 @@ export interface IndexStats {
   byType: { loop: number; oneshot: number; unreadable: number };
   byBand: { low: number; mid: number; high: number };
   durationStats: { minS: number; maxS: number; meanS: number } | null;
+  /** M11c: pitch-tag coverage over ELIGIBLE candidates (isPitchTagCandidate)
+   * only — never over the whole library, since most files (hats, vocals,
+   * melodic loops) were never candidates in the first place. */
+  pitchTag: { candidates: number; tagged: number; voiced: number; unvoiced: number; tooShort: number };
 }
 
 export function summarizeIndex(index: SamplesIndexFile): IndexStats {
@@ -848,6 +1113,7 @@ export function summarizeIndex(index: SamplesIndexFile): IndexStats {
   const byType = { loop: 0, oneshot: 0, unreadable: 0 };
   const byBand = { low: 0, mid: 0, high: 0 };
   const durations: number[] = [];
+  const pitchTag = { candidates: 0, tagged: 0, voiced: 0, unvoiced: 0, tooShort: 0 };
   for (const e of entries) {
     if (e.scan.unreadable) {
       byType.unreadable++;
@@ -857,6 +1123,15 @@ export function summarizeIndex(index: SamplesIndexFile): IndexStats {
     else if (e.scan.type_guess === "oneshot") byType.oneshot++;
     if (e.scan.dominant_band) byBand[e.scan.dominant_band]++;
     if (e.scan.duration_s !== undefined) durations.push(e.scan.duration_s);
+    if (isPitchTagCandidate(e)) {
+      pitchTag.candidates++;
+      if (e.pitch) {
+        pitchTag.tagged++;
+        if (e.pitch.state === "voiced") pitchTag.voiced++;
+        else if (e.pitch.state === "unvoiced") pitchTag.unvoiced++;
+        else pitchTag.tooShort++;
+      }
+    }
   }
   const durationStats = durations.length
     ? {
@@ -865,5 +1140,5 @@ export function summarizeIndex(index: SamplesIndexFile): IndexStats {
         meanS: durations.reduce((a, b) => a + b, 0) / durations.length,
       }
     : null;
-  return { totalFiles: entries.length, roots: index.roots, byType, byBand, durationStats };
+  return { totalFiles: entries.length, roots: index.roots, byType, byBand, durationStats, pitchTag };
 }

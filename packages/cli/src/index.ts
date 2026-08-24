@@ -16,13 +16,17 @@ import { TAP_PORT, sendToTap } from "./osc.js";
 import { analysisPython } from "./analysis-python.js";
 import {
   DEFAULT_BPM_TOL,
+  DEFAULT_CENTS_TOL,
   DEFAULT_CLAP_MODEL,
   expectedClapModelLabel,
   indexHasClapEmbeddings,
   loadSamplesIndex,
   makePythonClapEmbedder,
   makePythonClapTextEmbedder,
+  makePythonPitchTagger,
   makePythonScanner,
+  noteNameToHz,
+  pitchDisplayNote,
   rankSimilar,
   rankSimilarSemantic,
   resolveReferenceClapVector,
@@ -30,6 +34,7 @@ import {
   resolveSamplesIndexPath,
   runEmbed,
   runIndex,
+  runPitchTag,
   searchIndex,
   searchSemantic,
   suggestRelaxations,
@@ -3021,6 +3026,56 @@ samplesCmd
   });
 
 samplesCmd
+  .command("pitch-tag")
+  .description(
+    "Pitch-tag eligible kick/sub/808 one-shots (M11c) with a periodicity-tracked f0/note " +
+      "(mix pitch, never a naive FFT-peak pick) — enables `search --near-note`; incremental " +
+      "(already-tagged files are skipped), only one-shots whose energy is low-band-dominated " +
+      "are eligible (hats/vocals/melodic loops are never candidates)",
+  )
+  .action(async () => {
+    const opts = program.opts<GlobalOpts>();
+    const indexPath = resolveSamplesIndexPath();
+    const index = await loadSamplesIndex(indexPath);
+    if (Object.keys(index.files).length === 0) {
+      output(opts, { tagged: 0 }, () =>
+        `no samples indexed yet — run \`awh samples index <dir...>\` first (index: ${indexPath})`,
+      );
+      return;
+    }
+
+    const { python, cwd } = requireAnalysisEngine();
+    let lastPrinted = 0;
+    const result = await runPitchTag({
+      indexPath,
+      tagger: makePythonPitchTagger(python, cwd),
+      onProgress: (done, total) => {
+        if (done - lastPrinted >= 200 || done === total) {
+          process.stderr.write(`pitch-tagged ${done}/${total}\n`);
+          lastPrinted = done;
+        }
+      },
+    });
+
+    output(opts, result, () => {
+      if (result.totalCandidates === 0) {
+        return (
+          "no eligible kick/sub/808 one-shots to tag yet (candidates are one-shots whose " +
+          "energy is low-band-dominated) — run `awh samples index <dir...>` first"
+        );
+      }
+      if (result.tagged === 0) {
+        return `all ${result.totalCandidates} eligible one-shot(s) already pitch-tagged — nothing to do`;
+      }
+      return (
+        `pitch-tagged ${result.tagged} of ${result.totalCandidates} eligible one-shot(s) ` +
+        `(${result.neverTagged} new, ${result.stale} stale re-tagged, ${result.unreadable} failed), ` +
+        `${result.upToDate} already up to date, ${result.notCandidate} not eligible -> ${indexPath}`
+      );
+    });
+  });
+
+samplesCmd
   .command("search [query...]")
   .description(
     "Search the index by path tokens (ALL terms must match by default) plus trait filters",
@@ -3032,6 +3087,12 @@ samplesCmd
   .option("--bpm <bpm>", "filter to samples near this BPM")
   .option("--bpm-tol <bpm>", "BPM tolerance", String(DEFAULT_BPM_TOL))
   .option("--band <band>", "filter: low | mid | high (dominant band)")
+  .option(
+    "--near-note <note>",
+    "filter: pitch-tagged kick/sub one-shots near this note (M11c, Ableton convention " +
+      'e.g. "F1") — needs `awh samples pitch-tag` first; composes with every other filter',
+  )
+  .option("--cents <n>", "cents tolerance for --near-note", String(DEFAULT_CENTS_TOL))
   .option(
     "--semantic <phrase>",
     "rank by CLAP semantic similarity to this phrase instead of path tokens " +
@@ -3048,6 +3109,8 @@ samplesCmd
         bpm?: string;
         bpmTol: string;
         band?: string;
+        nearNote?: string;
+        cents: string;
         semantic?: string;
       },
     ) => {
@@ -3075,6 +3138,8 @@ samplesCmd
         bpm: cmdOpts.bpm !== undefined ? Number(cmdOpts.bpm) : undefined,
         bpmTol: Number(cmdOpts.bpmTol),
         band: cmdOpts.band as "low" | "mid" | "high" | undefined,
+        nearNoteHz: cmdOpts.nearNote !== undefined ? noteNameToHz(cmdOpts.nearNote) : undefined,
+        centsTol: Number(cmdOpts.cents),
       };
 
       if (cmdOpts.semantic !== undefined) {
@@ -3107,7 +3172,8 @@ samplesCmd
                   `${h.score.toFixed(3)}  ${h.path.padEnd(52)} ${(s.duration_s ?? 0).toFixed(2).padStart(6)}s  ` +
                   `${(s.type_guess ?? "?").padEnd(7)}` +
                   (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "          ") +
-                  `  ${s.dominant_band ?? "?"}`
+                  `  ${s.dominant_band ?? "?"}` +
+                  (h.entry.pitch?.state === "voiced" ? `  ${pitchDisplayNote(h.entry.pitch)}` : "")
                 );
               }),
             );
@@ -3146,7 +3212,8 @@ samplesCmd
               `${h.path.padEnd(60)} ${(s.duration_s ?? 0).toFixed(2).padStart(6)}s  ` +
               `${(s.type_guess ?? "?").padEnd(7)}` +
               (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "          ") +
-              `  ${s.dominant_band ?? "?"}`
+              `  ${s.dominant_band ?? "?"}` +
+              (h.entry.pitch?.state === "voiced" ? `  ${pitchDisplayNote(h.entry.pitch)}` : "")
             );
           })
           .join("\n"),
@@ -3277,6 +3344,12 @@ samplesCmd
           ? `  duration: ${stats.durationStats.minS.toFixed(2)}s - ` +
             `${stats.durationStats.maxS.toFixed(2)}s (mean ${stats.durationStats.meanS.toFixed(2)}s)`
           : `  duration: (no readable files yet)`,
+        stats.pitchTag.candidates > 0
+          ? `  pitch:  ${stats.pitchTag.tagged}/${stats.pitchTag.candidates} eligible kick/sub ` +
+            `one-shot(s) tagged (${stats.pitchTag.voiced} voiced, ${stats.pitchTag.unvoiced} ` +
+            `unvoiced, ${stats.pitchTag.tooShort} too short) — run \`awh samples pitch-tag\` ` +
+            (stats.pitchTag.tagged < stats.pitchTag.candidates ? "to finish" : "again to refresh")
+          : `  pitch:  (no eligible kick/sub one-shots indexed yet)`,
       ].join("\n"),
     );
   });
