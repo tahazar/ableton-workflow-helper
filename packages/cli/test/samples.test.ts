@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, rm, utimes } from "node:fs/promises";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -1213,13 +1213,18 @@ describe.skipIf(!hasRealPython)(
       "pitch-tags a real tuned low sine as voiced, and real broadband noise as unvoiced",
       async () => {
         const corpus = join(tmpDir, "corpus");
+        mkdirSync(corpus, { recursive: true });
         const tunedPath = join(corpus, "808.wav");
         const noisePath = join(corpus, "kick.wav");
         writeWavMono16(tunedPath, sineSamples(55.0, SR, 0.6), SR);
         writeWavMono16(noisePath, noiseSamples(0.25, SR, 0.6, 3), SR);
         const indexPath = join(tmpDir, "index.json");
+        // Force both files pitch-tag-eligible regardless of the real scan
+        // heuristics (isPitchTagCandidate: readable + oneshot + low band).
         const scanner: ScannerFn = async (files) =>
-          files.map((f) => candidateRecord(f)); // force both eligible regardless of real scan result
+          files.map((f) =>
+            fakeScanRecord(f, { type_guess: "oneshot", dominant_band: "low", onset_count: 1 }),
+          );
 
         await runIndex([corpus], { rescan: false, indexPath, scanner });
 

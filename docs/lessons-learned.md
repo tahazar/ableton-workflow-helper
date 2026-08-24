@@ -66,6 +66,13 @@ time). These lessons are the "definition of done" for future milestones.
   placeholder clip during a validation pass. Any delete/overwrite command
   whose filter can degenerate to match-everything needs that case to be an
   explicit opt-in flag (`--all`), never a silent default.
+- **A force-push lease going stale IS the warning.** Resetting the shared
+  branch onto main after a merge, the first --force-with-lease failed
+  (remote had moved); refreshing the lease and pushing anyway clobbered
+  two unmerged validation-session commits (recovered from local objects,
+  but only because the fetch preceded the push). The failed lease means
+  someone pushed since you looked: STOP, `git log main..origin/<branch>`,
+  and cherry-pick anything unmerged onto the reset before pushing.
 - SDK limitations worth escalating to Ableton are collected in
   `docs/sdk-feedback.md` — add to it when a new one is hit.
 
