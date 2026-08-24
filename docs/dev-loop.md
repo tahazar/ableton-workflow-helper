@@ -1571,3 +1571,229 @@ reads visible page text/headings.
 - [ ] Skill: "make an endless version of my track to share" → Claude
       follows the Typical Flows entry (plan -> owner fills pools -> build,
       not `awh sections` or hand-composed HTML).
+
+## M12 (AWH Remote) owner checklist
+
+Not yet verified in Live (built without a running Max/Live session — see
+`docs/design/live-remote.md` for the spec and `m4l/README.md`'s "AWH
+Remote" section for the protocol, install steps, and full manual-patching
+fallback). Run this before trusting the device on a real project, and
+before deleting the old `AWH Capture Tap.maxpat` from a Set/the repo.
+
+**Code-side pre-check done (everything possible without opening Max)**:
+`m4l/AWH Remote.maxpat` parses as valid JSON (72 boxes, 89 connections) and
+passed an automated structural check (a builder script, not hand-verified
+by eye) confirming: every connection references a box/outlet/inlet that
+actually exists in range, zero `metro`/`tempo`/`clocker`/`delay` objects
+(no timers, per the design's hard requirement), zero `print` objects, and
+the `record`/`stop`/`loop`/`play` subsystem is wired byte-identically to
+the already-Live-validated `AWH Capture Tap.maxpat`. This cannot confirm
+the patch actually RUNS correctly in Max — only that nothing looks
+malformed at the object/JSON level, same caveat as the Ducker's own
+pre-check.
+
+Independently verified on the CLI/OSC side (no Max needed): `packages/cli
+/test/remote.test.ts` — byte-exact checks for `/awh/fire`/`/awh/scene`/
+`/awh/stopclips`/`/awh/jump`; a full integration suite against a fake UDP
+device (ping→pong v2 handshake, correct message sequencing for `awh
+play`/`stop`/`jump`/`launch`/`stop-clips`, `/awh/error` surfaced as a clear
+thrown Error rather than swallowed); a negative control (no listener on
+the port → clear "requires the AWH Remote device..." error within the
+timeout, confirmed fast — not a hang); and `lib audition` end-to-end
+against a real fake gateway (serve-fake style, in-process) + the fake UDP
+device running simultaneously, covering the sweep-previous-by-exact-name
+behavior (with a same-prefix decoy clip proven to survive), `--keep`,
+`--end`, zero-empty-slots (clear thrown error, nothing fired), and
+unknown-slug (LibraryStore's existing clear error). `pnpm test` fully
+green with this suite included — see the build session's own report for
+the exact count. None of this reaches the real Max runtime; everything
+below this line needs Live open:
+
+- [ ] `m4l/AWH Remote.maxpat` opens/pastes cleanly in Max on the master
+      track (between `plugin~`/`plugout~`) without validator errors. If it
+      doesn't, hand-build from the manual build table in `m4l/README.md` —
+      the table describes every object and connection, organized by
+      subsystem, specifically so this device can be rebuilt from scratch if
+      the generated JSON doesn't survive Max's validator (same fallback
+      discipline as the Ducker).
+- [ ] `awh play` starts the transport; `awh play --from-bar 9` jumps then
+      plays (confirm the jump lands on the right bar by ear/by the
+      playhead, not just that playback starts); `awh stop` stops it.
+- [ ] `awh jump <bar>` moves the arrangement playhead without starting
+      playback.
+- [ ] `awh launch track:N/slot:M` on an OCCUPIED slot fires it audibly, and
+      **respects Live's launch quantization** (confirm it doesn't cut in
+      instantly if quantization is set to e.g. 1 bar — it should wait for
+      the next quantized boundary, since `call fire` goes through Live's
+      normal launch-quantize path, not `set` positioning). `awh launch
+      scene:N` fires the whole scene the same way.
+- [ ] `awh stop-clips track:N` stops just that track's clips; `awh
+      stop-clips` (no arg) stops the whole Set's clips.
+- [ ] Bad-index behavior: `awh launch track:2/slot:-1` (or any negative
+      index) comes back as a clear CLI error sourced from `/awh/error`, not
+      a hang or a silent no-op. A positive-but-out-of-range index (e.g.
+      `fire 99 0` on a smaller Set) is a KNOWN gap (m4l/README.md's
+      "partial, by design" note) — confirm it behaves as documented
+      (silent no-op from Live's side, not a crash) rather than assuming
+      it's caught.
+- [ ] `awh lib audition <slug> <track>` places AND fires — confirm it's
+      audible immediately (respecting launch quantization, same as
+      `launch`). Audition a second slug on the same track → confirm the
+      first is swept (gone from the Set) and the second is now playing.
+      `--keep` → confirm the clip survives a subsequent audition/--end.
+      `awh lib audition --end` → confirm it sweeps the last non-`--keep`
+      audition and reports "nothing to end" cleanly when there isn't one.
+- [ ] **Manual re-init button recovers after a paste-reload** — the
+      specific, real bug the Ducker session found and documented: after
+      select-all/copy/pasting an updated `AWH Remote.maxpat` over an
+      already-open device (not a fresh insert), `awh play`/`awh jump`
+      should fail (stale `live.path`/`live.object` binding) until the
+      MANUAL RE-INIT button is clicked once, after which they should work
+      again without removing/reinserting the device. Per `m4l/README.md`'s
+      Notes, the button only rebinds Pair A (transport/ping) — confirm
+      whether `awh launch`/`awh stop-clips`/`awh jump` (Pairs B–E, which
+      re-resolve their own path fresh on every call and per the design
+      should NOT need re-init) genuinely keep working through a paste-
+      reload with no button click, or whether that assumption doesn't hold
+      in practice — either finding should get written back into the
+      README's Notes.
+- [ ] **Owner performance protocol** (m4l/README.md's "Owner performance
+      protocol" section) — run all three conditions (no device / frozen +
+      editor closed / unfrozen + editor open) and RECORD THE THREE NUMBERS
+      here:
+      - Baseline (no AWH device): ___
+      - Frozen, editor closed: ___
+      - Unfrozen, editor open: ___
+      If the frozen/editor-closed number is meaningfully worse than
+      baseline, that's a real patch-level regression to escalate
+      (unexpected per the object-count diagnosis) — otherwise this closes
+      the owner's original "Capture Tap feels heavy" report as
+      environmental, not a patch defect.
+- [ ] **Migration**: with AWH Remote loaded and confirmed working, remove
+      the old AWH Capture Tap device from the Set (same port, so they
+      can't coexist) and re-confirm `awh mix capture`/`op verify`/`mix duck
+      push` still work unchanged (superset protocol) — this is the actual
+      cutover, not just a side-by-side comparison. Deleting `AWH Capture
+      Tap.maxpat` from the repo afterward is optional and the owner's call.
+- [ ] Freeze to `AWH Remote.amxd` and reload from a fresh Live session (new
+      Set) → still responds on 9720/9721 without re-patching.
+## M11 (sample library) owner checklist
+
+Built + tested against a SYNTHETIC corpus only (sine-tone one-shots, a
+noise-burst hat, a decaying-sine kick loop at a known BPM) —
+`analysis/tests/test_samplescan.py` (feature ranges, type-guess/BPM
+recovery, determinism, unreadable-file records, JSONL-via-CLI, no NaN/
+Infinity tokens) and `packages/cli/test/samples.test.ts` (incremental
+index build/skip/prune against a fake scanner; the real analysis engine
+for an end-to-end index build plus the similarity NEGATIVE CONTROL — a
+second sine bass ranks above two noise hats for a sine-bass reference,
+with a hat ranked dead last; search token/filter matrix; zero-hits
+relaxation suggestions; missing-dir loud error; `AWH_SAMPLES_INDEX`
+honored, `~/.awh` never touched by the test suite). A one-off scratchpad
+smoke run (tiny hand-built corpus: a bass one-shot, a noise hat, a
+120 BPM kick loop) confirmed `index` → `search` → `similar` work
+end-to-end from the built CLI, but every test corpus so far is
+synthetic — real sample packs are messier (inconsistent naming,
+silence-padded files, odd sample rates, genuinely mixed-BPM folders) and
+haven't been run through this yet:
+
+- [ ] Point `awh samples index` at a REAL sample folder tree (a few
+      thousand files across nested pack folders is the realistic case) and
+      check: does the walk find everything expected (recursive, all four
+      extensions), does the reported unreadable count make sense for
+      whatever's actually corrupt/odd in the folder, and does re-running
+      immediately report 0 rescanned (real filesystem timestamps, not
+      synthetic ones)? Touch a handful of files (edit tags, re-export)
+      and confirm only those get rescanned.
+- [ ] Timing at real scale: how long does a first full index of the
+      owner's actual sample library take (thousands of files, librosa's
+      ~1s import amortized over 200-file chunks per the design), and is
+      the "progress per 1000 files" line actually useful at that size or
+      too sparse/too chatty? If it's materially slower than expected,
+      profile whether it's the librosa MFCC/spectral pass or the tempo
+      autocorrelation refinement (`ref._refine_period_by_comb`'s
+      Nelder-Mead polish) that dominates.
+- [ ] The actual "find me an amen break" flow, end to end: index a real
+      breaks/loops folder, ask Claude (fresh session, following the new
+      Typical Flows entry) to find an amen break, confirm it searches
+      first rather than guessing a filename, and confirm the one-clear-
+      winner-vs-ask-when-several behavior actually holds against real,
+      messily-named files (not the clean synthetic names in the test
+      corpus).
+- [ ] A `similar`-to query against a REAL favorite sample the owner
+      already knows well: does the ranked list's TOP few actually sound
+      similar by ear, and does the ranking's own printed traits
+      (type/duration/BPM/band) make the "why" legible even when the ear
+      and the cosine score disagree? This is the first real test of
+      whether MFCC/spectral/band-split timbral similarity tracks the
+      owner's actual sense of "sounds like this" — the synthetic
+      negative control only proves sine-vs-noise separates cleanly, not
+      that real timbral nuance ranks sensibly.
+- [ ] Decide whether the loop/one-shot duration+onset heuristic
+      (`samplescan.LOOP_MIN_DURATION_S`/`LOOP_MIN_ONSETS`) needs tuning
+      against real material — it was picked to cleanly separate the
+      synthetic corpus, not measured against a real pack's actual mix of
+      short fills, long one-shots, and loops.
+
+## M11b (semantic search) owner checklist
+
+Built + tested entirely under `AWH_CLAP_STUB=1` — `analysis/tests/test_clapembed.py`
+(stub determinism/text-mode/L2-normalization/6-decimal rounding/the
+"model not installed" error naming the exact package+checkpoint+path/JSONL
+shape through `sanitize_json`) and `packages/cli/test/samples.test.ts`'s
+M11b blocks (embed fills + is incremental; a model switch makes every
+prior vector stale and re-embeds, reporting counts; `search --semantic`
+composes with the v1 trait filters and reports the not-embedded footer;
+`similar --semantic` ranks a byte-identical copy of the reference first;
+the NEGATIVE CONTROL — `search --semantic` against an index with ZERO
+embeddings anywhere errors naming `awh samples embed` and never silently
+falls back to token search, checked via a real subprocess spawn of the
+built CLI). A scratchpad smoke run indexed 14 REAL mp3 loops (WaivOps
+TR9 examples — real audio, not synthetic) end-to-end through
+`index -> embed -> search --semantic -> similar --semantic`, confirming
+the plumbing works on real files; the stub has NO real semantics (every
+score in that run was noise clustered near 0 — random unit vectors in a
+512-dim space), so it proved WIRING, not embedding quality. Nothing here
+has run against the real LAION-CLAP checkpoint — that requires an owner
+machine (Hugging Face is egress-blocked in the dev container, see
+`analysis/README.md`'s M11b section for the exact install + checkpoint
+download):
+
+- [ ] Install `laion_clap` (`pip install -e '.[clap]'` from `analysis/`)
+      and download the music checkpoint (`music_audioset_epoch_15_esc_90.14.pt`,
+      ~600 MB+ depending on host) into `~/.awh/models/` per
+      `analysis/README.md`. Confirm `awh samples embed` fails with the
+      clear install-hint error BEFORE the checkpoint is present, and
+      succeeds after — never a bare stack trace either way.
+- [ ] `samples embed` timing at REAL library scale: how long does the
+      first full embed of the owner's actual sample library take (torch
+      CPU inference is much heavier per file than `samplescan`'s DSP
+      pass), and is the "embedded N/M" progress line useful at that
+      cadence or too sparse/chatty? Re-running immediately should embed 0
+      (incremental skip) — confirm that holds at real scale too.
+- [ ] Three CONTENT-language queries against a REAL, already-embedded
+      library — "dusty breakbeat" plus two more the owner picks — judged
+      BY EAR against each query's actual top-5 `search --semantic`
+      results. This is the first real test of whether CLAP-space
+      similarity tracks the owner's actual sense of what a phrase
+      describes; the stub only proves the plumbing moves data, never
+      whether the ranking means anything.
+- [ ] A `similar --semantic` query on a REAL favorite sample the owner
+      already knows well: do the top few results actually sound similar
+      by ear, and does `similar --semantic` actually default to semantic
+      (not `--traits`) once the owner's index has embeddings, without
+      needing to be told?
+- [ ] Spot-check that NO CC-BY-NC (or any other restrictively-licensed)
+      checkpoint was fetched — only the two open LAION-CLAP checkpoints
+      named in `analysis/README.md` (`music_audioset_epoch_15_esc_90.14.pt`,
+      `630k-audioset-best.pt`) should ever land in `~/.awh/models/`.
+- [ ] Confirm the `search --semantic` vs token-`search` split in
+      `.claude/skills/awh/SKILL.md` (content-language queries first try
+      semantic, name-like queries first try tokens) actually holds up in
+      a fresh-agent session against real "find me a ___" requests — the
+      written contract is untested against a live conversation so far.
+- [ ] PANNs tagging (`awh samples tag`, `docs/design/sample-semantic.md`'s
+      optional stretch) is DESIGNED, NOT BUILT — decide whether it's worth
+      building as a follow-up milestone, or whether CLAP semantic search
+      alone covers the "find a kick" case well enough that a separate
+      tag-based filter isn't worth the second model/cache.

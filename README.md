@@ -1,70 +1,145 @@
 # Ableton Workflow Helper (awh)
 
-CLI-first workflow accelerator for Ableton Live: deterministic tools for the
-tedious parts of producing — section building, variation ideation, drum
-programming, measurement-based mix feedback — orchestrated conversationally by
-an LLM when you want, fully scriptable without one.
+A command-line toolkit for Ableton Live. It automates the tedious parts of
+producing a track: drum programming, phrase writing, arrangement building,
+sound design starting points, and measurement-based mix feedback. Everything
+is deterministic and seeded, so any result you like can be regenerated
+exactly. An LLM can drive it conversationally through the included Claude
+skill, but nothing requires one.
 
 Built on the [Ableton Extensions SDK](https://ableton.github.io/extensions-sdk/)
-(Live 12 Suite beta): one thin **gateway extension** inside Live exposes typed
-operations over localhost HTTP; the **`awh` CLI** and analysis tooling do the
-real work outside.
+(Live 12 Suite, currently in beta). One small gateway extension runs inside
+Live and exposes typed operations over localhost HTTP. The `awh` CLI, a
+Python analysis engine, and two Max for Live devices do the rest from
+outside.
+
+## What it does
+
+Writing and generating:
+
+- `awh drums` — pad-aware drum patterns for house, techno, trap, and
+  dubstep, built from data-driven style specs you can edit as YAML without
+  recompiling. Pattern statistics mined from an 22,000-loop open dataset
+  back the styles' assumptions (or contradict them, which gets recorded
+  too).
+- `awh drop` — call-and-response phrase writing for drops. Write a short
+  call, and `drop respond` answers it with candidates built from named,
+  explainable gestures (echo low, truncate to a stab, invert the contour).
+  `drop phrase` writes whole two-voice 8/16-bar skeletons.
+- `awh chords` — in-scale progressions with voice leading, roman numeral
+  input.
+- `awh vary` / `awh sweep` — seeded variations of existing clips through a
+  17-transform vocabulary.
+- `awh clip from-audio` — melodic audio-to-MIDI via Basic Pitch. Hum an
+  idea, get a clip.
+- `awh op` — Operator sound design: apply recipe patches from the knowledge
+  base, or analyze an audio sample and get a patch proposal. When a sound
+  is outside Operator's reach, it says so with the measurement that proves
+  it instead of returning a bad patch.
+
+Arranging and referencing:
+
+- `awh sections` — build an arrangement skeleton from source loops via an
+  editable YAML plan.
+- `awh ref` — deconstruct a reference track: tempo, energy arc, section
+  boundaries with confidence tags, written into Live as correctable marker
+  clips that can then drive your own arrangement plan.
+- `awh endless` — build an infinite, never-identical browser player for
+  your own song from bounced stems and a small grammar file: weighted
+  section transitions, per-layer variant pools, continuous mix
+  fluctuation. The grammar is a small readable spec, and any performance
+  can be reproduced from its seed.
+
+Mixing and measurement:
+
+- `awh mix` — a Python measurement engine: BS.1770 loudness, true peak,
+  PSR, third-octave spectrum against genre targets measured from your own
+  reference tracks, stereo and phase checks, and loudness-matched A/B.
+  Findings come with numbers, not adjectives.
+- `awh mix duck` — sidechain tooling: fit the ideal duck envelope to your
+  drums, auto-calibrate a stock Compressor in a closed loop, or verify a
+  ShaperBox-style pump against the trigger clip.
+- The AWH Capture Tap (Max for Live) records post-FX audio and drives the
+  transport so measurements close the loop without manual bouncing.
+
+Library and knowledge:
+
+- `awh lib` — a git-versioned clip library that mirrors into Live's own
+  browser as a tagged Pack of `.alc` Live Clips. A right-click menu item in
+  Live captures any clip into it.
+- `awh kb` — a tiered knowledge base (verified / sourced / draft) of
+  production craft with executable sections: drum style specs, phrase
+  specs, Operator recipes, measurement records. Entries cite their sources
+  and say what they could not verify.
+
+## How it fits together
+
+```
+Ableton Live ── gateway extension (HTTP, localhost) ──┐
+Live audio ──── AWH Capture Tap (M4L, OSC) ───────────┼── awh CLI (Node)
+any audio ─────────────────────────────────────────────┴── awh_analysis (Python)
+```
+
+| Path | Contents |
+|---|---|
+| `packages/core` | SDK-free core: bridge interface, op registry, notation, transforms, generators. Testable without Live. |
+| `packages/extension` | The only SDK import site. Builds to the gateway `.ablx`. |
+| `packages/cli` | The `awh` command. |
+| `analysis/` | Python measurement and analysis engine (`awh_analysis`). |
+| `m4l/` | Max for Live devices: Capture Tap, Ducker (work in progress). |
+| `knowledge/` | The knowledge base. `library/` holds clips, templates, and measurement records. |
+| `docs/` | Spec, design docs, ADRs, research notes, validation checklists. |
+
+## Getting started
+
+Requirements: Live 12 Suite (beta) with the Extensions SDK enabled, Node 20+
+with pnpm, Python 3.11+.
+
+```sh
+pnpm install && pnpm build
+python3 -m venv .venv && .venv/bin/pip install -e analysis
+# Basic Pitch (audio-to-MIDI) needs extra steps: see analysis/README.md
+```
+
+The Extensions SDK is not distributed with this repo and must be obtained
+from Ableton (see CONTRIBUTING.md). Run the gateway inside Live with the
+SDK's `extensions-cli` — note the required storage flags, documented in
+`docs/dev-loop.md` Troubleshooting. Without Live, `awh serve-fake` starts an
+in-memory Set that supports the full op surface, which is how the test suite
+and most development work run.
+
+```sh
+awh ping                      # is the gateway up?
+awh status                    # tracks, clips, tempo
+awh drums gen track:0 --style dubstep --seed 3
+awh drop respond track:0/slot:0 track:1 --key "F minor"
+awh endless demo -o /tmp/endless && cd /tmp/endless && python3 -m http.server
+```
+
+## Design principles
+
+- Measurements and named gestures, never vibes. Every generator output
+  carries the seed, style, and recipe that produced it; every mix finding
+  carries its number.
+- Honest limits. Detectors ship with negative controls. When the tool
+  cannot know something (one audio file cannot prove a sidechain is
+  engaged; a sound can be outside a synth's gamut) it says so rather than
+  guessing.
+- Styles are data. Drum styles, phrase styles, and synth recipes live in
+  knowledge entries as YAML you can edit and re-run without touching code.
+- Ears decide. The tools propose, measure, and verify; they do not
+  auto-apply taste.
 
 ## Status
 
-**M0–M6, M8, B3, B4 done (all validated in Live) · M7 (scaffolding + harmony) built, awaiting pass** —
-the gateway serves 23 ops; the `awh` CLI speaks bar|beat notation; the `awh`
-Claude skill drives the Set conversationally; `awh vary` generates seeded,
-reproducible variations through a 17-transform pipeline vocabulary; `awh
-sections` builds a 4-minute seeded arrangement skeleton from source loops via
-editable YAML plans; `awh save`/`awh lib` grow a git-versioned clip library
-that mirrors into Live's own browser as a tagged Pack of .alc Live Clips; and
-`awh drums` generates/reworks pad-aware drum patterns (house/techno/trap).
-`awh mix` (M6, validated) — a Python measurement engine (LUFS/dBTP/PSR,
-third-octave spectrum vs measured genre targets, stereo/phase, pump
-verification) + an M4L capture tap for post-FX renders and loudness-matched
-A/B (`docs/design/analysis-engine.md`); the `awh mix duck` toolkit fits
-sidechain envelopes to the owner's drums (ShaperBox drawing instructions or
-closed-loop stock-Compressor calibration). `awh kb` (B4) — the tiered,
-executable-first knowledge base with open-ended domains, measurement records
-as citizens, data-driven drum styles, and a seeded corpus (ISOxo, Burial,
-Fred again, call-and-response craft). `awh ref` (M8) deconstructs reference
-tracks (BPM/grid, energy arc, confidence-tagged sections) into correctable
-marker-clip maps that feed `sections plan --from-ref`. `awh new`/`awh chords`
-(M7) scaffold projects from the owner's template and co-write in-scale chord
-progressions with voice leading.
-Backlog candidates B1 (audio-to-MIDI) and B2 (Operator sound design) are
-researched and queued — see `docs/spec.md`.
-See [`docs/spec.md`](docs/spec.md) for requirements + milestones,
-[`docs/decisions/`](docs/decisions/) for ADRs, and
-[`docs/research/`](docs/research/) for the landscape/mixing/reference research.
-
-## Layout
-
-| Path | What |
-|---|---|
-| `packages/core` | SDK-free heart: `LiveBridge` interface, gateway server, op registry, (soon) notation + transforms. Fully testable without Live |
-| `packages/extension` | The ONLY SDK import site; thin shell wiring activation → gateway server; builds to `.ablx` |
-| `packages/cli` | `awh` — ping/status/ops/call/serve-fake (grows per milestone) |
-| `analysis/` | Python measurement engine (`awh_analysis`) behind `awh mix` — BS.1770 loudness, spectrum, phase, dynamics |
-| `m4l/` | AWH Capture Tap: M4L device for post-FX capture + transport, OSC-driven |
-| `library/` | Git-versioned clip library (+ measured mix targets); mirrors into Live's browser |
-| `scripts/setup-sdk.mjs` | Extracts the (never-committed) SDK from `vendor/ableton-sdk/` |
-| `docs/dev-loop.md` | Setup + everyday development loop + M0 verification checklist |
-
-## Quickstart (no Live needed)
-
-```sh
-pnpm install && pnpm build && pnpm test
-node packages/cli/dist/index.js serve-fake &
-node packages/cli/dist/index.js ping
-```
-
-For the real thing (Live 12 Suite beta + SDK): see
-[`docs/dev-loop.md`](docs/dev-loop.md).
+Personal project, developed against the Live 12 Suite beta. Core milestones
+are built and validated in a real Live set; per-feature validation
+checklists are in `docs/dev-loop.md`. The SDK is in beta, so breakage on new
+SDK drops is expected and tracked in `docs/sdk-feedback.md`. Start with
+[`docs/spec.md`](docs/spec.md) for the full requirement map and
+[`docs/decisions/`](docs/decisions/) for the architecture decisions.
 
 ## License
 
-MIT (see [LICENSE](LICENSE) and [ADR-002](docs/decisions/ADR-002-licensing.md)).
-The Ableton Extensions SDK is not included and must be obtained from Ableton's
-beta program.
+MIT. The Ableton Extensions SDK, Ableton's documentation, and referenced
+datasets are not included and carry their own licenses.
