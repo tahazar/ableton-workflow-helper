@@ -1,19 +1,332 @@
 # AWH Max for Live devices
 
-Two tiny M4L devices drive Live from the CLI over localhost OSC — no
-manual dialing, no clicking through routing. Each is committed as a
-`.maxpat` (JSON), built/frozen to `.amxd` in Max on the owner's machine
-(Suite includes Max), with a full manual-patching fallback here in case
-the generated JSON fights Max's validator.
+Tiny M4L devices drive Live from the CLI over localhost OSC — no manual
+dialing, no clicking through routing. Each is committed as a `.maxpat`
+(JSON), built/frozen to `.amxd` in Max on the owner's machine (Suite
+includes Max), with a full manual-patching fallback here in case the
+generated JSON fights Max's validator.
 
-- **AWH Capture Tap** — audio passthrough + recorder, closes the
-  measure→adjust→verify loop.
+- **AWH Remote** (M12, current) — audio passthrough + recorder (same job as
+  the tap below) PLUS transport (play/stop/jump) and clip launch (fire a
+  session slot or scene, stop all clips) — the SDK has no API for any of
+  that, so this device is how `awh` closes the "press play" gap. Supersedes
+  AWH Capture Tap below: same 9720/9721 ports, one superset protocol.
+- **AWH Capture Tap** (superseded — kept for reference/migration; see the
+  migration note under AWH Remote) — audio passthrough + recorder only,
+  closes the measure→adjust→verify loop.
 - **AWH Ducker** — transport-synced sidechain gain envelope, the full-auto
   duck strategy from `docs/design/analysis-engine.md`.
+
+**Only one of AWH Remote / AWH Capture Tap may be loaded in a Set at a
+time** — both listen on the same ports (9720/9721), and whichever loads
+second will fail to bind (`udpreceive 9720` already in use). New Sets
+should use AWH Remote; existing Sets should swap the Capture Tap for it
+(see "Migrating from the AWH Capture Tap" below). Deleting the old
+`AWH Capture Tap.maxpat` file from the repo is the owner's call, not done
+automatically by this change — `mix capture`/`op verify`/`mix duck`
+already work unchanged against AWH Remote's superset protocol, so nothing
+in the CLI depends on the old file remaining.
+
+---
+
+## AWH Remote (Max for Live)
+
+A small M4L **audio effect** that is the one AWH device a Set needs: it
+passes audio through untouched, records its input to a file on command
+(same job as the AWH Capture Tap it supersedes), starts/stops Live's
+transport and jumps the arrangement playhead, and fires session clip
+slots/scenes or stops all clips — everything the Extensions SDK has no API
+for at all (`docs/sdk-feedback.md`'s #1 blocking gap). Driven by `awh
+play`/`awh stop`/`awh jump`/`awh launch`/`awh stop-clips`/`awh lib
+audition` and `awh mix capture`/`op verify`/`mix duck` over OSC on
+localhost.
+
+Put it **last on the Main/master chain** (same placement as the Capture
+Tap) to capture the mixdown, or at the end of any bus/track chain to
+capture that signal post-FX. Transport/clip-launch messages work
+regardless of which chain it sits on — Live routes them to the Song/LOM,
+not the audio signal.
+
+### Protocol (UDP, localhost)
+
+Listens on **9720**; replies go to **9721**. Same ports as the AWH Capture
+Tap — this is a drop-in superset, not a new device family.
+
+| Message | Action | Reply |
+|---|---|---|
+| `/awh/ping` | liveness check | `/awh/pong 2` (version bumped from the tap's `1`) |
+| `/awh/record <absolute path>` | open the file in `sfrecord~`, start recording ~100 ms later | — (unchanged from the tap) |
+| `/awh/stop` | stop recording | — (unchanged) |
+| `/awh/loop <startBeat> <lengthBeats>` | set the arrangement loop brace + enable loop | — (unchanged) |
+| `/awh/play <1\|0>` | start / stop the transport | — (unchanged) |
+| `/awh/fire <trackIdx> <slotIdx>` | session clip slot `call fire` (respects launch quantization) | `/awh/status fire <trackIdx> <slotIdx>` or `/awh/error <text>` on a negative index |
+| `/awh/scene <sceneIdx>` | scene `call fire` | `/awh/status scene <sceneIdx>` or `/awh/error <text>` |
+| `/awh/stopclips <trackIdx>` (`-1` = whole Set) | `call stop_all_clips` on the track (or `live_set` itself for `-1`) | `/awh/status stopclips <trackIdx>` or `/awh/error <text>` |
+| `/awh/jump <beats>` | set `current_song_time` (arrangement playhead, in BEATS) | `/awh/status jump <beats>` |
+
+The four new messages (fire/scene/stopclips/jump) always reply — the CLI's
+`remote.ts` pings first (~1s timeout, "requires the AWH Remote device..."
+error if nothing answers) then awaits either `/awh/status` or `/awh/error`
+before printing anything, so a bad index is reported, not silently dropped
+or hung on. `record`/`stop`/`loop`/`play` keep the tap's original
+fire-and-forget behavior (no reply beyond the ping's pong) — nothing about
+those four changed.
+
+**Bad-index checking is partial, by design (documented limit, not hidden):**
+the patch rejects an obviously-bad NEGATIVE index locally (no LOM round
+trip needed) but does NOT query `live_set`'s actual track/scene count
+before firing — a POSITIVE but out-of-range index (e.g. `fire 99 0` on an
+8-track Set) is passed straight to `live.path`/`live.object` and whatever
+Live does with an unresolvable path (silently no-op, most likely) is what
+happens; it will not come back as a clean `/awh/error`. Checking real
+bounds would mean a `get num_tracks`-style round trip before every single
+fire, which conflicts with the zero-timer/minimal-round-trip lightness
+goal — the CLI already validates against `awh status`'s own track/scene
+list before sending when it has that context (e.g. `lib audition`), so in
+practice this gap mostly matters for hand-typed `awh launch` targets.
+
+### Install
+
+1. In Live (Suite), drop a **Max Audio Effect** onto the master track and
+   click its edit (patch cord) button to open Max.
+2. In Max: File → Open → `m4l/AWH Remote.maxpat`, select-all, copy, then
+   paste into the device's patcher window (between its default `plugin~`
+   and `plugout~` if present — delete the duplicates so only one pair
+   remains, keeping the paste's connections).
+   *If the .maxpat refuses to open or paste cleanly, build it by hand from
+   the tables below — they describe every object and connection.*
+3. Save (⌘S) — Live now shows the device in the set. Optionally
+   File → "Freeze Device" and save as `AWH Remote.amxd` into your User
+   Library for reuse across projects (do this for the performance
+   measurement below, too — see the Owner performance protocol).
+4. Click the **MANUAL RE-INIT** button once after any load/paste (see
+   "Notes" below — the same `live.path` lesson from AWH Ducker.maxpat).
+5. Verify: `awh play` should start the transport; `awh mix capture` should
+   still record (unchanged protocol); `awh launch track:0/slot:0` (on an
+   occupied slot) should fire it audibly.
+
+### Migrating from the AWH Capture Tap
+
+If a Set already has the Capture Tap loaded:
+
+1. Remove the AWH Capture Tap device from the Set (it and AWH Remote can't
+   both bind port 9720 — whichever loads second fails silently: no console
+   error typically, just no reply to `/awh/ping` from the failed one).
+2. Install AWH Remote in its place (steps above) — same placement (end of
+   the master/bus chain), same ports, so `awh mix capture`/`op verify`/`mix
+   duck` continue to work with zero CLI-side changes.
+3. Nothing about the `record`/`stop`/`loop`/`play` wire format changed —
+   only `awh mix capture` and friends' OWN behavior is unaffected either;
+   the only visible difference is `/awh/pong` now replies `2` instead of
+   `1` (not checked by any current CLI code, informational only).
+4. Deleting `AWH Capture Tap.maxpat` from the repo is optional and the
+   owner's call — nothing in the CLI reads that file directly (it's a Max
+   source, not a runtime dependency), so leaving it as a historical
+   reference costs nothing.
+
+### Manual build table (fallback)
+
+The patch has five subsystems: OSC in/routing + record/stop/loop/play
+(identical to the old Capture Tap) + ping/pong, then four new
+fire/scene/stopclips/jump branches that share the SAME pattern: gate out a
+bad (negative) index locally, resolve the target via a dynamically-built
+`live_set ...` path string sent to a **shared, once-created** `live.path`/
+`live.object` pair (design-for-lightness rule: every LOM object is created
+ONCE per branch and reused for every message of that type — never
+recreated per-call), then `call`/`set` it and echo a status reply. Every
+`t` (trigger) object fires its outlets **right to left** — same idiom as
+the Capture Tap's `t b f` and the Ducker's whole subsystem 4 — used
+throughout to sequence "resolve the LOM id" before "issue the call", and
+"compute the bad-index gate control" before "let the data through".
+
+#### 1. OSC in, routing, ping/pong (identical to the Capture Tap + 4 new outlets)
+
+| Object/message | Notes |
+|---|---|
+| `udpreceive 9720` | OSC in |
+| `route /awh/record /awh/stop /awh/loop /awh/play /awh/ping /awh/fire /awh/scene /awh/stopclips /awh/jump` | 9 matched outlets in that order + reject |
+| message `/awh/pong 2` | ping reply → `udpsend 127.0.0.1 9721` (shared by every reply in this patch: pong, status, error) |
+| `udpsend 127.0.0.1 9721` | the single shared OSC-out object |
+
+#### 2. record/stop/loop/play — byte-identical wiring to AWH Capture Tap.maxpat
+
+Unchanged from the tap (see that section's own manual-build table if
+rebuilding from scratch): `t b s` → `prepend open` (**object**, not a
+message box — see the callout at the end of this section) / `del 100`+message `1`
+→ `sfrecord~ 2`; message `0` → `sfrecord~ 2`; `unpack 0. 0.` → messages
+`set loop_start $1`/`set loop_length $1`/`set loop 1` (via `t b f` so
+length is set before loop 1) → the transport `live.object`'s left inlet;
+`sel 1 0` → messages `call start_playing`/`call stop_playing` → same
+`live.object`. `plugin~`/`plugout~` device I/O, L/R into both `plugout~`
+and `sfrecord~`.
+
+#### 3. Transport `live_set` binding (Pair A — loadbang + manual re-init)
+
+| Object/message | Notes |
+|---|---|
+| `loadbang` → `live.path live_set` → id → `live.object`'s **right** inlet | same binding idiom as the Capture Tap |
+| **button** (small bang UI object) → `live.path live_set`'s inlet, in parallel with `loadbang` | **MANUAL RE-INIT** — click after any reload/paste; `loadbang` alone does NOT refire on a paste-into-open-device reload (the AWH Ducker session's own hard-won lesson — `docs/dev-loop.md`'s Ducker checklist), so this is a required, not optional, UI element |
+| `live.object` | receives the loop/play `set`/`call` messages from subsystem 2; this is the ONE live.object shared by record/stop/loop/play and jump |
+
+#### 4. FIRE — `/awh/fire <trackIdx> <slotIdx>`
+
+| Object/message | Notes |
+|---|---|
+| `t l l` (fed by route's fire outlet, a 2-element list) | right outlet fires first (bad-index gate), left outlet fires second (preserves the list for the gate's data inlet) |
+| right branch: `unpack 0 0` → `expr (($i1 < 0) \|\| ($i2 < 0)) + 1` | wire unpack's outlet 1 (slotIdx) to expr's cold inlet 1 and outlet 0 (trackIdx) to expr's hot inlet 0 — unpack fires right-to-left so slotIdx lands before trackIdx triggers the evaluation. Output: `1` = good, `2` = bad. **Owner-found gotcha (2026-08-23)**: the ternary form `... ? 2 : 1` threw a Max `expr` syntax error on the owner's Max version (all three bad-index `expr` objects in this device, same failure) — `expr`'s comparison/logical operators already return `1`/`0` like C, so `(condition) + 1` is mathematically identical without needing ternary support at all. Use the `+ 1` form everywhere below, not `?:`. |
+| → `gate 2` inlet 0 (control) | must be set BEFORE the data arrives — guaranteed by the outer `t l l`'s ordering |
+| left branch (the preserved list) → `gate 2` inlet 1 (data) | |
+| `gate 2` outlet 0 (good, list passes through) → `t l l` | right outlet fires first (resolve id), left outlet fires second (call + reply) |
+| resolve-id branch: message `goto live_set tracks $1 clip_slots $2` (fed the list, $1/$2 auto-substituted) → **`live.path`** (bare, no creation argument — this is Pair B, dedicated to fire, created once and re-resolved on every fire call via fresh path messages, never re-instantiated) → id → **`live.object`** (Pair B's partner)'s right inlet | |
+| call+reply branch: message `call fire` → `live.object` (Pair B) left inlet; **object** `prepend /awh/status fire` (fed the list) → `udpsend` | both fed by the SAME outlet — order between them doesn't matter, only that they fire AFTER the id is set, which the outer `t l l` guarantees |
+| `gate 2` outlet 1 (bad) → **object** `prepend /awh/error bad-fire-index` → `udpsend` | |
+
+#### 5. SCENE — `/awh/scene <sceneIdx>`
+
+Same shape as FIRE, one index instead of two: `t l l` → (right) `unpack 0`
+→ `expr ($i1 < 0) + 1` → `gate 2` control; (left) → `gate 2` data. Good
+outlet → `t l l` → (right) message `goto live_set scenes $1` → **`live.path`**
+(Pair C, dedicated to scene) → id → **`live.object`** (Pair C) right
+inlet; (left) message `call fire` → `live.object` left inlet, AND **object**
+`prepend /awh/status scene` → `udpsend`. Bad outlet → **object** `prepend
+/awh/error bad-scene-index` → `udpsend`.
+
+#### 6. STOPCLIPS — `/awh/stopclips <trackIdx>` (`-1` = whole Set)
+
+Same gate shape as FIRE/SCENE, but the bad check is `expr ($i1 < -1) + 1`
+(only indices below `-1` are rejected — `-1` itself is the valid "all"
+sentinel) and the good path has an EXTRA branch to pick the LOM path
+before resolving: `unpack 0` → `sel -1` → outlet 0 (matched, `-1`) →
+message `goto live_set` (targets the Song itself); outlet 1 (unmatched,
+passthrough `trackIdx`) → message `goto live_set tracks $1`. Both feed the SAME
+**`live.path`** (Pair D, dedicated to stopclips) → id → **`live.object`**
+(Pair D) right inlet. Then (from the outer `t l l`'s left/second outlet)
+message `call stop_all_clips` → `live.object` left inlet, AND **object**
+`prepend /awh/status stopclips` → `udpsend`. Bad outlet → **object** `prepend
+/awh/error bad-stopclips-index` → `udpsend`.
+
+#### 7. JUMP — `/awh/jump <beats>`
+
+No bad-index gate (any beat position is a valid `current_song_time` — Live
+clamps on its own side, there is no "negative index" analog for a
+continuous beat position). `t l l` (fed by route's jump outlet, a
+1-element list) → right outlet fires first: message `goto live_set` →
+**`live.path`** (Pair E, dedicated to jump) → id → **`live.object`** (Pair
+E) right inlet; left outlet fires second: message `set current_song_time
+$1` (fed the beats value) → `live.object` left inlet, AND **object** `prepend
+/awh/status jump` (fed the beats value) → `udpsend`.
+
+**Owner-found gotcha (2026-08-23), the second real one this device hit**:
+every `prepend ...` in this device (all 8: the `record` file-open plus the
+7 fire/scene/stopclips/jump status/error replies) must be a real **object**
+box (`newobj`), not a **message** box — a message box just outputs its own
+fixed literal text on any trigger and completely ignores the incoming
+value, which silently breaks BOTH the file path passed to `sfrecord~`'s
+`open` (so `awh mix capture`/`op verify`/`duck` recording never actually
+opens the real file) and every status/error OSC reply (the reply goes out
+with the right address but is missing the actual data — e.g. jump's reply
+came back as literal `prepend /awh/status jump` with no beats value, and
+fire/scene/stopclips/jump all silently dropped their reply args the same
+way). Confirmed by direct comparison against the previously-verified,
+working `AWH Capture Tap.maxpat`, whose equivalent `prepend open` box is
+correctly a `newobj`. If rebuilding any of these branches by hand: type
+`prepend <fixed prefix words>` into a plain object box (`n` shortcut or
+Object from the palette), never a message box (`m` shortcut) — visually
+object boxes have straight corners, message boxes have a notched right
+edge, easy to mix up when working fast.
+
+**Owner-found gotcha (2026-08-23), the third real one this device hit —
+the actual root cause of fire/scene/stopclips/jump all silently no-oping**:
+a bare, argument-less `live.path` (the pattern used by every Pair B–E
+dynamic resolve, e.g. `goto live_set tracks $1 clip_slots $2`) does NOT
+accept a raw LOM path string as its message — it needs the literal prefix
+word **`goto`** (`goto live_set ...`, per Cycling '74's own live.path
+cookbook usage). Without it, `live.path` prints `doesn't understand
+"live_set"` in the Max console and never outputs an id, which cascades
+into `live.object` printing `set: no valid object set` (or a `call`
+silently doing nothing) — no OSC `/awh/error` for this, since it happens
+entirely inside Max before either gate branch's status/error message
+fires. This is DIFFERENT from Pair A's `live.path live_set`: that form
+bakes the path in as a creation-time ARGUMENT (resolved by a `bang`, no
+message parsing involved), so it never needed `goto` and isn't affected.
+All five `live_set`-prefixed message boxes in this device (`obj-33`,
+`obj-45`, `obj-59`, `obj-60`, `obj-68` in the shipped `.maxpat`) now start
+with `goto`; if rebuilding any Pair B–E branch by hand, always prefix the
+dynamic path message with `goto`.
+
+### Notes
+
+- **Five independent `live.path`/`live.object` PAIRS, not one shared
+  across everything** (Pair A = transport+ping's fixed `live_set` binding,
+  loadbang/button-bound; Pairs B/C/D/E = fire/scene/stopclips/jump, each
+  dynamically re-resolved on every call to that message type). This is a
+  deliberate simplification over trying to share ONE pair across every
+  message type: re-targeting a single live.path between "live_set" and
+  "live_set tracks N clip_slots M" on alternating messages would work in
+  principle (live.path accepts a fresh path message any time) but makes
+  correctness depend on getting cross-branch ordering right everywhere;
+  five independent, narrowly-scoped pairs are easier to reason about, easier
+  to rebuild by hand from this table, and still fully satisfy "every LOM
+  object created once" (each pair's OBJECTS are each created exactly once
+  at patch-load time; only the PATH STRING sent to them varies per call,
+  which is the normal, intended way `live.path` is used for a dynamic
+  index — not a violation of the design's lightness rule).
+- **The manual re-init button only rebinds Pair A** (the transport/ping
+  binding). Pairs B–E never need re-init: they carry no persistent binding
+  to go stale — every single fire/scene/stopclips/jump call resolves its
+  own fresh path from scratch, so there's nothing for a paste-reload to
+  leave dangling on those four pairs specifically. If `awh launch`/`awh
+  jump` work but `awh play`/`awh mix capture` don't (or vice versa) right
+  after a reload, that asymmetry is consistent with this design — re-init
+  and retest.
+- Zero timers anywhere in this patch (unlike the Ducker's `metro 1` poll —
+  Remote never needs to poll transport position, it only reacts to
+  incoming OSC).
+- Ports are hardcoded (9720/9721); change both the patch and
+  `--remote-port`/`--remote-reply-port` if they collide with something.
+- Recording format/behavior: unchanged from the Capture Tap (see that
+  section's Notes).
+
+### Owner performance protocol (before/after)
+
+The owner reported the Capture Tap had a noticeable CPU/performance impact
+on Live. Diagnosis first, honestly: the tap patch itself is minimal — ~24
+objects, zero timers, event-driven throughout — so a real per-object cost
+large enough to notice seems unlikely; more probable causes are
+environmental (unfrozen device, an open Max editor window eating CPU, a
+freeze that accidentally picked up template UI overhead, or plain
+per-M4L-device runtime baseline cost that has nothing to do with THIS
+patch specifically). This protocol isolates which it actually is, on the
+owner's own machine:
+
+1. **Baseline**: Live's CPU meter (bottom-right) + audio dropout indicator,
+   over 60 seconds of normal playback, with NO AWH device loaded at all.
+   Record the number.
+2. **Frozen, editor closed**: freeze AWH Remote to `.amxd` (Install step
+   3), load the frozen device, close any Max editor window if one is open,
+   repeat the same 60-second measurement.
+3. **Unfrozen, editor open**: unfreeze (or load the unfrozen `.maxpat`
+   directly) with its Max editor window left open, repeat the measurement
+   again.
+4. **Record all three numbers** in `docs/dev-loop.md`'s "M12 (AWH Remote)
+   owner checklist". If step 2 (frozen, editor closed — the configuration
+   any real session should actually run in) is meaningfully worse than
+   step 1, that's a genuine patch-level problem worth escalating/
+   investigating further; per the object-count diagnosis above, the
+   expectation is that it will NOT be, and that most/all of the prior
+   complaint traces to steps 1→3's delta (editor-open / unfrozen
+   overhead) rather than anything in the patch itself. Either outcome is
+   useful data — this protocol doesn't presuppose the answer, it isolates
+   it.
 
 ---
 
 ## AWH Capture Tap (Max for Live)
+
+**Superseded by AWH Remote (above) as of M12** — same ports, one superset
+protocol, so a Set should load ONE of the two, not both. This section is
+kept for historical reference and for Sets not yet migrated; see "Migrating
+from the AWH Capture Tap" above for the swap.
 
 A tiny M4L **audio effect** that closes the measure→adjust→verify loop:
 it passes audio through untouched, records its input to a file on command,
