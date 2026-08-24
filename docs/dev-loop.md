@@ -524,6 +524,57 @@ calibrator, verified live on a purpose-built kick/snare/hat/bassline project:
       beat-grid-folded) are the reliable path for this template; treat
       `pump_shape_*` as a rough single-file heads-up, not a verdict.
 
+## M6b (masking toolkit) owner checklist
+
+Built (offline, AI-buildable half) in response to the gap report captured
+live in `docs/design/analysis-engine.md`'s "Future work: real gaps found
+doing real masking/mix analysis (2026-08-23)" section — the same session
+that had to hand-roll throwaway numpy scripts to answer "does my sub
+compete with my call/response layers." `analysis/tests/test_pitch.py` /
+`test_bands.py` (synthetic-signal regression + calibration + negative
+controls) and `packages/cli/test/layers.test.ts` (solo-restore proven
+against a real gateway, including a negative control on an injected
+capture failure) are the AI-buildable half. Re-running the ORIGINAL
+question end-to-end with `awh` only — no scratch numpy — against the real
+project/patches that prompted this milestone is the owner's:
+
+- [ ] Re-run the real "does my sub compete with my call/response layers"
+      question end-to-end with `awh mix pitch` / `awh mix bands` / `awh
+      mix layers` only — zero throwaway numpy. Does the calibrated
+      `mix bands` table + `mix pitch --per-note` answer the masking
+      question as well as (or better than) the original hand-rolled
+      scripts did? Note anywhere the built tools fall short — that's a
+      real follow-up, not a rhetorical check.
+- [ ] `awh mix pitch <the actual growl patch that fooled the naive picker
+      live>` (not just the synthetic regression fixture) — confirm f0
+      lands on the real fundamental and `harmonic_dominance` flags the
+      real 2nd-harmonic takeover, with a ratio/timing that matches what
+      was heard/seen live. This is the actual live-caught bug, not a
+      stand-in for it — the synthetic test in `test_pitch.py` is a
+      regression guard, not a substitute for checking the real file.
+- [ ] `awh mix bands` on a couple of real captures (sub vs. bassline, or
+      any two layers suspected of masking each other) — do the calibrated
+      dBFS numbers and `fraction_of_total` line up with what the ears (and
+      the original scratch-script numbers, if still around for reference)
+      say? Sanity-check the default zones (sub/low/scoop zone/low-mid/mid)
+      against the real project's actual danger frequencies.
+- [ ] `awh mix layers <realTrack1> <realTrack2> ...` on real tracks in a
+      real Set (needs the AWH Capture Tap loaded, m4l/README.md) — confirm
+      each solo/capture/unsolo step actually isolates the right track
+      (listen, or check Live's own track headers mid-run if possible), and
+      that solo state comes back exactly as it was — including any track
+      that was already soloed before the command ran — once the run
+      finishes normally. Also deliberately trigger a failure mid-run
+      (unload the Capture Tap partway, or Ctrl-C between tracks) and
+      confirm Live's own solo buttons show no track left stuck soloed —
+      the offline negative control in `layers.test.ts` proves the LOGIC;
+      this proves it against the real SDK/Live, not just FakeLiveBridge.
+- [ ] Skill check: ask a fresh agent a masking question in plain language
+      ("does my kick fight my 808") and confirm it reaches for `mix pitch`
+      / `mix bands` / `mix layers` from the Typical flows entry rather than
+      falling back to `mix report`'s spectral tilt (which is explicitly
+      documented as unable to answer this) or hand-rolling numpy again.
+
 ## M4L Ducker owner validation checklist
 
 Not yet verified in Live (built without a running Max/Live session — see
