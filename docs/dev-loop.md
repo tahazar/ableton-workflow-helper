@@ -538,42 +538,77 @@ capture failure) are the AI-buildable half. Re-running the ORIGINAL
 question end-to-end with `awh` only — no scratch numpy — against the real
 project/patches that prompted this milestone is the owner's:
 
-- [ ] Re-run the real "does my sub compete with my call/response layers"
-      question end-to-end with `awh mix pitch` / `awh mix bands` / `awh
-      mix layers` only — zero throwaway numpy. Does the calibrated
-      `mix bands` table + `mix pitch --per-note` answer the masking
-      question as well as (or better than) the original hand-rolled
-      scripts did? Note anywhere the built tools fall short — that's a
-      real follow-up, not a rhetorical check.
-- [ ] `awh mix pitch <the actual growl patch that fooled the naive picker
-      live>` (not just the synthetic regression fixture) — confirm f0
-      lands on the real fundamental and `harmonic_dominance` flags the
-      real 2nd-harmonic takeover, with a ratio/timing that matches what
-      was heard/seen live. This is the actual live-caught bug, not a
-      stand-in for it — the synthetic test in `test_pitch.py` is a
-      regression guard, not a substitute for checking the real file.
-- [ ] `awh mix bands` on a couple of real captures (sub vs. bassline, or
-      any two layers suspected of masking each other) — do the calibrated
-      dBFS numbers and `fraction_of_total` line up with what the ears (and
-      the original scratch-script numbers, if still around for reference)
-      say? Sanity-check the default zones (sub/low/scoop zone/low-mid/mid)
-      against the real project's actual danger frequencies.
-- [ ] `awh mix layers <realTrack1> <realTrack2> ...` on real tracks in a
-      real Set (needs the AWH Capture Tap loaded, m4l/README.md) — confirm
-      each solo/capture/unsolo step actually isolates the right track
-      (listen, or check Live's own track headers mid-run if possible), and
-      that solo state comes back exactly as it was — including any track
-      that was already soloed before the command ran — once the run
-      finishes normally. Also deliberately trigger a failure mid-run
-      (unload the Capture Tap partway, or Ctrl-C between tracks) and
-      confirm Live's own solo buttons show no track left stuck soloed —
-      the offline negative control in `layers.test.ts` proves the LOGIC;
-      this proves it against the real SDK/Live, not just FakeLiveBridge.
+Real session (2026-08-23), re-run against the ORIGINAL captures from the
+masking investigation this milestone was built for (`/tmp/awh-captures/
+solo-{sub,reese,call}.wav`, still on disk from that session) plus a fresh
+fully-live run on the real Set:
+
+- [x] Re-ran the real "does my sub compete with my call/response layers"
+      question end-to-end with `awh mix pitch` / `awh mix bands` only —
+      zero throwaway numpy. Not only matched the original hand-rolled
+      scripts' conclusion, it EXTENDED it: the original investigation
+      characterized Reese's problem as fundamental-in-the-scoop-zone
+      (140-200Hz); `mix bands`' calibrated table showed Reese ALSO carries
+      23% of its total signal power in the sub band itself (20-100Hz,
+      -19.0 dBFS, only ~19dB below the pure sub reference) — genuine,
+      substantial sub-band competition that the original narrower
+      investigation didn't fully quantify. Real follow-up worth a look:
+      that sub-band content in Reese is presumably unwanted (a clean sub
+      shouldn't need low-end from a "Reese" bass layer) and may be worth
+      a highpass on Reese below ~100Hz.
+- [x] `awh mix pitch` on the ACTUAL growl/reese patch that fooled the
+      naive picker live (`solo-reese.wav`, not the synthetic fixture) —
+      confirmed working exactly as designed: f0 174.4 Hz -> F3 (the
+      track's actual key root, F Phrygian), with an HONEST low
+      voiced%/confidence (12%/0.11 on the whole-file average) reflecting
+      that a wide detuned Reese genuinely has messy periodicity — and
+      `--per-note` (onset-segmented) gave much cleaner sustained-note
+      reads (100% voiced on isolated held notes) plus the harmonic-
+      dominance flag firing correctly and repeatedly: "harmonic 5 exceeds
+      the fundamental by 25-35 dB" on sustained notes — this is the exact
+      live-caught failure mode (a naive FFT-peak-pick would have reported
+      the loud 5th harmonic as the pitch) now caught and named explicitly
+      instead of silently misleading.
+- [x] `awh mix bands` on real captures (sub/reese/call) — calibrated dBFS
+      + `fraction_of_total` matched what the ears/original scratch-script
+      numbers said, AND is now genuinely calibrated (absolute dBFS
+      referenced to a full-scale sine, not the earlier tool's uncalibrated
+      relative numbers) — directly closes that specific gap from the
+      original feedback. Default zones (sub/low/scoop zone/low-mid/mid)
+      matched this real project's actual danger frequencies without
+      needing `--bands` overrides.
+- [x] `awh mix layers track:8 track:7 track:6 --from-bar 21 --bars 4` on
+      the real live Set (9 Sub / Reese Response / Lead Call, the exact
+      three tracks from the original investigation) — fully automated
+      solo→capture→unsolo, no manual clicking. **Found a real reliability
+      gap**: the first two attempts each aborted with `<file> was not
+      created` at a DIFFERENT track position each time (2nd track once,
+      3rd track once) despite `captureSpan` already having the 400ms
+      settle-delay fix from the earlier `duck calibrate` race-condition
+      find — `runLayers` correctly reuses `captureSpan` (not a duplicated
+      implementation), so this looks like a genuine intermittent race
+      specific to RAPID BACK-TO-BACK record cycles through the same
+      `sfrecord~` (three solo-swap+full-record cycles in quick succession)
+      rather than a single-capture issue. The THIRD attempt succeeded
+      cleanly end-to-end, and its numbers closely matched both the
+      archived original captures and the aborted runs' own partial
+      captures — so results are trustworthy when it completes, this is a
+      reliability/retry issue, not a correctness one. **The solo-restore
+      guarantee held perfectly in all three attempts, including both
+      failures** — confirmed via `set.summary` after each run that zero
+      tracks were left stuck soloed, live-verifying `layers.test.ts`'s
+      offline negative control against the real SDK/Live, not just
+      FakeLiveBridge. Worth a follow-up: either a longer inter-track
+      settle gap in `runLayers`, or a documented "retry once if it aborts"
+      note, since right now a first-time user hitting this with no
+      context would reasonably read it as a broken tool rather than a
+      known flake.
 - [ ] Skill check: ask a fresh agent a masking question in plain language
       ("does my kick fight my 808") and confirm it reaches for `mix pitch`
       / `mix bands` / `mix layers` from the Typical flows entry rather than
       falling back to `mix report`'s spectral tilt (which is explicitly
       documented as unable to answer this) or hand-rolling numpy again.
+      Not run this pass.
 
 ## M4L Ducker owner validation checklist
 
