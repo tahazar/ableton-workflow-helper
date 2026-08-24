@@ -151,7 +151,8 @@ throughout to sequence "resolve the LOM id" before "issue the call", and
 #### 2. record/stop/loop/play — byte-identical wiring to AWH Capture Tap.maxpat
 
 Unchanged from the tap (see that section's own manual-build table if
-rebuilding from scratch): `t b s` → `prepend open`/`del 100`+message `1`
+rebuilding from scratch): `t b s` → `prepend open` (**object**, not a
+message box — see the callout at the end of this section) / `del 100`+message `1`
 → `sfrecord~ 2`; message `0` → `sfrecord~ 2`; `unpack 0. 0.` → messages
 `set loop_start $1`/`set loop_length $1`/`set loop 1` (via `t b f` so
 length is set before loop 1) → the transport `live.object`'s left inlet;
@@ -172,36 +173,36 @@ and `sfrecord~`.
 | Object/message | Notes |
 |---|---|
 | `t l l` (fed by route's fire outlet, a 2-element list) | right outlet fires first (bad-index gate), left outlet fires second (preserves the list for the gate's data inlet) |
-| right branch: `unpack 0 0` → `expr (($i1 < 0) \|\| ($i2 < 0)) ? 2 : 1` | wire unpack's outlet 1 (slotIdx) to expr's cold inlet 1 and outlet 0 (trackIdx) to expr's hot inlet 0 — unpack fires right-to-left so slotIdx lands before trackIdx triggers the evaluation. Output: `1` = good, `2` = bad |
+| right branch: `unpack 0 0` → `expr (($i1 < 0) \|\| ($i2 < 0)) + 1` | wire unpack's outlet 1 (slotIdx) to expr's cold inlet 1 and outlet 0 (trackIdx) to expr's hot inlet 0 — unpack fires right-to-left so slotIdx lands before trackIdx triggers the evaluation. Output: `1` = good, `2` = bad. **Owner-found gotcha (2026-08-23)**: the ternary form `... ? 2 : 1` threw a Max `expr` syntax error on the owner's Max version (all three bad-index `expr` objects in this device, same failure) — `expr`'s comparison/logical operators already return `1`/`0` like C, so `(condition) + 1` is mathematically identical without needing ternary support at all. Use the `+ 1` form everywhere below, not `?:`. |
 | → `gate 2` inlet 0 (control) | must be set BEFORE the data arrives — guaranteed by the outer `t l l`'s ordering |
 | left branch (the preserved list) → `gate 2` inlet 1 (data) | |
 | `gate 2` outlet 0 (good, list passes through) → `t l l` | right outlet fires first (resolve id), left outlet fires second (call + reply) |
-| resolve-id branch: message `live_set tracks $1 clip_slots $2` (fed the list, $1/$2 auto-substituted) → **`live.path`** (bare, no creation argument — this is Pair B, dedicated to fire, created once and re-resolved on every fire call via fresh path messages, never re-instantiated) → id → **`live.object`** (Pair B's partner)'s right inlet | |
-| call+reply branch: message `call fire` → `live.object` (Pair B) left inlet; message `prepend /awh/status fire` (fed the list) → `udpsend` | both fed by the SAME outlet — order between them doesn't matter, only that they fire AFTER the id is set, which the outer `t l l` guarantees |
-| `gate 2` outlet 1 (bad) → message `prepend /awh/error bad-fire-index` → `udpsend` | |
+| resolve-id branch: message `goto live_set tracks $1 clip_slots $2` (fed the list, $1/$2 auto-substituted) → **`live.path`** (bare, no creation argument — this is Pair B, dedicated to fire, created once and re-resolved on every fire call via fresh path messages, never re-instantiated) → id → **`live.object`** (Pair B's partner)'s right inlet | |
+| call+reply branch: message `call fire` → `live.object` (Pair B) left inlet; **object** `prepend /awh/status fire` (fed the list) → `udpsend` | both fed by the SAME outlet — order between them doesn't matter, only that they fire AFTER the id is set, which the outer `t l l` guarantees |
+| `gate 2` outlet 1 (bad) → **object** `prepend /awh/error bad-fire-index` → `udpsend` | |
 
 #### 5. SCENE — `/awh/scene <sceneIdx>`
 
 Same shape as FIRE, one index instead of two: `t l l` → (right) `unpack 0`
-→ `expr $i1 < 0 ? 2 : 1` → `gate 2` control; (left) → `gate 2` data. Good
-outlet → `t l l` → (right) message `live_set scenes $1` → **`live.path`**
+→ `expr ($i1 < 0) + 1` → `gate 2` control; (left) → `gate 2` data. Good
+outlet → `t l l` → (right) message `goto live_set scenes $1` → **`live.path`**
 (Pair C, dedicated to scene) → id → **`live.object`** (Pair C) right
-inlet; (left) message `call fire` → `live.object` left inlet, AND message
-`prepend /awh/status scene` → `udpsend`. Bad outlet → message `prepend
+inlet; (left) message `call fire` → `live.object` left inlet, AND **object**
+`prepend /awh/status scene` → `udpsend`. Bad outlet → **object** `prepend
 /awh/error bad-scene-index` → `udpsend`.
 
 #### 6. STOPCLIPS — `/awh/stopclips <trackIdx>` (`-1` = whole Set)
 
-Same gate shape as FIRE/SCENE, but the bad check is `expr $i1 < -1 ? 2 : 1`
+Same gate shape as FIRE/SCENE, but the bad check is `expr ($i1 < -1) + 1`
 (only indices below `-1` are rejected — `-1` itself is the valid "all"
 sentinel) and the good path has an EXTRA branch to pick the LOM path
 before resolving: `unpack 0` → `sel -1` → outlet 0 (matched, `-1`) →
-message `live_set` (targets the Song itself); outlet 1 (unmatched,
-passthrough `trackIdx`) → message `live_set tracks $1`. Both feed the SAME
+message `goto live_set` (targets the Song itself); outlet 1 (unmatched,
+passthrough `trackIdx`) → message `goto live_set tracks $1`. Both feed the SAME
 **`live.path`** (Pair D, dedicated to stopclips) → id → **`live.object`**
 (Pair D) right inlet. Then (from the outer `t l l`'s left/second outlet)
-message `call stop_all_clips` → `live.object` left inlet, AND message
-`prepend /awh/status stopclips` → `udpsend`. Bad outlet → message `prepend
+message `call stop_all_clips` → `live.object` left inlet, AND **object**
+`prepend /awh/status stopclips` → `udpsend`. Bad outlet → **object** `prepend
 /awh/error bad-stopclips-index` → `udpsend`.
 
 #### 7. JUMP — `/awh/jump <beats>`
@@ -209,11 +210,49 @@ message `call stop_all_clips` → `live.object` left inlet, AND message
 No bad-index gate (any beat position is a valid `current_song_time` — Live
 clamps on its own side, there is no "negative index" analog for a
 continuous beat position). `t l l` (fed by route's jump outlet, a
-1-element list) → right outlet fires first: message `live_set` →
+1-element list) → right outlet fires first: message `goto live_set` →
 **`live.path`** (Pair E, dedicated to jump) → id → **`live.object`** (Pair
 E) right inlet; left outlet fires second: message `set current_song_time
-$1` (fed the beats value) → `live.object` left inlet, AND message `prepend
+$1` (fed the beats value) → `live.object` left inlet, AND **object** `prepend
 /awh/status jump` (fed the beats value) → `udpsend`.
+
+**Owner-found gotcha (2026-08-23), the second real one this device hit**:
+every `prepend ...` in this device (all 8: the `record` file-open plus the
+7 fire/scene/stopclips/jump status/error replies) must be a real **object**
+box (`newobj`), not a **message** box — a message box just outputs its own
+fixed literal text on any trigger and completely ignores the incoming
+value, which silently breaks BOTH the file path passed to `sfrecord~`'s
+`open` (so `awh mix capture`/`op verify`/`duck` recording never actually
+opens the real file) and every status/error OSC reply (the reply goes out
+with the right address but is missing the actual data — e.g. jump's reply
+came back as literal `prepend /awh/status jump` with no beats value, and
+fire/scene/stopclips/jump all silently dropped their reply args the same
+way). Confirmed by direct comparison against the previously-verified,
+working `AWH Capture Tap.maxpat`, whose equivalent `prepend open` box is
+correctly a `newobj`. If rebuilding any of these branches by hand: type
+`prepend <fixed prefix words>` into a plain object box (`n` shortcut or
+Object from the palette), never a message box (`m` shortcut) — visually
+object boxes have straight corners, message boxes have a notched right
+edge, easy to mix up when working fast.
+
+**Owner-found gotcha (2026-08-23), the third real one this device hit —
+the actual root cause of fire/scene/stopclips/jump all silently no-oping**:
+a bare, argument-less `live.path` (the pattern used by every Pair B–E
+dynamic resolve, e.g. `goto live_set tracks $1 clip_slots $2`) does NOT
+accept a raw LOM path string as its message — it needs the literal prefix
+word **`goto`** (`goto live_set ...`, per Cycling '74's own live.path
+cookbook usage). Without it, `live.path` prints `doesn't understand
+"live_set"` in the Max console and never outputs an id, which cascades
+into `live.object` printing `set: no valid object set` (or a `call`
+silently doing nothing) — no OSC `/awh/error` for this, since it happens
+entirely inside Max before either gate branch's status/error message
+fires. This is DIFFERENT from Pair A's `live.path live_set`: that form
+bakes the path in as a creation-time ARGUMENT (resolved by a `bang`, no
+message parsing involved), so it never needed `goto` and isn't affected.
+All five `live_set`-prefixed message boxes in this device (`obj-33`,
+`obj-45`, `obj-59`, `obj-60`, `obj-68` in the shipped `.maxpat`) now start
+with `goto`; if rebuilding any Pair B–E branch by hand, always prefix the
+dynamic path message with `goto`.
 
 ### Notes
 

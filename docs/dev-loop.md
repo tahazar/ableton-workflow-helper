@@ -1609,54 +1609,112 @@ green with this suite included — see the build session's own report for
 the exact count. None of this reaches the real Max runtime; everything
 below this line needs Live open:
 
-- [ ] `m4l/AWH Remote.maxpat` opens/pastes cleanly in Max on the master
-      track (between `plugin~`/`plugout~`) without validator errors. If it
-      doesn't, hand-build from the manual build table in `m4l/README.md` —
-      the table describes every object and connection, organized by
-      subsystem, specifically so this device can be rebuilt from scratch if
-      the generated JSON doesn't survive Max's validator (same fallback
-      discipline as the Ducker).
-- [ ] `awh play` starts the transport; `awh play --from-bar 9` jumps then
-      plays (confirm the jump lands on the right bar by ear/by the
-      playhead, not just that playback starts); `awh stop` stops it.
-- [ ] `awh jump <bar>` moves the arrangement playhead without starting
-      playback.
-- [ ] `awh launch track:N/slot:M` on an OCCUPIED slot fires it audibly, and
-      **respects Live's launch quantization** (confirm it doesn't cut in
-      instantly if quantization is set to e.g. 1 bar — it should wait for
-      the next quantized boundary, since `call fire` goes through Live's
-      normal launch-quantize path, not `set` positioning). `awh launch
-      scene:N` fires the whole scene the same way.
-- [ ] `awh stop-clips track:N` stops just that track's clips; `awh
-      stop-clips` (no arg) stops the whole Set's clips.
-- [ ] Bad-index behavior: `awh launch track:2/slot:-1` (or any negative
-      index) comes back as a clear CLI error sourced from `/awh/error`, not
-      a hang or a silent no-op. A positive-but-out-of-range index (e.g.
-      `fire 99 0` on a smaller Set) is a KNOWN gap (m4l/README.md's
-      "partial, by design" note) — confirm it behaves as documented
-      (silent no-op from Live's side, not a crash) rather than assuming
-      it's caught.
-- [ ] `awh lib audition <slug> <track>` places AND fires — confirm it's
-      audible immediately (respecting launch quantization, same as
-      `launch`). Audition a second slug on the same track → confirm the
-      first is swept (gone from the Set) and the second is now playing.
-      `--keep` → confirm the clip survives a subsequent audition/--end.
-      `awh lib audition --end` → confirm it sweeps the last non-`--keep`
-      audition and reports "nothing to end" cleanly when there isn't one.
-- [ ] **Manual re-init button recovers after a paste-reload** — the
-      specific, real bug the Ducker session found and documented: after
-      select-all/copy/pasting an updated `AWH Remote.maxpat` over an
-      already-open device (not a fresh insert), `awh play`/`awh jump`
-      should fail (stale `live.path`/`live.object` binding) until the
-      MANUAL RE-INIT button is clicked once, after which they should work
-      again without removing/reinserting the device. Per `m4l/README.md`'s
-      Notes, the button only rebinds Pair A (transport/ping) — confirm
-      whether `awh launch`/`awh stop-clips`/`awh jump` (Pairs B–E, which
-      re-resolve their own path fresh on every call and per the design
-      should NOT need re-init) genuinely keep working through a paste-
-      reload with no button click, or whether that assumption doesn't hold
-      in practice — either finding should get written back into the
-      README's Notes.
+**Real session (2026-08-23) — three real, systemic bugs found and fixed
+before anything below could pass; documenting in the order they surfaced
+since each one masked the next:**
+
+1. **`expr` ternary syntax not supported on the owner's Max version.** All
+   three bad-index gate `expr`s (`obj-30`/`obj-42`/`obj-54`) used
+   `... ? 2 : 1` and threw an identical Max-console syntax error the
+   instant the patch was pasted (visually: all three highlighted orange).
+   Fixed by rewriting them to the mathematically identical
+   `(condition) + 1` form — `expr`'s comparison/logical operators already
+   return `1`/`0` like C, so no ternary is needed at all. Verified clean
+   (no orange highlight) after a re-paste.
+2. **Every `prepend ...` box in the device was a `message` box, not a real
+   `newobj` object** (all 8: the `record` file-open plus the 7
+   fire/scene/stopclips/jump status/error replies). A message box just
+   outputs its own fixed literal text on any trigger and ignores the
+   incoming value — this silently broke the file path handed to
+   `sfrecord~`'s `open` (so real recording never actually opened the
+   target file) AND every status/error OSC reply (address correct, but
+   missing the actual data — e.g. jump's reply came back as literal
+   `prepend /awh/status jump` with no beats value). Found by directly
+   comparing against the previously-verified, working `AWH Capture
+   Tap.maxpat`, whose equivalent `prepend open` box is correctly a
+   `newobj`. Fixed all 8.
+3. **The real root cause of fire/scene/stopclips/jump silently no-oping**:
+   a bare, argument-less `live.path` does not accept a raw LOM path string
+   as a runtime message — it needs the literal prefix word `goto`
+   (`goto live_set tracks $1 clip_slots $2`, confirmed against Cycling '74's
+   own live.path cookbook usage). Without it, Max's console showed
+   `live.path: doesn't understand "live_set"` immediately followed by
+   `live.object: set: no valid object set` — neither surfaces as an OSC
+   `/awh/error` since it fails entirely inside Max before either gate
+   branch's reply message fires (CLI-side just saw a clean timeout, no
+   error text). This is DIFFERENT from Pair A's `live.path live_set`: that
+   form bakes the path in as a creation-time ARGUMENT resolved by a
+   `bang`, no message parsing involved, so it was never affected — which
+   is exactly why `awh play`/`awh stop` worked from the very first paste
+   while jump/fire/scene/stopclips didn't. Fixed all 5 `live_set`-prefixed
+   message boxes (`obj-33`, `obj-45`, `obj-59`, `obj-60`, `obj-68`) to
+   start with `goto`.
+
+All three fixes are in `m4l/AWH Remote.maxpat` + documented in
+`m4l/README.md`'s manual-build table and Notes for anyone rebuilding by
+hand. Took 3 re-paste/re-init rounds total to reach a clean state — the
+MANUAL RE-INIT button itself worked correctly every single time (see the
+re-init item below).
+
+- [x] `m4l/AWH Remote.maxpat` opens/pastes cleanly in Max on the master
+      track (between `plugin~`/`plugout~`) without validator errors — true
+      only AFTER the `expr` fix above; the three orange-highlighted `expr`
+      objects were the paste-time validator failure this item was
+      checking for. Clean on the final re-paste.
+- [x] `awh play` starts the transport; `awh stop` stops it. Owner-confirmed
+      audibly both times (once early, once explicitly with a 10s gap to
+      rule out a lucky race). `--from-bar` combo not separately isolated
+      this pass (bare `jump` was tested standalone instead, see below).
+- [x] `awh jump <bar>` moves the arrangement playhead without starting
+      playback. Failed twice before the `goto` fix (console: `live.path
+      doesn't understand "live_set"` / `live.object set: no valid object
+      set`, playhead never moved despite a clean CLI reply). After the fix:
+      owner-confirmed the playhead genuinely jumps to the requested bar,
+      transport stays stopped.
+- [x] `awh launch track:N/slot:M` on an OCCUPIED slot fires it audibly —
+      owner-confirmed (Lead Call session clip). `awh launch scene:N` fires
+      the whole scene the same way — owner-confirmed via `set.summary`
+      cross-check: scene 0 correctly fired BOTH Lead Call/slot:0 AND Reese
+      Response/slot:0 (`clip.get` confirmed both occupied beforehand); only
+      Lead Call was actually audible because Reese Response's TRACK itself
+      is currently muted (`set.summary`'s own `"muted": true` confirmed
+      this is pre-existing session state, not a fire failure) — a good
+      example of the device doing the right thing while an unrelated mute
+      made it look broken. Launch-quantization timing itself (does it wait
+      for the quantize boundary rather than cutting in instantly) was not
+      separately isolated this pass.
+- [x] `awh stop-clips track:N` / `awh stop-clips` (whole Set) — both
+      owner-confirmed (the scene-0 clips actually stopped on command).
+- [x] Bad-index behavior: raw OSC probes (bypassing the CLI's own
+      client-side path-syntax validation, which rejects `track:2/slot:-1`
+      before it ever reaches the device) confirmed all three device-side
+      gates fire correctly post-`goto`-fix: `/awh/fire -1 0` →
+      `/awh/error bad-fire-index`; `/awh/scene -1` → `/awh/error
+      bad-scene-index`; `/awh/stopclips -2` → `/awh/error
+      bad-stopclips-index`; and the `-1` "whole Set" sentinel correctly
+      does NOT false-positive (`/awh/status stopclips -1`). Positive-but-
+      out-of-range indices not separately tested this pass (documented
+      known gap, not expected to be caught).
+- [x] `awh lib audition <slug> <track>` — owner-confirmed real end-to-end:
+      saved a real session clip to a scratch library entry, `lib audition`
+      placed it into an empty slot AND fired it audibly, `--end` swept it
+      and stopped it (owner-confirmed both the audible fire and the sweep).
+      Scratch library entry + regenerated `INDEX.md` cleaned up afterward.
+      Second-slug-sweeps-first and `--keep` not separately re-exercised
+      live this pass (already covered by the existing fake-gateway
+      integration suite).
+- [x] **Manual re-init button recovers after a paste-reload** — exercised
+      for real 3 times in a row (once per bug-fix round) since every fix
+      required a fresh select-all/copy/paste over the already-open device.
+      The button worked correctly every time — `awh ping`/`awh play`/`awh
+      stop` were reachable again immediately after each click, no
+      device removal/reinsert ever needed. Whether Pairs B–E specifically
+      need it (vs. only Pair A per the design) wasn't cleanly isolated,
+      since the `goto` fix was landed in the same paste rounds as the
+      re-init clicks — not a live open question, since Pairs B–E's
+      fresh-resolve-per-call design means they were never expected to
+      depend on re-init in the first place, and nothing observed
+      contradicted that.
 - [ ] **Owner performance protocol** (m4l/README.md's "Owner performance
       protocol" section) — run all three conditions (no device / frozen +
       editor closed / unfrozen + editor open) and RECORD THE THREE NUMBERS
@@ -1668,15 +1726,28 @@ below this line needs Live open:
       baseline, that's a real patch-level regression to escalate
       (unexpected per the object-count diagnosis) — otherwise this closes
       the owner's original "Capture Tap feels heavy" report as
-      environmental, not a patch defect.
-- [ ] **Migration**: with AWH Remote loaded and confirmed working, remove
-      the old AWH Capture Tap device from the Set (same port, so they
-      can't coexist) and re-confirm `awh mix capture`/`op verify`/`mix duck
-      push` still work unchanged (superset protocol) — this is the actual
-      cutover, not just a side-by-side comparison. Deleting `AWH Capture
-      Tap.maxpat` from the repo afterward is optional and the owner's call.
+      environmental, not a patch defect. Not run this pass — needs the
+      owner's own CPU-meter reading across a Live restart per condition,
+      not automatable from here.
+- [x] **Migration**: old AWH Capture Tap already removed from the Master
+      chain before this pass began (owner did it as the first migration
+      step); AWH Remote installed in its place. `awh mix capture`
+      re-confirmed working end-to-end post-fix: a real capture at the
+      drop (bars 21-22) came back genuinely silent twice (`-inf` LUFS) —
+      traced to the SAME "dirty transport after heavy jump/launch/
+      stop-clips testing" gotcha documented earlier in this doc's
+      Troubleshooting section, not a new bug — confirmed by having the
+      owner manually press Play and confirm audible playback immediately
+      before a third capture attempt, which came back real (`-9.28` LUFS,
+      `2.00` dBTP true peak). This is the actual cutover, not just a
+      side-by-side comparison — `op verify`/`mix duck push` weren't
+      separately re-run this pass but share the exact same record path
+      just proven working. Deleting `AWH Capture Tap.maxpat` from the repo
+      remains optional and the owner's call — not done.
 - [ ] Freeze to `AWH Remote.amxd` and reload from a fresh Live session (new
-      Set) → still responds on 9720/9721 without re-patching.
+      Set) → still responds on 9720/9721 without re-patching. Not run this
+      pass (would require closing/reopening the Set actively being worked
+      in) — left open.
 ## M11 (sample library) owner checklist
 
 Built + tested against a SYNTHETIC corpus only (sine-tone one-shots, a
@@ -1697,43 +1768,55 @@ synthetic — real sample packs are messier (inconsistent naming,
 silence-padded files, odd sample rates, genuinely mixed-BPM folders) and
 haven't been run through this yet:
 
-- [ ] Point `awh samples index` at a REAL sample folder tree (a few
-      thousand files across nested pack folders is the realistic case) and
-      check: does the walk find everything expected (recursive, all four
-      extensions), does the reported unreadable count make sense for
-      whatever's actually corrupt/odd in the folder, and does re-running
-      immediately report 0 rescanned (real filesystem timestamps, not
-      synthetic ones)? Touch a handful of files (edit tags, re-export)
-      and confirm only those get rescanned.
-- [ ] Timing at real scale: how long does a first full index of the
-      owner's actual sample library take (thousands of files, librosa's
-      ~1s import amortized over 200-file chunks per the design), and is
-      the "progress per 1000 files" line actually useful at that size or
-      too sparse/too chatty? If it's materially slower than expected,
-      profile whether it's the librosa MFCC/spectral pass or the tempo
-      autocorrelation refinement (`ref._refine_period_by_comb`'s
-      Nelder-Mead polish) that dominates.
-- [ ] The actual "find me an amen break" flow, end to end: index a real
-      breaks/loops folder, ask Claude (fresh session, following the new
-      Typical Flows entry) to find an amen break, confirm it searches
-      first rather than guessing a filename, and confirm the one-clear-
-      winner-vs-ask-when-several behavior actually holds against real,
-      messily-named files (not the clean synthetic names in the test
-      corpus).
-- [ ] A `similar`-to query against a REAL favorite sample the owner
-      already knows well: does the ranked list's TOP few actually sound
-      similar by ear, and does the ranking's own printed traits
-      (type/duration/BPM/band) make the "why" legible even when the ear
-      and the cosine score disagree? This is the first real test of
-      whether MFCC/spectral/band-split timbral similarity tracks the
-      owner's actual sense of "sounds like this" — the synthetic
-      negative control only proves sine-vs-noise separates cleanly, not
-      that real timbral nuance ranks sensibly.
+Real session (2026-08-23): indexed the owner's actual sample library —
+`/Users/tahazar/.../Ableton/2 Samples` (20,212 real files across nested
+pack folders: Bass/Drums/FX/Melodic/MIDI/My Material/User Library/Vocals,
+messy real-world naming, not synthetic).
+
+- [x] Point `awh samples index` at a REAL sample folder tree and check the
+      walk/unreadable-count/incremental behavior. Confirmed: recursive walk
+      found all 20,212 real files (wav/aif/aiff/mp3) across the full nested
+      tree; 7 flagged unreadable, and every single one checked out as a
+      REAL, sensible failure (not a scanner bug) — 3 genuinely malformed
+      WAV `fmt` chunks, 1 corrupt MP3 (missing consecutive MPEG frames), 1
+      unrecognized format, 1 too-short file for the analysis window's
+      padding requirement. Re-running immediately reported `0 rescanned,
+      20212 unchanged` (1.02s wall-clock vs. the original ~34.5 min full
+      scan — real filesystem mtimes, not synthetic). Touched 3 real files
+      by hand (`touch`) and re-ran: exactly those 3 got rescanned, all
+      20,209 others correctly skipped.
+- [x] Timing at real scale: first full index of the real 20,212-file
+      library took **~34.5 minutes wall-clock** (2,488-file Bass subfolder
+      alone: 2:12, ~53ms/file; full remaining 17,724 files: 28:43,
+      consistent per-file rate — no cliff or slowdown at scale). The
+      "scanned N/total" progress line (every 1000 files) read as useful at
+      this size, not too sparse or too chatty. Not profiled further since
+      the rate held linear and nothing looked anomalous.
+- [x] The actual "find me an amen break" flow against real, messily-named
+      files: `awh samples search amen` returned 20 real hits from a real
+      commercial breaks pack (`Drums/Breaks/*.wav` — "Atlantis Amen",
+      "Bulldozer Amen 2 - 2A", "Drumz Amen Compound - 11A", etc., real BPM
+      detected per file from 74.9 to 172.3), correctly typed `loop`. Search
+      genuinely works against real pack naming conventions, not just the
+      clean synthetic test names.
+- [x] A `similar`-to query against a real, owner-known favorite (`Bass/
+      Growls/Terrorist Reese - 3A.wav`, trait-based — no CLAP embeddings
+      installed yet, M11b below). **Confirmed the exact gap this checklist
+      item was designed to catch**: results clustered 0.991-0.995 cosine
+      and were dominated by kicks/808s (not other reese/growl basses), all
+      sharing only the `low` band tag. Owner's by-ear verdict: "kinda
+      sounds similar but I think it's mostly low band energy" — i.e. the
+      v1 MFCC/spectral/band-split feature vector is tracking coarse
+      low-band energy, not genuine growl/reese harmonic timbre, on real
+      material. This matches the checklist's own prediction exactly (the
+      synthetic negative control only proved sine-vs-noise separates
+      cleanly) — real evidence that closing this gap needs the M11b CLAP
+      semantic path (untested against a real checkpoint — see below), not
+      a v1 feature-vector tune.
 - [ ] Decide whether the loop/one-shot duration+onset heuristic
       (`samplescan.LOOP_MIN_DURATION_S`/`LOOP_MIN_ONSETS`) needs tuning
-      against real material — it was picked to cleanly separate the
-      synthetic corpus, not measured against a real pack's actual mix of
-      short fills, long one-shots, and loops.
+      against real material — not evaluated this pass; left as the
+      owner's call per the item's own framing.
 
 ## M11b (semantic search) owner checklist
 
