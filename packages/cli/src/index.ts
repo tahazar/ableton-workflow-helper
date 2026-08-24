@@ -15,15 +15,25 @@ import { TAP_PORT, sendToTap } from "./osc.js";
 import { analysisPython } from "./analysis-python.js";
 import {
   DEFAULT_BPM_TOL,
+  DEFAULT_CLAP_MODEL,
+  expectedClapModelLabel,
+  indexHasClapEmbeddings,
   loadSamplesIndex,
+  makePythonClapEmbedder,
+  makePythonClapTextEmbedder,
   makePythonScanner,
   rankSimilar,
+  rankSimilarSemantic,
+  resolveReferenceClapVector,
   resolveReferenceVector,
   resolveSamplesIndexPath,
+  runEmbed,
   runIndex,
   searchIndex,
+  searchSemantic,
   suggestRelaxations,
   summarizeIndex,
+  type ClapModel,
   type SearchOptions,
 } from "./samples.js";
 import { DUCK_PORT, DUCK_REPLY_PORT, pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from "./duck.js";
@@ -2954,7 +2964,62 @@ samplesCmd
   });
 
 samplesCmd
-  .command("search <query...>")
+  .command("embed")
+  .description(
+    "Compute missing/stale CLAP embeddings for the whole index (M11b, docs/design/" +
+      "sample-semantic.md) — enables `search --semantic`/`similar --semantic`; " +
+      "incremental (already-embedded files are skipped), and a model switch re-embeds",
+  )
+  .option("--model <model>", "music (default, music-tuned) | general (AudioSet)", DEFAULT_CLAP_MODEL)
+  .action(async (cmdOpts: { model: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    if (cmdOpts.model !== "music" && cmdOpts.model !== "general") {
+      throw new Error(`--model must be "music" or "general" (got "${cmdOpts.model}")`);
+    }
+    const model = cmdOpts.model as ClapModel;
+    const indexPath = resolveSamplesIndexPath();
+    const index = await loadSamplesIndex(indexPath);
+    if (Object.keys(index.files).length === 0) {
+      output(opts, { embedded: 0 }, () =>
+        `no samples indexed yet — run \`awh samples index <dir...>\` first (index: ${indexPath})`,
+      );
+      return;
+    }
+
+    const { python, cwd } = requireAnalysisEngine();
+    let lastPrinted = 0;
+    const result = await runEmbed({
+      indexPath,
+      model,
+      embedder: makePythonClapEmbedder(python, cwd),
+      onProgress: (done, total) => {
+        if (done - lastPrinted >= 200 || done === total) {
+          process.stderr.write(`embedded ${done}/${total}\n`);
+          lastPrinted = done;
+        }
+      },
+    });
+
+    output(opts, result, () => {
+      if (result.totalCandidates === 0) {
+        return "no readable samples to embed yet — run `awh samples index <dir...>` first";
+      }
+      if (result.embedded === 0) {
+        return (
+          `all ${result.totalCandidates} readable sample(s) already embedded ` +
+          `(${result.modelLabel}) — nothing to do`
+        );
+      }
+      return (
+        `embedded ${result.embedded} of ${result.totalCandidates} readable sample(s) with ` +
+        `${result.modelLabel} (${result.neverEmbedded} new, ${result.stale} stale re-embedded, ` +
+        `${result.unreadable} failed to embed), ${result.upToDate} already up to date -> ${indexPath}`
+      );
+    });
+  });
+
+samplesCmd
+  .command("search [query...]")
   .description(
     "Search the index by path tokens (ALL terms must match by default) plus trait filters",
   )
@@ -2965,9 +3030,14 @@ samplesCmd
   .option("--bpm <bpm>", "filter to samples near this BPM")
   .option("--bpm-tol <bpm>", "BPM tolerance", String(DEFAULT_BPM_TOL))
   .option("--band <band>", "filter: low | mid | high (dominant band)")
+  .option(
+    "--semantic <phrase>",
+    "rank by CLAP semantic similarity to this phrase instead of path tokens " +
+      "(M11b) — composes with the trait filters above, not with plain query terms",
+  )
   .action(
     async (
-      query: string[],
+      query: string[] | undefined,
       cmdOpts: {
         any: boolean;
         type?: string;
@@ -2976,9 +3046,11 @@ samplesCmd
         bpm?: string;
         bpmTol: string;
         band?: string;
+        semantic?: string;
       },
     ) => {
       const opts = program.opts<GlobalOpts>();
+      const terms = query ?? [];
       const indexPath = resolveSamplesIndexPath();
       const index = await loadSamplesIndex(indexPath);
       if (Object.keys(index.files).length === 0) {
@@ -3002,13 +3074,60 @@ samplesCmd
         bpmTol: Number(cmdOpts.bpmTol),
         band: cmdOpts.band as "low" | "mid" | "high" | undefined,
       };
-      const hits = searchIndex(index, query, searchOpts);
+
+      if (cmdOpts.semantic !== undefined) {
+        if (terms.length > 0) {
+          throw new Error(
+            "--semantic is a standalone query mode — drop the extra search terms " +
+              `("${terms.join(" ")}"), or run a plain token search instead`,
+          );
+        }
+        const model = DEFAULT_CLAP_MODEL;
+        if (!indexHasClapEmbeddings(index, model)) {
+          throw new Error(
+            "no samples have CLAP embeddings yet — run `awh samples embed` first, " +
+              `then retry --semantic (index: ${indexPath})`,
+          );
+        }
+        const { python, cwd } = requireAnalysisEngine();
+        const queryVector = await makePythonClapTextEmbedder(python, cwd)(cmdOpts.semantic, model);
+        const result = searchSemantic(index, queryVector.v, model, searchOpts);
+
+        output(opts, result, () => {
+          const lines: string[] = [];
+          if (result.hits.length === 0) {
+            lines.push(`0 semantic hits for "${cmdOpts.semantic}" (matching the trait filters)`);
+          } else {
+            lines.push(
+              ...result.hits.map((h) => {
+                const s = h.entry.scan;
+                return (
+                  `${h.score.toFixed(3)}  ${h.path.padEnd(52)} ${(s.duration_s ?? 0).toFixed(2).padStart(6)}s  ` +
+                  `${(s.type_guess ?? "?").padEnd(7)}` +
+                  (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "          ") +
+                  `  ${s.dominant_band ?? "?"}`
+                );
+              }),
+            );
+          }
+          if (result.notEmbeddedInIndex > 0) {
+            lines.push(
+              `${result.notEmbeddedInIndex} of ${result.totalReadableInIndex} files not embedded — ` +
+                "run `awh samples embed`",
+            );
+          }
+          return lines.join("\n");
+        });
+        return;
+      }
+
+      const hits = searchIndex(index, terms, searchOpts);
 
       if (hits.length === 0) {
-        const relaxations = suggestRelaxations(index, query, searchOpts);
+        const relaxations = suggestRelaxations(index, terms, searchOpts);
         output(opts, { hits: [], relaxations }, () =>
           [
-            `0 hits for "${query.join(" ")}"`,
+            `0 hits for "${terms.join(" ")}"`,
             ...relaxations.map(
               (r) => `  ${r.count} for "${r.terms.join(" ")}" (${r.note})`,
             ),
@@ -3036,17 +3155,21 @@ samplesCmd
 samplesCmd
   .command("similar <file>")
   .description(
-    "Rank indexed samples by cosine similarity (MFCC + spectral + band-split feature " +
-      "vector) to a reference file — the reference need not be indexed",
+    "Rank indexed samples by similarity to a reference file — the reference need not " +
+      "be indexed. Semantic (CLAP) is the default once the index has embeddings; " +
+      "--traits forces the v1 MFCC/spectral/band-split feature vector",
   )
   .option("--count <n>", "how many results to show", "10")
-  .action(async (file: string, cmdOpts: { count: string }) => {
+  .option("--semantic", "force CLAP semantic ranking (M11b)")
+  .option("--traits", "force the v1 MFCC/spectral/band-split vector, even if embeddings exist")
+  .action(async (file: string, cmdOpts: { count: string; semantic?: boolean; traits?: boolean }) => {
     const opts = program.opts<GlobalOpts>();
+    if (cmdOpts.semantic && cmdOpts.traits) {
+      throw new Error("pass either --semantic or --traits, not both");
+    }
     const indexPath = resolveSamplesIndexPath();
     const index = await loadSamplesIndex(indexPath);
-    const readable = Object.values(index.files).filter(
-      (e) => !e.scan.unreadable && e.scan.similarity_vector,
-    );
+    const readable = Object.values(index.files).filter((e) => !e.scan.unreadable);
     if (readable.length === 0) {
       output(opts, { hits: [] }, () =>
         `no samples indexed yet — run \`awh samples index <dir...>\` first (index: ${indexPath})`,
@@ -3054,24 +3177,72 @@ samplesCmd
       return;
     }
 
+    const model = DEFAULT_CLAP_MODEL;
+    const hasEmbeddings = indexHasClapEmbeddings(index, model);
+    const useSemantic = cmdOpts.semantic || (!cmdOpts.traits && hasEmbeddings);
+    const count = Math.max(1, Number(cmdOpts.count));
     const { python, cwd } = requireAnalysisEngine();
+
+    if (useSemantic) {
+      if (!hasEmbeddings) {
+        throw new Error(
+          "no samples have CLAP embeddings yet — run `awh samples embed` first, " +
+            `then retry --semantic (index: ${indexPath})`,
+        );
+      }
+      const expectedLabel = expectedClapModelLabel(model);
+      const { vector: refVector, fromIndex } = await resolveReferenceClapVector(
+        index,
+        file,
+        makePythonClapEmbedder(python, cwd),
+        model,
+      );
+      const candidates = readable
+        .filter((e) => e.clap && e.clap.model === expectedLabel)
+        .map((e) => ({ path: e.path, vector: e.clap!, entry: e }));
+      const ranked = rankSimilarSemantic(refVector.v, candidates, file).slice(0, count);
+
+      output(opts, { mode: "semantic", fromIndex, hits: ranked }, () =>
+        [
+          `(semantic — CLAP embedding space, closest in the library, not "a match"; ` +
+            (fromIndex ? "reference read from the index)" : "reference embedded on the fly — not indexed)"),
+          ...ranked.map((h) => {
+            const s = h.entry.scan;
+            return (
+              `${h.score.toFixed(3)}  ${h.path.padEnd(50)} ${(s.type_guess ?? "?").padEnd(7)} ` +
+              `${(s.duration_s ?? 0).toFixed(2).padStart(6)}s` +
+              (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "") +
+              `  ${s.dominant_band ?? "?"}`
+            );
+          }),
+        ].join("\n"),
+      );
+      return;
+    }
+
+    const traitReadable = readable.filter((e) => e.scan.similarity_vector);
+    if (traitReadable.length === 0) {
+      output(opts, { hits: [] }, () =>
+        `no samples with trait vectors indexed yet — run \`awh samples index <dir...>\` first (index: ${indexPath})`,
+      );
+      return;
+    }
     const { vector: refVector, fromIndex } = await resolveReferenceVector(
       index,
       file,
       makePythonScanner(python, cwd),
     );
 
-    const candidates = readable.map((e) => ({
+    const candidates = traitReadable.map((e) => ({
       path: e.path,
       vector: e.scan.similarity_vector!,
       entry: e,
     }));
-    const count = Math.max(1, Number(cmdOpts.count));
     const ranked = rankSimilar(refVector, candidates, file).slice(0, count);
 
-    output(opts, { fromIndex, hits: ranked }, () =>
+    output(opts, { mode: "traits", fromIndex, hits: ranked }, () =>
       [
-        fromIndex ? `(reference read from the index)` : `(reference scanned on the fly — not indexed)`,
+        fromIndex ? `(traits — reference read from the index)` : `(traits — reference scanned on the fly, not indexed)`,
         ...ranked.map((h) => {
           const s = h.entry.scan;
           return (

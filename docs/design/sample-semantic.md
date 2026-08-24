@@ -1,7 +1,14 @@
 # Design: Semantic sample search (M11b — CLAP embeddings over the index)
 
-- Status: in build (2026-08-20), stacked on M11 (the index/CLI substrate).
-  Owner priority: this layer over the v1 trait machinery — text queries
+- Status: built (CLAP) — 2026-08-24, stacked on M11 (the index/CLI
+  substrate). `clapembed.py` (batch + `--text` modes, `~/.awh/models/`
+  checkpoint resolution, `AWH_CLAP_STUB=1` stub), the `clap` index field,
+  `awh samples embed`/`search --semantic`/`similar --semantic`, and the
+  SKILL.md contract update all shipped; see `docs/dev-loop.md`'s "M11b
+  (semantic search) owner checklist" for what's verified (stub-mode only
+  so far) vs. still needs a real checkpoint + real library to check.
+  PANNs tagging (the optional stretch below) is DESIGNED, NOT BUILT.
+  Owner priority, still true: this layer over the v1 trait machinery — text queries
   should rank actual audio content ("dusty breakbeat", "dark growl
   bass"), not filename tokens; similarity should be perceptual, not
   timbral statistics. Research basis (chat, sourced): LAION-CLAP

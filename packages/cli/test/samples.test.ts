@@ -1,27 +1,38 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, rm, utimes } from "node:fs/promises";
 import { existsSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { analysisPython } from "../src/analysis-python.js";
 import {
   computeNormalizationStats,
   cosineSimilarity,
+  expectedClapModelLabel,
+  indexHasClapEmbeddings,
   loadSamplesIndex,
+  makePythonClapEmbedder,
+  makePythonClapTextEmbedder,
   makePythonScanner,
   normalizeVector,
   pathTokens,
   planIndexUpdate,
   rankSimilar,
+  rankSimilarSemantic,
+  resolveReferenceClapVector,
   resolveReferenceVector,
   resolveSamplesIndexPath,
+  runEmbed,
   runIndex,
   saveSamplesIndex,
   scanFilesChunked,
   searchIndex,
+  searchSemantic,
   suggestRelaxations,
   summarizeIndex,
   walkSampleFiles,
+  type ClapEmbedRecord,
   type SamplesIndexFile,
   type ScanRecord,
   type ScannerFn,
@@ -588,6 +599,339 @@ describe.skipIf(!hasRealPython)("real analysis engine — index build + similari
     30_000,
   );
 });
+
+// ---------------------------------------------------------------------------
+// M11b semantic search (docs/design/sample-semantic.md) — ALL under
+// AWH_CLAP_STUB=1, same two-tier split as above:
+//  - pure logic (fake embedder, no python) for embed/mismatch/search/rank
+//  - real `clapembed.py` subprocess (still AWH_CLAP_STUB=1, so no torch
+//    ever loads) for the end-to-end integration + the negative control,
+//    which genuinely needs the CLI's OWN wiring in src/index.ts, not just
+//    the samples.ts library functions.
+// ---------------------------------------------------------------------------
+
+describe("M11b semantic search — embed/search/similar logic (fake embedder, AWH_CLAP_STUB=1)", () => {
+  let originalStub: string | undefined;
+  beforeEach(() => {
+    originalStub = process.env.AWH_CLAP_STUB;
+    process.env.AWH_CLAP_STUB = "1";
+  });
+  afterEach(() => {
+    if (originalStub === undefined) delete process.env.AWH_CLAP_STUB;
+    else process.env.AWH_CLAP_STUB = originalStub;
+  });
+
+  /** A trivially fake embedder — deterministic per path, no python, but
+   * still stamped "stub-v1" so it agrees with `expectedClapModelLabel`
+   * under AWH_CLAP_STUB=1 (set above), the same contract the real
+   * clapembed.py subprocess honors. */
+  function fakeClapEmbedder(dim = 8): { embedder: ClapEmbedFn; calls: string[][] } {
+    const calls: string[][] = [];
+    const embedder: ClapEmbedFn = async (files) => {
+      calls.push(files);
+      return files.map((f): ClapEmbedRecord => {
+        // deterministic, path-derived pseudo-vector (good enough for pure
+        // ranking/incremental-logic tests; the real content-hash property
+        // is covered by the real clapembed.py subprocess tests below)
+        let seed = 0;
+        for (const ch of f) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+        const v = Array.from({ length: dim }, (_, i) => Math.sin(seed + i));
+        return { path: f, unreadable: false, error: null, clap: { model: "stub-v1", dim, v } };
+      });
+    };
+    return { embedder, calls };
+  }
+
+  it("expectedClapModelLabel honors AWH_CLAP_STUB", () => {
+    expect(expectedClapModelLabel("music")).toBe("stub-v1");
+    expect(expectedClapModelLabel("general")).toBe("stub-v1");
+  });
+
+  it("embed fills the index and is incremental (second run embeds 0)", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "a.wav"));
+    await touchFile(join(corpus, "b.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const { scanner } = fakeScannerWithCallCount();
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const { embedder } = fakeClapEmbedder();
+    const first = await runEmbed({ indexPath, model: "music", embedder });
+    expect(first.embedded).toBe(2);
+    expect(first.neverEmbedded).toBe(2);
+    expect(first.stale).toBe(0);
+    expect(first.upToDate).toBe(0);
+    expect(first.unreadable).toBe(0);
+    expect(first.totalCandidates).toBe(2);
+    expect(first.modelLabel).toBe("stub-v1");
+
+    const second = await runEmbed({ indexPath, model: "music", embedder });
+    expect(second.embedded).toBe(0);
+    expect(second.upToDate).toBe(2);
+    expect(second.neverEmbedded).toBe(0);
+
+    expect(indexHasClapEmbeddings(second.index, "music")).toBe(true);
+  });
+
+  it("embed never calls the embedder for unreadable (scan-failed) entries", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "good.wav"));
+    await touchFile(join(corpus, "bad.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const scanner: ScannerFn = async (files) =>
+      files.map((f) =>
+        f.includes("bad") ? { path: f, unreadable: true, error: "boom" } : fakeScanRecord(f),
+      );
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const { embedder, calls } = fakeClapEmbedder();
+    const result = await runEmbed({ indexPath, model: "music", embedder });
+    expect(result.totalCandidates).toBe(1); // only the readable file is a candidate
+    expect(calls.flat().every((p) => !p.includes("bad"))).toBe(true);
+  });
+
+  it("a model change (music -> general) makes every prior vector STALE and re-embeds, reporting counts", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "a.wav"));
+    await touchFile(join(corpus, "b.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const { scanner } = fakeScannerWithCallCount();
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    // seed a prior embed under a DIFFERENT model label — simulating a real
+    // `embed --model general` run without needing two real model spaces
+    // under the stub (which always stamps "stub-v1" regardless of --model).
+    const index = await loadSamplesIndex(indexPath);
+    for (const entry of Object.values(index.files)) {
+      entry.clap = { model: "clap-general-v1", dim: 8, v: new Array(8).fill(0.1) };
+    }
+    await saveSamplesIndex(indexPath, index);
+
+    const { embedder } = fakeClapEmbedder();
+    const result = await runEmbed({ indexPath, model: "music", embedder });
+    expect(result.stale).toBe(2);
+    expect(result.neverEmbedded).toBe(0);
+    expect(result.embedded).toBe(2);
+    expect(result.upToDate).toBe(0);
+
+    const reloaded = await loadSamplesIndex(indexPath);
+    for (const entry of Object.values(reloaded.files)) {
+      expect(entry.clap!.model).toBe("stub-v1");
+    }
+  });
+
+  it("zero unembedded files is a STATE (embedded=0, upToDate=totalCandidates), not an error", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "a.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const { scanner } = fakeScannerWithCallCount();
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const { embedder } = fakeClapEmbedder();
+    await runEmbed({ indexPath, model: "music", embedder });
+    const again = await runEmbed({ indexPath, model: "music", embedder });
+    expect(again.embedded).toBe(0);
+    expect(again.upToDate).toBe(1);
+  });
+
+  it("indexHasClapEmbeddings is false before embed, true after", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "a.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const { scanner } = fakeScannerWithCallCount();
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const before = await loadSamplesIndex(indexPath);
+    expect(indexHasClapEmbeddings(before, "music")).toBe(false);
+
+    const { embedder } = fakeClapEmbedder();
+    const result = await runEmbed({ indexPath, model: "music", embedder });
+    expect(indexHasClapEmbeddings(result.index, "music")).toBe(true);
+  });
+
+  it("searchSemantic ranks by cosine and composes with filters (filter-first)", () => {
+    const index = indexFromRecords([
+      fakeScanRecord("/packs/loopA.wav", { type_guess: "loop", duration_s: 4 }),
+      fakeScanRecord("/packs/loopB.wav", { type_guess: "loop", duration_s: 4 }),
+      fakeScanRecord("/packs/oneshotC.wav", { type_guess: "oneshot", duration_s: 0.3 }),
+    ]);
+    index.files["/packs/loopA.wav"]!.clap = { model: "stub-v1", dim: 2, v: [1, 0] };
+    index.files["/packs/loopB.wav"]!.clap = { model: "stub-v1", dim: 2, v: [0.9, 0.1] };
+    index.files["/packs/oneshotC.wav"]!.clap = { model: "stub-v1", dim: 2, v: [1, 0] }; // identical to the query but filtered out
+
+    const query = [1, 0];
+    const result = searchSemantic(index, query, "music", { type: "loop" });
+    expect(result.hits.length).toBe(2); // oneshotC excluded by --type loop, despite the best score
+    expect(result.hits.map((h) => h.path)).toEqual(["/packs/loopA.wav", "/packs/loopB.wav"]);
+    expect(result.hits[0]!.score).toBeCloseTo(1, 6); // loopA is an exact-direction match
+    expect(result.hits[0]!.score).toBeGreaterThan(result.hits[1]!.score);
+    expect(result.notEmbeddedInIndex).toBe(0);
+    expect(result.totalReadableInIndex).toBe(3);
+  });
+
+  it("searchSemantic's not-embedded footer counts files without a matching-model vector", () => {
+    const index = indexFromRecords([
+      fakeScanRecord("/packs/embedded.wav"),
+      fakeScanRecord("/packs/not-embedded.wav"),
+      fakeScanRecord("/packs/other-model.wav"),
+    ]);
+    index.files["/packs/embedded.wav"]!.clap = { model: "stub-v1", dim: 2, v: [1, 0] };
+    index.files["/packs/other-model.wav"]!.clap = { model: "clap-general-v1", dim: 2, v: [1, 0] };
+
+    const result = searchSemantic(index, [1, 0], "music", {});
+    expect(result.hits.length).toBe(1);
+    expect(result.hits[0]!.path).toBe("/packs/embedded.wav");
+    expect(result.notEmbeddedInIndex).toBe(2); // not-embedded.wav + other-model.wav
+    expect(result.totalReadableInIndex).toBe(3);
+  });
+
+  it("rankSimilarSemantic excludes the reference path and ranks by cosine", () => {
+    const ref = [1, 0];
+    const candidates = [
+      {
+        path: "/a",
+        vector: { model: "stub-v1", dim: 2, v: [1, 0] },
+        entry: indexFromRecords([fakeScanRecord("/a")]).files["/a"]!,
+      },
+      {
+        path: "/b",
+        vector: { model: "stub-v1", dim: 2, v: [0, 1] },
+        entry: indexFromRecords([fakeScanRecord("/b")]).files["/b"]!,
+      },
+    ];
+    const ranked = rankSimilarSemantic(ref, candidates, "/a");
+    expect(ranked.map((h) => h.path)).toEqual(["/b"]);
+    expect(ranked[0]!.score).toBeCloseTo(0, 6);
+  });
+});
+
+describe.skipIf(!hasRealPython)(
+  "M11b real clapembed.py stub-mode integration (AWH_CLAP_STUB=1, real subprocess)",
+  () => {
+    let originalAwhPython: string | undefined;
+    let originalStub: string | undefined;
+
+    beforeEach(() => {
+      originalAwhPython = process.env.AWH_PYTHON;
+      originalStub = process.env.AWH_CLAP_STUB;
+      process.env.AWH_PYTHON = MAIN_VENV_PYTHON;
+      process.env.AWH_CLAP_STUB = "1";
+    });
+    afterEach(() => {
+      if (originalAwhPython === undefined) delete process.env.AWH_PYTHON;
+      else process.env.AWH_PYTHON = originalAwhPython;
+      if (originalStub === undefined) delete process.env.AWH_CLAP_STUB;
+      else process.env.AWH_CLAP_STUB = originalStub;
+    });
+
+    it(
+      "embeds real files through the real clapembed subprocess and is incremental",
+      async () => {
+        const corpus = join(tmpDir, "corpus");
+        // NOTE: content doesn't need to be valid audio — the stub embedder
+        // hashes raw bytes, it never decodes anything.
+        await touchFile(join(corpus, "a.wav"), "content-a");
+        await touchFile(join(corpus, "b.wav"), "content-b");
+        const indexPath = join(tmpDir, "index.json");
+        const { scanner } = fakeScannerWithCallCount();
+        await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+        const { python, cwd } = analysisPython();
+        const embedder = makePythonClapEmbedder(python, cwd);
+        const first = await runEmbed({ indexPath, model: "music", embedder });
+        expect(first.embedded).toBe(2);
+        expect(first.modelLabel).toBe("stub-v1");
+
+        const second = await runEmbed({ indexPath, model: "music", embedder });
+        expect(second.embedded).toBe(0);
+        expect(second.upToDate).toBe(2);
+      },
+      20_000,
+    );
+
+    it(
+      "similar --semantic ranks a stub-identical (byte-for-byte copy) file first",
+      async () => {
+        const corpus = join(tmpDir, "corpus");
+        await touchFile(join(corpus, "ref.wav"), "IDENTICAL-BYTES-XYZ");
+        await touchFile(join(corpus, "dup.wav"), "IDENTICAL-BYTES-XYZ"); // byte-identical copy
+        await touchFile(join(corpus, "other.wav"), "totally-different-content");
+        const indexPath = join(tmpDir, "index.json");
+        const { scanner } = fakeScannerWithCallCount();
+        await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+        const { python, cwd } = analysisPython();
+        const embedder = makePythonClapEmbedder(python, cwd);
+        await runEmbed({ indexPath, model: "music", embedder });
+
+        const index = await loadSamplesIndex(indexPath);
+        const refPath = join(corpus, "ref.wav");
+        const { vector: refVector, fromIndex } = await resolveReferenceClapVector(
+          index,
+          refPath,
+          embedder,
+          "music",
+        );
+        expect(fromIndex).toBe(true);
+
+        const readable = Object.values(index.files).filter((e) => !e.scan.unreadable);
+        const candidates = readable.map((e) => ({ path: e.path, vector: e.clap!, entry: e }));
+        const ranked = rankSimilarSemantic(refVector.v, candidates, refPath);
+
+        expect(ranked[0]!.path).toBe(resolve(join(corpus, "dup.wav")));
+        expect(ranked[0]!.score).toBeCloseTo(1, 6);
+        expect(ranked[ranked.length - 1]!.path).toBe(resolve(join(corpus, "other.wav")));
+      },
+      20_000,
+    );
+
+    it("text embedding via the real subprocess is deterministic and shaped right", async () => {
+      const { python, cwd } = analysisPython();
+      const textEmbedder = makePythonClapTextEmbedder(python, cwd);
+      const a = await textEmbedder("dusty breakbeat", "music");
+      const b = await textEmbedder("dusty breakbeat", "music");
+      expect(a.v).toEqual(b.v);
+      expect(a.model).toBe("stub-v1");
+      expect(a.dim).toBe(a.v.length);
+    }, 20_000);
+
+    const CLI_DIST = fileURLToPath(new URL("../dist/index.js", import.meta.url));
+    const hasBuiltCli = existsSync(CLI_DIST);
+
+    it.skipIf(!hasBuiltCli)(
+      "NEGATIVE CONTROL: `awh samples search --semantic` with ZERO embeddings anywhere in " +
+        "the index errors with the embed instruction and NEVER falls back to token search",
+      async () => {
+        const corpus = join(tmpDir, "corpus");
+        await touchFile(join(corpus, "a.wav"));
+        const indexPath = join(tmpDir, "index.json");
+        const { scanner } = fakeScannerWithCallCount();
+        await runIndex([corpus], { rescan: false, indexPath, scanner });
+        // deliberately never run `embed` — the index has entries, zero vectors
+
+        const result = spawnSync(
+          process.execPath,
+          [CLI_DIST, "samples", "search", "--semantic", "four on the floor techno drums"],
+          {
+            encoding: "utf8",
+            env: {
+              ...process.env,
+              AWH_SAMPLES_INDEX: indexPath,
+              AWH_CLAP_STUB: "1",
+              AWH_PYTHON: MAIN_VENV_PYTHON,
+            },
+          },
+        );
+
+        expect(result.status).not.toBe(0);
+        expect(result.stderr).toMatch(/awh samples embed/);
+        expect(result.stderr).toMatch(/no samples have CLAP embeddings/);
+        // never a silent fallback: no token-search-shaped hit table on stdout
+        expect(result.stdout.trim()).toBe("");
+      },
+    );
+  },
+);
 
 // keep scanFilesChunked + saveSamplesIndex imports exercised even where the
 // higher-level runIndex tests above don't directly assert on them
