@@ -6,9 +6,10 @@
  * extension running inside Live, or `awh serve-fake` for offline dev).
  * The same commands are what a Claude Code skill drives — no AI-only paths.
  */
-import { copyFile, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
 import { spawn } from "node:child_process";
+import { tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { Command } from "commander";
 import { TAP_PORT, sendToTap } from "./osc.js";
@@ -37,6 +38,7 @@ import {
   type SearchOptions,
 } from "./samples.js";
 import { DUCK_PORT, DUCK_REPLY_PORT, pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from "./duck.js";
+import { runLayers, type LayerCaptureFn } from "./layers.js";
 import {
   RECIPE_SLUG_PREFIX,
   applyRecipePlan,
@@ -3776,6 +3778,158 @@ mix
       output(opts, { file: outPath, seconds }, () =>
         `captured -> ${outPath}\nanalyze with: awh mix report ${outPath} --bpm ${summary.tempo}`,
       );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// M6b masking toolkit (docs/design/analysis-engine.md's 2026-08-23 gap
+// report): periodicity-tracked pitch, calibrated narrowband energy, and
+// the solo->capture->unsolo choreography — packages/cli/src/layers.ts.
+// ---------------------------------------------------------------------------
+
+mix
+  .command("pitch <file>")
+  .description(
+    "Periodicity-tracked f0 (pyin) with an honest harmonic-dominance flag — " +
+      "never a naive FFT-peak pick (the exact live-caught failure this replaces)",
+  )
+  .option(
+    "--per-note",
+    "segment via onset detection and report f0/dominance PER NOTE, not one average",
+  )
+  .option("--from <seconds>", "analyze from this time")
+  .option("--to <seconds>", "analyze up to this time")
+  .action(
+    async (
+      file: string,
+      cmdOpts: { perNote?: boolean; from?: string; to?: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const args = ["pitch", file];
+      if (cmdOpts.perNote) args.push("--per-note");
+      if (cmdOpts.from) args.push("--from", cmdOpts.from);
+      if (cmdOpts.to) args.push("--to", cmdOpts.to);
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+mix
+  .command("bands <files...>")
+  .description(
+    "Calibrated per-band dBFS via a Welch periodogram (masking-diagnosis narrowband " +
+      "compare, not a one-FFT time-smeared number); multiple files -> an aligned " +
+      "table with per-band deltas vs. the first",
+  )
+  .option(
+    "--bands <ranges>",
+    'comma-separated "lo-hi" Hz ranges (default: "20-100,100-140,140-200,200-500,500-2000" ' +
+      "= sub/low/scoop zone/low-mid/mid)",
+  )
+  .option("--from <seconds>", "analyze from this time")
+  .option("--to <seconds>", "analyze up to this time")
+  .action(
+    async (
+      files: string[],
+      cmdOpts: { bands?: string; from?: string; to?: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const args = ["bands", ...files];
+      if (cmdOpts.bands) args.push("--bands", cmdOpts.bands);
+      if (cmdOpts.from) args.push("--from", cmdOpts.from);
+      if (cmdOpts.to) args.push("--to", cmdOpts.to);
+      if (opts.json) args.push("--json");
+      await runAnalysis(args);
+    },
+  );
+
+mix
+  .command("layers [tracks...]")
+  .description(
+    "Solo -> capture -> unsolo EACH track in sequence (restoring the exact prior " +
+      "solo state after every step, even on failure), then compare narrowband " +
+      "energy across the captures (`mix bands`). Needs the AWH Capture Tap (m4l/).",
+  )
+  .option("--bars <bars>", "capture span length in bars", "8")
+  .option("--from-bar <bar>", "1-based arrangement bar to loop from", "1")
+  .option("--sig <beatsPerBar>", "beats per bar", "4")
+  .option("--tap-port <port>", "capture tap OSC port", String(TAP_PORT))
+  .option("--tail <seconds>", "extra record time after the loop", "0.5")
+  .option(
+    "--bands <ranges>",
+    'comma-separated "lo-hi" Hz ranges for the comparison (default: `mix bands`\' own default)',
+  )
+  .option("--keep", "keep the per-track capture files (temp dir path is always printed)")
+  .action(
+    async (
+      tracks: string[],
+      cmdOpts: {
+        bars: string;
+        fromBar: string;
+        sig: string;
+        tapPort: string;
+        tail: string;
+        bands?: string;
+        keep?: boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+
+      // Zero tracks is a STATE, not an error (docs/lessons-learned.md rule
+      // 5) — nothing to solo/capture/compare, say so plainly, exit 0.
+      if (tracks.length === 0) {
+        output(opts, { ran: false, reason: "no tracks" }, () =>
+          "no tracks given — nothing to solo/capture/compare " +
+            "(awh mix layers track:0 track:1 ...)",
+        );
+        return;
+      }
+
+      const outDir = await mkdtemp(join(tmpdir(), "awh-mix-layers-"));
+      const capture: LayerCaptureFn = async (_trackPath, outPath) =>
+        captureSpan(opts, {
+          fromBar: Number(cmdOpts.fromBar),
+          bars: Number(cmdOpts.bars),
+          beatsPerBar: Number(cmdOpts.sig),
+          tapPort: Number(cmdOpts.tapPort),
+          out: outPath,
+          tailS: Number(cmdOpts.tail),
+        });
+
+      const caller: OpCaller = (name, args) => op(opts, name, args);
+
+      let results;
+      try {
+        results = await runLayers(caller, tracks, outDir, capture);
+      } catch (err) {
+        process.stderr.write(
+          `mix layers: aborted (solo state has been restored) — ${(err as Error).message}\n` +
+            `captures so far (if any) are in ${outDir}\n`,
+        );
+        throw err;
+      }
+
+      const bandsArgs = ["bands", ...results.map((r) => r.outPath)];
+      if (cmdOpts.bands) bandsArgs.push("--bands", cmdOpts.bands);
+
+      process.stderr.write(
+        `captured ${results.length} layer(s) -> ${outDir}${cmdOpts.keep ? "" : " (will be deleted after comparing; pass --keep to retain)"}\n` +
+          results.map((r) => `  ${r.trackPath.padEnd(10)} "${r.trackName}" -> ${r.outPath}`).join("\n") +
+          "\n",
+      );
+
+      if (opts.json) {
+        const compareResult = await runAnalysisJson([...bandsArgs, "--json"]);
+        if (!cmdOpts.keep) await rm(outDir, { recursive: true, force: true });
+        process.stdout.write(
+          `${JSON.stringify({ results, outDir: cmdOpts.keep ? outDir : null, compare: compareResult }, null, 2)}\n`,
+        );
+      } else {
+        // Same bands table `awh mix bands` itself prints — no separate
+        // rendering to keep in sync.
+        await runAnalysis(bandsArgs);
+        if (!cmdOpts.keep) await rm(outDir, { recursive: true, force: true });
+      }
     },
   );
 

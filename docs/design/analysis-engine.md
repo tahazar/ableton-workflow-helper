@@ -182,6 +182,62 @@ No taste judgments, no arrangement opinions, no auto-apply of EQ moves
 (report suggests; owner or an explicit follow-up command acts), no stem
 separation here (M8), no "AI mastering" — this is a meter with explanations.
 
+## Masking toolkit (M6b — BUILT: `awh mix pitch` / `awh mix bands` / `awh mix layers`)
+
+Closes four of the five gaps below (see the annotated list under "Future
+work" for exactly which, and what's still open):
+
+1. **`awh mix pitch <file> [--per-note]`** (`analysis/awh_analysis/pitch.py`):
+   periodicity-tracked f0 via pyin (opmatch.py's proven approach — never a
+   naive FFT-peak pick), reporting median f0, note name + cents deviation,
+   f0 stability (semitone std across voiced frames), voiced fraction, and
+   confidence (mean pyin voiced probability). Separately measures and
+   reports **harmonic dominance**: per voiced frame, whether any of
+   partials 2-5 exceeds the fundamental's own magnitude, with the ratio
+   and where it happened — the exact live-caught failure (a growl's 2nd
+   harmonic outshining its fundamental) is now surfaced as honest
+   information instead of corrupting the pitch estimate. `--per-note`
+   segments via `duck.detect_onsets` and reports each note's own
+   f0/stability/dominance rather than one average across a changing
+   melody. Unvoiced/silent/too-short is a reported `state`, never an
+   exception.
+2. **`awh mix bands <fileA> [fileB...] [--bands "lo-hi,..."]`**
+   (`analysis/awh_analysis/bands.py`): calibrated per-band dBFS — a Welch
+   periodogram (spectrum.py's `welch_psd`, the same time-averaged
+   machinery as the third-octave spectrum, not one FFT over the whole
+   capture) integrated per band and referenced so a full-scale sine
+   (peak amplitude 1.0) reads 0 dBFS, matching `loudness.py`'s true-peak
+   discipline. Reports each band's dBFS AND its fraction of the file's
+   total signal power. Default bands: `20-100,100-140,140-200,200-500,
+   500-2000` (sub/low/scoop zone/low-mid/mid — named in the output).
+   Multiple files produce an aligned table with per-band `delta_db`
+   against the first file. `--from/--to` seconds, same convention as
+   `mix report`.
+3. **`awh mix layers <track:N> <track:M>... [--bars N --from-bar N]`**
+   (`packages/cli/src/layers.ts`): automates the solo->capture->unsolo
+   choreography the gap report found being done entirely by hand. For
+   each track in sequence: reads the current solo state of every track,
+   solos ONLY that one (any other currently-soloed track is suspended
+   too, so the capture is genuinely isolated), captures via the M4L tap,
+   then restores every track's solo state to exactly what it was —
+   in a `try/finally`, so a capture that throws (the AWH Capture Tap
+   isn't loaded, the classic offline case) still leaves the Set's solo
+   state untouched. Runs `mix bands` across the captures afterward and
+   prints the comparison table. Captures live in a temp dir (path
+   printed); `--keep` retains it, otherwise it's removed after the
+   compare. Zero tracks is a printed state, not an error.
+
+`packages/cli/test/layers.test.ts` proves the solo-restore property twice:
+once on a happy multi-track run (including a pre-existing, unrelated solo
+elsewhere in the Set staying soloed throughout), and once as a negative
+control where an injected capture failure aborts mid-run — solo state
+reads back identical to how it started either way, verified with a real
+`set.summary` read-back, not just an in-memory assertion.
+`analysis/tests/test_pitch.py` / `test_bands.py` cover the regression case
+(a synthetic tone with a dominant 2nd harmonic: f0 stays at the fundamental
+AND the dominance gets flagged), pure-tone/silence states, calibration
+sanity (full-scale sine ≈ 0 dBFS), and determinism.
+
 ## Future work: real gaps found doing real masking/mix analysis (2026-08-23)
 
 Investigating a real "does my sub compete with my call/response layers"
@@ -199,22 +255,39 @@ how much they'd have helped:
   spectral spike) — this is the exact class of tool needed to answer "is
   this sample/patch's fundamental actually where the note name implies,"
   which is a real, recurring question before stacking/layering anything.
+  **Status: CLOSED** — `awh mix pitch` (pyin periodicity tracking, M6b
+  above). The exact failure is now a regression test
+  (`test_pitch.py::test_growl_dominant_2nd_harmonic_f0_stays_at_fundamental_and_gets_flagged`):
+  f0 lands on the fundamental, and the harmonic-dominance flag reports the
+  2nd-harmonic takeover as information rather than corrupting the pitch.
 - **No reusable narrowband energy-compare command.** Comparing sub vs.
   scoop-zone (140-200 Hz) vs. low-mid energy across isolated layers is a
   real, recurring masking-diagnosis workflow, not a one-off — deserves to
   be `awh mix band-compare <fileA> <fileB> ... --bands "20-100,140-200,
   200-500"` (or similar), not disposable scratch code re-derived each
   session.
+  **Status: CLOSED** — `awh mix bands` (M6b above; shipped as `bands`,
+  not `band-compare` — matches the existing `awh mix <verb>` naming, and
+  a single file still works as a plain per-band report, not just a
+  compare).
 - **The solo→capture→unsolo-per-layer workflow was entirely manual.** Real
   risk of leaving a track soloed by mistake between steps. A single
   command that solos/captures/unsolos a list of tracks in sequence and
   outputs a comparison table would remove the manual choreography.
+  **Status: CLOSED** — `awh mix layers` (M6b above), with the restore
+  proven via a negative control (an injected capture failure still
+  restores every track's prior solo state — `layers.test.ts`).
 - **Ad-hoc band-energy numbers were relative, not calibrated** — a bare
   `10*log10(sum of |FFT|^2)` is only meaningful for comparing captures
   taken in the same sitting at the same gain staging, not a portable
   measurement. A real tool should output calibrated per-band dBFS (or a
   LUFS-style per-band level), the same discipline `mix report`'s
   LUFS-I/true-peak numbers already follow.
+  **Status: CLOSED** — `awh mix bands` reports dBFS calibrated so a
+  full-scale sine (peak amplitude 1.0) reads 0 dBFS, the same
+  true-peak-dBFS discipline `loudness.py` already uses; the calibration
+  reference is stated in every JSON payload (`calibration` field), not
+  left implicit.
 - **One FFT over an entire multi-bar capture smears time away** — treats
   a rhythmically-changing bassline as if it were a stationary tone.
   Real narrowband/masking analysis wants either an averaged/windowed
@@ -222,10 +295,24 @@ how much they'd have helped:
   "does THIS specific note's fundamental land in the danger zone"
   questions, which are inherently about a moment in time, not an 8-bar
   average.
+  **Status: CLOSED** — time-aware analysis via Welch's method
+  (`bands.py`/`spectrum.py`'s shared `welch_psd`, time-averaged
+  overlapping windows rather than one FFT) + per-note segmentation
+  (`mix pitch --per-note`, onset-bounded). **Still open**: `bands` itself
+  has no `--per-note`/per-onset segmentation flag the way `pitch` does —
+  a moment-in-time BAND question still means picking a narrow
+  `--from/--to` window by hand (informed by `mix pitch --per-note`'s or
+  `awh drums detect-onsets`'s onset times), not one command that walks
+  note-by-note band levels automatically. Also open: `mix layers`'
+  comparison table doesn't automatically cross-reference each layer's
+  dominant-partial/pitch info against the bands it lands in — reading
+  `mix pitch --per-note` alongside `mix bands`/`mix layers`' table and
+  connecting the two is still a manual (or Claude-assisted) step, not one
+  fused command.
 - **Confirmed, not a gap**: `mix report`'s existing spectral tilt is
   intentionally broad-spectrum (100 Hz-4 kHz, one number) — it correctly
   answered "is this mix bass-heavy overall" (no) but structurally cannot
   answer a narrowband masking question like the one above. Worth stating
   plainly so a future session doesn't assume `mix report` alone covers
   masking diagnosis — it doesn't, by design, and the gap above is what
-  would close it.
+  would close it. **`awh mix bands` (M6b above) is that closing tool.**

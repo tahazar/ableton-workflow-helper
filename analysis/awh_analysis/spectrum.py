@@ -33,8 +33,13 @@ def _band_edges(center: float) -> tuple[float, float]:
     return lo, hi
 
 
-def _band_power(freqs: np.ndarray, psd: np.ndarray, lo: float, hi: float) -> float:
-    """Integrate PSD (power/Hz) over [lo, hi] -> power."""
+def band_power(freqs: np.ndarray, psd: np.ndarray, lo: float, hi: float) -> float:
+    """Integrate PSD (power/Hz) over [lo, hi] -> power.
+
+    Public (reused by bands.py's calibrated narrowband levels — same Welch
+    machinery, different band set/purpose; see docs/design/analysis-engine
+    .md's 2026-08-23 gap report on time-smeared one-FFT band energy).
+    """
     mask = (freqs >= lo) & (freqs <= hi)
     f_sel = freqs[mask]
     p_sel = psd[mask]
@@ -55,22 +60,18 @@ def _band_power(freqs: np.ndarray, psd: np.ndarray, lo: float, hi: float) -> flo
     return float(np.trapezoid(p_sel, f_sel))
 
 
-def third_octave_spectrum(x: np.ndarray, sr: int) -> dict:
-    """Third-octave band spectrum, normalized to 0 dB mean over 100 Hz-4 kHz.
+def welch_psd(mono: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray] | None:
+    """Welch PSD (4096-pt FFT, Hann, 50% overlap) of a mono signal.
 
-    Returns
-    -------
-    dict with:
-        freqs : list of band center frequencies, Hz
-        db : list of band levels, dB (relative)
+    Returns `(freqs, psd)`, or None if the signal is too short to produce a
+    meaningful periodogram (degenerate case, same threshold as
+    `third_octave_spectrum`). Public: bands.py reuses this exact machinery
+    so its calibrated per-band levels use the same time-averaged,
+    non-time-smeared periodogram as the third-octave spectrum above.
     """
-    mono = to_mono(np.asarray(x, dtype=np.float64))
     nperseg = min(WELCH_NFFT, mono.shape[0])
     if nperseg < 8:
-        # Degenerate (extremely short) signal: nothing meaningful to report.
-        centers = _band_centers()
-        return {"freqs": centers.tolist(), "db": [float("nan")] * len(centers)}
-
+        return None
     noverlap = nperseg // 2
     freqs, psd = welch(
         mono,
@@ -82,14 +83,32 @@ def third_octave_spectrum(x: np.ndarray, sr: int) -> dict:
         scaling="density",
         detrend=False,
     )
+    return freqs, psd
 
+
+def third_octave_spectrum(x: np.ndarray, sr: int) -> dict:
+    """Third-octave band spectrum, normalized to 0 dB mean over 100 Hz-4 kHz.
+
+    Returns
+    -------
+    dict with:
+        freqs : list of band center frequencies, Hz
+        db : list of band levels, dB (relative)
+    """
+    mono = to_mono(np.asarray(x, dtype=np.float64))
     centers = _band_centers()
+    psd_result = welch_psd(mono, sr)
+    if psd_result is None:
+        # Degenerate (extremely short) signal: nothing meaningful to report.
+        return {"freqs": centers.tolist(), "db": [float("nan")] * len(centers)}
+    freqs, psd = psd_result
+
     db = np.empty_like(centers)
     for i, c in enumerate(centers):
         lo, hi = _band_edges(c)
         lo = max(lo, freqs[0])
         hi = min(hi, freqs[-1])
-        power = _band_power(freqs, psd, lo, hi) if hi > lo else 0.0
+        power = band_power(freqs, psd, lo, hi) if hi > lo else 0.0
         with np.errstate(divide="ignore"):
             db[i] = 10.0 * np.log10(power) if power > 0 else -np.inf
 
