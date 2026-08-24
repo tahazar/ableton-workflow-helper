@@ -12,6 +12,30 @@ import { spawn } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
 import { Command } from "commander";
 import { TAP_PORT, sendToTap } from "./osc.js";
+import { analysisPython } from "./analysis-python.js";
+import {
+  DEFAULT_BPM_TOL,
+  DEFAULT_CLAP_MODEL,
+  expectedClapModelLabel,
+  indexHasClapEmbeddings,
+  loadSamplesIndex,
+  makePythonClapEmbedder,
+  makePythonClapTextEmbedder,
+  makePythonScanner,
+  rankSimilar,
+  rankSimilarSemantic,
+  resolveReferenceClapVector,
+  resolveReferenceVector,
+  resolveSamplesIndexPath,
+  runEmbed,
+  runIndex,
+  searchIndex,
+  searchSemantic,
+  suggestRelaxations,
+  summarizeIndex,
+  type ClapModel,
+  type SearchOptions,
+} from "./samples.js";
 import { DUCK_PORT, DUCK_REPLY_PORT, pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from "./duck.js";
 import {
   RECIPE_SLUG_PREFIX,
@@ -23,6 +47,20 @@ import {
   type OpCaller,
   type RecipePlan,
 } from "./op.js";
+import {
+  REMOTE_PORT,
+  REMOTE_REPLY_PORT,
+  auditionEnd,
+  auditionSlug,
+  parseLaunchTarget,
+  remoteFire,
+  remoteJump,
+  remotePlay,
+  remoteScene,
+  remoteStop,
+  remoteStopClips,
+  type AuditionState,
+} from "./remote.js";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { buildEndlessPlayer, SINGLE_FILE_WARN_BYTES } from "./endless/build.js";
 import { buildEndlessPlanYaml, parseSectionsArg, sectionsFromReference, type RefSectionLike } from "./endless/plan.js";
@@ -745,6 +783,143 @@ program
         : `deleted ${doomed.length} clips: ${doomed.map((c) => c.name).join(", ")}`,
     );
   });
+
+// ---------------------------------------------------------------------------
+// AWH Remote (M12, m4l/): transport + clip launch over OSC — the SDK has no
+// play/stop/position or session-clip-launch API (docs/sdk-feedback.md), so
+// this device (which supersedes the AWH Capture Tap: same 9720/9721 ports,
+// superset protocol) is the only way `awh` can press play. Wire logic lives
+// in remote.ts (testable without spawning the CLI, see remote.test.ts).
+// ---------------------------------------------------------------------------
+
+interface RemotePortOpts {
+  remotePort: string;
+  remoteReplyPort: string;
+}
+
+function remoteOscOpts(cmdOpts: RemotePortOpts): { port: number; replyPort: number } {
+  return { port: Number(cmdOpts.remotePort), replyPort: Number(cmdOpts.remoteReplyPort) };
+}
+
+function addRemotePortOptions<T extends Command>(cmd: T): T {
+  return cmd
+    .option("--remote-port <port>", "AWH Remote OSC port", String(REMOTE_PORT))
+    .option("--remote-reply-port <port>", "AWH Remote OSC reply port", String(REMOTE_REPLY_PORT)) as T;
+}
+
+addRemotePortOptions(
+  program
+    .command("play")
+    .description(
+      "Start the transport via the AWH Remote M4L device (m4l/README.md). " +
+        "--from-bar jumps the arrangement playhead first.",
+    )
+    .option("--from-bar <bar>", "1-based arrangement bar to jump to before playing")
+    .option("--sig <beatsPerBar>", "beats per bar", "4"),
+).action(
+  async (cmdOpts: RemotePortOpts & { fromBar?: string; sig: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const fromBeats =
+      cmdOpts.fromBar !== undefined ? (Number(cmdOpts.fromBar) - 1) * Number(cmdOpts.sig) : undefined;
+    const result = await remotePlay({ ...remoteOscOpts(cmdOpts), fromBeats });
+    output(opts, result, () =>
+      cmdOpts.fromBar !== undefined
+        ? `playing from bar ${cmdOpts.fromBar} (beat ${fromBeats})`
+        : "playing",
+    );
+  },
+);
+
+addRemotePortOptions(
+  program.command("stop").description("Stop the transport via the AWH Remote M4L device"),
+).action(async (cmdOpts: RemotePortOpts) => {
+  const opts = program.opts<GlobalOpts>();
+  await remoteStop(remoteOscOpts(cmdOpts));
+  output(opts, { stopped: true }, () => "stopped");
+});
+
+addRemotePortOptions(
+  program
+    .command("jump <bar>")
+    .description("Set the arrangement playhead (current_song_time) via the AWH Remote M4L device")
+    .option("--sig <beatsPerBar>", "beats per bar", "4"),
+).action(async (bar: string, cmdOpts: RemotePortOpts & { sig: string }) => {
+  const opts = program.opts<GlobalOpts>();
+  const beats = (Number(bar) - 1) * Number(cmdOpts.sig);
+  const result = await remoteJump({ beats, ...remoteOscOpts(cmdOpts) });
+  output(opts, { beats, reply: result }, () => `jumped to bar ${bar} (beat ${beats})`);
+});
+
+addRemotePortOptions(
+  program
+    .command("launch <target>")
+    .description(
+      "Fire a session clip slot (track:N/slot:M) or a scene (scene:N) via the AWH Remote " +
+        "M4L device — respects Live's launch quantization",
+    ),
+).action(async (target: string, cmdOpts: RemotePortOpts) => {
+  const opts = program.opts<GlobalOpts>();
+  const parsed = parseLaunchTarget(target);
+  const result =
+    parsed.kind === "fire"
+      ? await remoteFire({ trackIdx: parsed.trackIdx, slotIdx: parsed.slotIdx, ...remoteOscOpts(cmdOpts) })
+      : await remoteScene({ sceneIdx: parsed.sceneIdx, ...remoteOscOpts(cmdOpts) });
+  output(opts, { target, reply: result }, () => `launched ${target} -> ${result.join(" ")}`);
+});
+
+addRemotePortOptions(
+  program
+    .command("stop-clips [track]")
+    .description(
+      "Stop all clips on a track (track:N), or the whole Set when omitted, via the AWH Remote " +
+        "M4L device (call stop_all_clips)",
+    ),
+).action(async (track: string | undefined, cmdOpts: RemotePortOpts) => {
+  const opts = program.opts<GlobalOpts>();
+  if (track !== undefined && !/^track:\d+$/.test(track)) {
+    throw new Error(`awh stop-clips needs a plain track path like track:2 (got "${track}")`);
+  }
+  const trackIdx = track !== undefined ? Number(track.match(/^track:(\d+)$/)![1]) : -1;
+  const result = await remoteStopClips({ trackIdx, ...remoteOscOpts(cmdOpts) });
+  output(opts, { track: track ?? "all", reply: result }, () =>
+    track !== undefined ? `stopped clips on ${track}` : "stopped all clips",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// `awh lib audition` state: which auditioned clip (if any) is still pending
+// a sweep — persisted between CLI invocations (this is the ONLY CLI command
+// with cross-invocation state; docs/design/live-remote.md). AWH_AUDITION_STATE
+// overrides the file location (used by tests to avoid touching the real
+// repo's .dev/); default lives under .dev/ (gitignored), same scratch
+// convention as `op verify`'s capture files.
+// ---------------------------------------------------------------------------
+
+function auditionStateFile(): string {
+  return process.env.AWH_AUDITION_STATE
+    ? resolve(process.env.AWH_AUDITION_STATE)
+    : join(repoRoot(), ".dev", "audition-state.json");
+}
+
+async function readAuditionState(): Promise<AuditionState | undefined> {
+  const file = auditionStateFile();
+  if (!existsSync(file)) return undefined;
+  try {
+    return JSON.parse(await readFile(file, "utf8")) as AuditionState;
+  } catch {
+    return undefined;
+  }
+}
+
+async function writeAuditionState(state: AuditionState | undefined): Promise<void> {
+  const file = auditionStateFile();
+  if (state === undefined) {
+    if (existsSync(file)) await rm(file);
+    return;
+  }
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, JSON.stringify(state, null, 2), "utf8");
+}
 
 const sections = program
   .command("sections")
@@ -2021,6 +2196,77 @@ lib
   );
 
 lib
+  .command("audition [slug] [track]")
+  .description(
+    "Place a library clip into an empty slot on <track> and fire it via the AWH Remote M4L " +
+      "device (m4l/README.md) so it's immediately audible. Auditioning a new slug (or --end) " +
+      "sweeps the PREVIOUS audition by its exact clip name (never a prefix sweep) — pass --keep " +
+      "to leave a clip in place permanently instead.",
+  )
+  .option("--keep", "keep this clip in place permanently (skip the sweep-on-next/--end cleanup)")
+  .option("--end", "sweep the pending (non---keep) audition and exit — no <slug>/<track> needed")
+  .option("--library <dir>", "library root")
+  .option("--remote-port <port>", "AWH Remote OSC port", String(REMOTE_PORT))
+  .option("--remote-reply-port <port>", "AWH Remote OSC reply port", String(REMOTE_REPLY_PORT))
+  .action(
+    async (
+      slug: string | undefined,
+      track: string | undefined,
+      cmdOpts: { keep?: boolean; end?: boolean; library?: string; remotePort: string; remoteReplyPort: string },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const caller: OpCaller = (name, args) => op(opts, name, args);
+      const pending = await readAuditionState();
+
+      if (cmdOpts.end) {
+        const swept = await auditionEnd({ caller, pending });
+        await writeAuditionState(undefined);
+        output(opts, { swept: swept ?? [] }, () =>
+          swept === undefined || swept.length === 0
+            ? "nothing to end — no pending (non---keep) audition"
+            : `swept ${swept.length} clip(s): ${swept.join(", ")}`,
+        );
+        return;
+      }
+
+      if (!slug || !track) {
+        throw new Error("pass <slug> <track> to audition, or --end to sweep the previous one");
+      }
+      const entry = await libraryStore(cmdOpts).loadClip(slug);
+      if (!entry.notation) throw new Error(`${slug} has no notation block to audition`);
+
+      const result = await auditionSlug({
+        caller,
+        source: {
+          slug,
+          notation: entry.notation,
+          lengthBeats: entry.lengthBeats,
+          beatsPerBar: entry.beatsPerBar ?? 4,
+        },
+        trackPath: track,
+        keep: cmdOpts.keep,
+        pending,
+        osc: remoteOscOpts(cmdOpts),
+      });
+      await writeAuditionState(result.nextPending);
+
+      output(opts, result, () =>
+        [
+          result.swept && result.swept.length
+            ? `swept previous audition: ${result.swept.join(", ")}`
+            : undefined,
+          `playing ${slug} [${entry.tier}] -> ${result.path} (fired track ${result.trackIdx} slot ${result.slotIdx})`,
+          cmdOpts.keep
+            ? "kept — won't be auto-swept (use `awh sweep` by hand when done)."
+            : "not kept — auditioning the next slug (or `awh lib audition --end`) will sweep this one.",
+        ]
+          .filter((line): line is string => line !== undefined)
+          .join("\n"),
+      );
+    },
+  );
+
+lib
   .command("index")
   .description("Regenerate library INDEX.md files")
   .option("--library <dir>", "library root")
@@ -2438,13 +2684,6 @@ function repoRoot(): string {
   return dirname(findLibraryRoot());
 }
 
-function analysisPython(): { python: string; cwd: string } {
-  const root = repoRoot();
-  const venv = join(root, ".venv", "bin", "python");
-  const python = process.env.AWH_PYTHON ?? (existsSync(venv) ? venv : "python3");
-  return { python, cwd: join(root, "analysis") };
-}
-
 /** Run `python -m awh_analysis <args>` streaming stdio through. */
 async function runAnalysis(args: string[]): Promise<void> {
   const { python, cwd } = analysisPython();
@@ -2661,6 +2900,382 @@ mix
       rows.length === 0
         ? "no measurement records yet — awh mix report <file> --save"
         : rows.map((r) => `${r.name.padEnd(32)} ${r.saved}  ${r.summary}`).join("\n"),
+    );
+  });
+
+// ---------------------------------------------------------------------------
+// M11: sample library — local index, search, similarity
+// (docs/design/sample-library.md; logic lives in samples.ts)
+// ---------------------------------------------------------------------------
+
+const samplesCmd = program
+  .command("samples")
+  .description(
+    "Local sample-library index: text/trait search over your own sample folders, " +
+      "ranked by cosine similarity to a reference sound — never invents a path " +
+      "(docs/design/sample-library.md)",
+  );
+
+function requireAnalysisEngine(): { python: string; cwd: string } {
+  const { python, cwd } = analysisPython();
+  if (!existsSync(cwd)) {
+    throw new Error(`analysis engine not found at ${cwd} — is the repo checkout complete?`);
+  }
+  return { python, cwd };
+}
+
+samplesCmd
+  .command("index <dirs...>")
+  .description(
+    "Walk folders (wav/aiff/flac/mp3) and (re)build the local index — incremental by " +
+      "path+size+mtime; deleted files under the given folders are pruned",
+  )
+  .option("--rescan", "force re-scan every file, ignoring the incremental cache", false)
+  .action(async (dirs: string[], cmdOpts: { rescan: boolean }) => {
+    const opts = program.opts<GlobalOpts>();
+    const { python, cwd } = requireAnalysisEngine();
+    const indexPath = resolveSamplesIndexPath();
+
+    let lastPrinted = 0;
+    const result = await runIndex(dirs, {
+      rescan: cmdOpts.rescan,
+      indexPath,
+      scanner: makePythonScanner(python, cwd),
+      onProgress: (done, total) => {
+        if (done - lastPrinted >= 1000 || done === total) {
+          process.stderr.write(`scanned ${done}/${total}\n`);
+          lastPrinted = done;
+        }
+      },
+    });
+
+    const summary = {
+      scanned: result.scanned,
+      unreadable: result.unreadable,
+      unchanged: result.unchanged,
+      pruned: result.pruned,
+      totalFiles: result.totalFiles,
+      indexPath,
+    };
+    output(opts, summary, () =>
+      `indexed ${result.scanned} file(s) (${result.unreadable} unreadable), ` +
+        `${result.unchanged} unchanged, ${result.pruned} pruned -> ${indexPath}`,
+    );
+  });
+
+samplesCmd
+  .command("embed")
+  .description(
+    "Compute missing/stale CLAP embeddings for the whole index (M11b, docs/design/" +
+      "sample-semantic.md) — enables `search --semantic`/`similar --semantic`; " +
+      "incremental (already-embedded files are skipped), and a model switch re-embeds",
+  )
+  .option("--model <model>", "music (default, music-tuned) | general (AudioSet)", DEFAULT_CLAP_MODEL)
+  .action(async (cmdOpts: { model: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    if (cmdOpts.model !== "music" && cmdOpts.model !== "general") {
+      throw new Error(`--model must be "music" or "general" (got "${cmdOpts.model}")`);
+    }
+    const model = cmdOpts.model as ClapModel;
+    const indexPath = resolveSamplesIndexPath();
+    const index = await loadSamplesIndex(indexPath);
+    if (Object.keys(index.files).length === 0) {
+      output(opts, { embedded: 0 }, () =>
+        `no samples indexed yet — run \`awh samples index <dir...>\` first (index: ${indexPath})`,
+      );
+      return;
+    }
+
+    const { python, cwd } = requireAnalysisEngine();
+    let lastPrinted = 0;
+    const result = await runEmbed({
+      indexPath,
+      model,
+      embedder: makePythonClapEmbedder(python, cwd),
+      onProgress: (done, total) => {
+        if (done - lastPrinted >= 200 || done === total) {
+          process.stderr.write(`embedded ${done}/${total}\n`);
+          lastPrinted = done;
+        }
+      },
+    });
+
+    output(opts, result, () => {
+      if (result.totalCandidates === 0) {
+        return "no readable samples to embed yet — run `awh samples index <dir...>` first";
+      }
+      if (result.embedded === 0) {
+        return (
+          `all ${result.totalCandidates} readable sample(s) already embedded ` +
+          `(${result.modelLabel}) — nothing to do`
+        );
+      }
+      return (
+        `embedded ${result.embedded} of ${result.totalCandidates} readable sample(s) with ` +
+        `${result.modelLabel} (${result.neverEmbedded} new, ${result.stale} stale re-embedded, ` +
+        `${result.unreadable} failed to embed), ${result.upToDate} already up to date -> ${indexPath}`
+      );
+    });
+  });
+
+samplesCmd
+  .command("search [query...]")
+  .description(
+    "Search the index by path tokens (ALL terms must match by default) plus trait filters",
+  )
+  .option("--any", "match ANY query term instead of ALL", false)
+  .option("--type <type>", "filter: loop | oneshot")
+  .option("--min-dur <seconds>", "minimum duration in seconds")
+  .option("--max-dur <seconds>", "maximum duration in seconds")
+  .option("--bpm <bpm>", "filter to samples near this BPM")
+  .option("--bpm-tol <bpm>", "BPM tolerance", String(DEFAULT_BPM_TOL))
+  .option("--band <band>", "filter: low | mid | high (dominant band)")
+  .option(
+    "--semantic <phrase>",
+    "rank by CLAP semantic similarity to this phrase instead of path tokens " +
+      "(M11b) — composes with the trait filters above, not with plain query terms",
+  )
+  .action(
+    async (
+      query: string[] | undefined,
+      cmdOpts: {
+        any: boolean;
+        type?: string;
+        minDur?: string;
+        maxDur?: string;
+        bpm?: string;
+        bpmTol: string;
+        band?: string;
+        semantic?: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const terms = query ?? [];
+      const indexPath = resolveSamplesIndexPath();
+      const index = await loadSamplesIndex(indexPath);
+      if (Object.keys(index.files).length === 0) {
+        output(opts, { hits: [] }, () =>
+          `no samples indexed yet — run \`awh samples index <dir...>\` first (index: ${indexPath})`,
+        );
+        return;
+      }
+      if (cmdOpts.type !== undefined && cmdOpts.type !== "loop" && cmdOpts.type !== "oneshot") {
+        throw new Error(`--type must be "loop" or "oneshot" (got "${cmdOpts.type}")`);
+      }
+      if (cmdOpts.band !== undefined && !["low", "mid", "high"].includes(cmdOpts.band)) {
+        throw new Error(`--band must be "low", "mid", or "high" (got "${cmdOpts.band}")`);
+      }
+      const searchOpts: SearchOptions = {
+        any: cmdOpts.any,
+        type: cmdOpts.type as "loop" | "oneshot" | undefined,
+        minDurS: cmdOpts.minDur !== undefined ? Number(cmdOpts.minDur) : undefined,
+        maxDurS: cmdOpts.maxDur !== undefined ? Number(cmdOpts.maxDur) : undefined,
+        bpm: cmdOpts.bpm !== undefined ? Number(cmdOpts.bpm) : undefined,
+        bpmTol: Number(cmdOpts.bpmTol),
+        band: cmdOpts.band as "low" | "mid" | "high" | undefined,
+      };
+
+      if (cmdOpts.semantic !== undefined) {
+        if (terms.length > 0) {
+          throw new Error(
+            "--semantic is a standalone query mode — drop the extra search terms " +
+              `("${terms.join(" ")}"), or run a plain token search instead`,
+          );
+        }
+        const model = DEFAULT_CLAP_MODEL;
+        if (!indexHasClapEmbeddings(index, model)) {
+          throw new Error(
+            "no samples have CLAP embeddings yet — run `awh samples embed` first, " +
+              `then retry --semantic (index: ${indexPath})`,
+          );
+        }
+        const { python, cwd } = requireAnalysisEngine();
+        const queryVector = await makePythonClapTextEmbedder(python, cwd)(cmdOpts.semantic, model);
+        const result = searchSemantic(index, queryVector.v, model, searchOpts);
+
+        output(opts, result, () => {
+          const lines: string[] = [];
+          if (result.hits.length === 0) {
+            lines.push(`0 semantic hits for "${cmdOpts.semantic}" (matching the trait filters)`);
+          } else {
+            lines.push(
+              ...result.hits.map((h) => {
+                const s = h.entry.scan;
+                return (
+                  `${h.score.toFixed(3)}  ${h.path.padEnd(52)} ${(s.duration_s ?? 0).toFixed(2).padStart(6)}s  ` +
+                  `${(s.type_guess ?? "?").padEnd(7)}` +
+                  (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "          ") +
+                  `  ${s.dominant_band ?? "?"}`
+                );
+              }),
+            );
+          }
+          if (result.notEmbeddedInIndex > 0) {
+            lines.push(
+              `${result.notEmbeddedInIndex} of ${result.totalReadableInIndex} files not embedded — ` +
+                "run `awh samples embed`",
+            );
+          }
+          return lines.join("\n");
+        });
+        return;
+      }
+
+      const hits = searchIndex(index, terms, searchOpts);
+
+      if (hits.length === 0) {
+        const relaxations = suggestRelaxations(index, terms, searchOpts);
+        output(opts, { hits: [], relaxations }, () =>
+          [
+            `0 hits for "${terms.join(" ")}"`,
+            ...relaxations.map(
+              (r) => `  ${r.count} for "${r.terms.join(" ")}" (${r.note})`,
+            ),
+          ].join("\n"),
+        );
+        return;
+      }
+
+      output(opts, hits, () =>
+        hits
+          .map((h) => {
+            const s = h.entry.scan;
+            return (
+              `${h.path.padEnd(60)} ${(s.duration_s ?? 0).toFixed(2).padStart(6)}s  ` +
+              `${(s.type_guess ?? "?").padEnd(7)}` +
+              (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "          ") +
+              `  ${s.dominant_band ?? "?"}`
+            );
+          })
+          .join("\n"),
+      );
+    },
+  );
+
+samplesCmd
+  .command("similar <file>")
+  .description(
+    "Rank indexed samples by similarity to a reference file — the reference need not " +
+      "be indexed. Semantic (CLAP) is the default once the index has embeddings; " +
+      "--traits forces the v1 MFCC/spectral/band-split feature vector",
+  )
+  .option("--count <n>", "how many results to show", "10")
+  .option("--semantic", "force CLAP semantic ranking (M11b)")
+  .option("--traits", "force the v1 MFCC/spectral/band-split vector, even if embeddings exist")
+  .action(async (file: string, cmdOpts: { count: string; semantic?: boolean; traits?: boolean }) => {
+    const opts = program.opts<GlobalOpts>();
+    if (cmdOpts.semantic && cmdOpts.traits) {
+      throw new Error("pass either --semantic or --traits, not both");
+    }
+    const indexPath = resolveSamplesIndexPath();
+    const index = await loadSamplesIndex(indexPath);
+    const readable = Object.values(index.files).filter((e) => !e.scan.unreadable);
+    if (readable.length === 0) {
+      output(opts, { hits: [] }, () =>
+        `no samples indexed yet — run \`awh samples index <dir...>\` first (index: ${indexPath})`,
+      );
+      return;
+    }
+
+    const model = DEFAULT_CLAP_MODEL;
+    const hasEmbeddings = indexHasClapEmbeddings(index, model);
+    const useSemantic = cmdOpts.semantic || (!cmdOpts.traits && hasEmbeddings);
+    const count = Math.max(1, Number(cmdOpts.count));
+    const { python, cwd } = requireAnalysisEngine();
+
+    if (useSemantic) {
+      if (!hasEmbeddings) {
+        throw new Error(
+          "no samples have CLAP embeddings yet — run `awh samples embed` first, " +
+            `then retry --semantic (index: ${indexPath})`,
+        );
+      }
+      const expectedLabel = expectedClapModelLabel(model);
+      const { vector: refVector, fromIndex } = await resolveReferenceClapVector(
+        index,
+        file,
+        makePythonClapEmbedder(python, cwd),
+        model,
+      );
+      const candidates = readable
+        .filter((e) => e.clap && e.clap.model === expectedLabel)
+        .map((e) => ({ path: e.path, vector: e.clap!, entry: e }));
+      const ranked = rankSimilarSemantic(refVector.v, candidates, file).slice(0, count);
+
+      output(opts, { mode: "semantic", fromIndex, hits: ranked }, () =>
+        [
+          `(semantic — CLAP embedding space, closest in the library, not "a match"; ` +
+            (fromIndex ? "reference read from the index)" : "reference embedded on the fly — not indexed)"),
+          ...ranked.map((h) => {
+            const s = h.entry.scan;
+            return (
+              `${h.score.toFixed(3)}  ${h.path.padEnd(50)} ${(s.type_guess ?? "?").padEnd(7)} ` +
+              `${(s.duration_s ?? 0).toFixed(2).padStart(6)}s` +
+              (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "") +
+              `  ${s.dominant_band ?? "?"}`
+            );
+          }),
+        ].join("\n"),
+      );
+      return;
+    }
+
+    const traitReadable = readable.filter((e) => e.scan.similarity_vector);
+    if (traitReadable.length === 0) {
+      output(opts, { hits: [] }, () =>
+        `no samples with trait vectors indexed yet — run \`awh samples index <dir...>\` first (index: ${indexPath})`,
+      );
+      return;
+    }
+    const { vector: refVector, fromIndex } = await resolveReferenceVector(
+      index,
+      file,
+      makePythonScanner(python, cwd),
+    );
+
+    const candidates = traitReadable.map((e) => ({
+      path: e.path,
+      vector: e.scan.similarity_vector!,
+      entry: e,
+    }));
+    const ranked = rankSimilar(refVector, candidates, file).slice(0, count);
+
+    output(opts, { mode: "traits", fromIndex, hits: ranked }, () =>
+      [
+        fromIndex ? `(traits — reference read from the index)` : `(traits — reference scanned on the fly, not indexed)`,
+        ...ranked.map((h) => {
+          const s = h.entry.scan;
+          return (
+            `${h.similarity.toFixed(3)}  ${h.path.padEnd(50)} ${(s.type_guess ?? "?").padEnd(7)} ` +
+            `${(s.duration_s ?? 0).toFixed(2).padStart(6)}s` +
+            (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "") +
+            `  ${s.dominant_band ?? "?"}`
+          );
+        }),
+      ].join("\n"),
+    );
+  });
+
+samplesCmd
+  .command("stats")
+  .description("Summary of the local sample index (size, roots, type/duration/band histograms)")
+  .action(async () => {
+    const opts = program.opts<GlobalOpts>();
+    const indexPath = resolveSamplesIndexPath();
+    const index = await loadSamplesIndex(indexPath);
+    const stats = summarizeIndex(index);
+    output(opts, { ...stats, indexPath }, () =>
+      [
+        `${stats.totalFiles} file(s) indexed -> ${indexPath}`,
+        `  roots: ${stats.roots.length ? stats.roots.join(", ") : "(none)"}`,
+        `  type:  ${stats.byType.loop} loop, ${stats.byType.oneshot} oneshot, ` +
+          `${stats.byType.unreadable} unreadable`,
+        `  band:  low ${stats.byBand.low}  mid ${stats.byBand.mid}  high ${stats.byBand.high}`,
+        stats.durationStats
+          ? `  duration: ${stats.durationStats.minS.toFixed(2)}s - ` +
+            `${stats.durationStats.maxS.toFixed(2)}s (mean ${stats.durationStats.meanS.toFixed(2)}s)`
+          : `  duration: (no readable files yet)`,
+      ].join("\n"),
     );
   });
 
