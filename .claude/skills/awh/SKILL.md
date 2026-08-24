@@ -256,6 +256,9 @@ awh mix capture -o <file> --from-bar N --bars N   # record post-FX via the M4L t
 awh mix report <file> [--bpm N] [--target name] [--delivery club|streaming|apple]
 awh mix ab <fileA> <fileB> [--bpm N]              # loudness-matched A/B diff
 awh mix target <refFiles...> --save <name>        # measure refs -> genre target
+awh mix pitch <file> [--per-note]                 # periodicity-tracked f0 + harmonic-dominance flag
+awh mix bands <fileA> [fileB...] [--bands "lo-hi,..."]  # calibrated per-band dBFS (masking compare)
+awh mix layers <track:N> <track:M>... [--bars N --from-bar N]  # solo->capture->unsolo per track, then bands
 ```
 
 - **Quote the numbers; never invent one.** The report's findings each carry
@@ -272,6 +275,19 @@ awh mix target <refFiles...> --save <name>        # measure refs -> genre target
 - capture requires the AWH Capture Tap M4L device (m4l/README.md) on the
   master; if it fails, fall back to asking the user to export the span and
   run report on that file.
+- **Masking toolkit** ("does my sub fight my bassline", "is this patch's
+  fundamental where the note name says", "compare these layers"):
+  `mix pitch` tracks f0 by periodicity (pyin), never the loudest FFT bin —
+  it ALSO reports `harmonic_dominance` when a partial outgrows the
+  fundamental (e.g. a growl mid-note); relay both, don't just relay f0.
+  `--per-note` breaks a melody into onset-bounded notes instead of one
+  average. `mix bands` gives calibrated dBFS per named zone (sub/low/scoop
+  zone/low-mid/mid by default, or `--bands "lo-hi,..."`) — 0 dBFS = a
+  full-scale sine, so numbers compare across sessions, not just within
+  one. `mix layers` automates solo→capture→unsolo across a track list and
+  runs `mix bands` on the results — it restores each track's PRIOR solo
+  state (not just "unsoloed") even if a capture fails partway, so it's
+  safe to run mid-session without risking a track left soloed.
 
 ## AWH Remote (`awh play` / `awh stop` / `awh jump` / `awh launch` / `awh stop-clips` / `awh lib audition`) — transport + clip launch
 
@@ -853,6 +869,30 @@ loud enough for clubs", "did that EQ change help"):
    full-mix bleed). The on/off `ab` pair remains the gold-standard proof.
 4. No target yet? Offer `awh mix target <owner's reference tracks> --save
    <genre>` first — comparisons run against THEIR references, not folklore.
+
+**Masking / "does my sub fight my bassline", "is this patch's fundamental
+where I think it is", "compare these layers"** (narrowband/masking
+diagnosis — `mix report`'s spectral tilt is broad-spectrum and can't
+answer this by design):
+1. Pitch check on one sample/patch: `awh mix pitch <file> [--per-note]` —
+   f0 via periodicity tracking (never the loudest FFT bin); relay
+   `harmonic_dominance` too when it's flagged (a partial outgrew the
+   fundamental partway through — real information, not a detector error).
+   `--per-note` on a melodic phrase/growl that changes note-to-note.
+2. Narrowband energy compare: `awh mix bands <fileA> [fileB...] [--bands
+   "20-100,140-200,200-500"]` — calibrated dBFS (0 dBFS = a full-scale
+   sine, so it's comparable across sessions, not just within one) per
+   named danger zone, plus each band's fraction of that file's total
+   energy. Multiple files get an aligned table with deltas vs. the first.
+3. Comparing several LIVE tracks/layers (not pre-rendered files):
+   `awh mix layers <track:N> <track:M>... [--bars N --from-bar N]` — one
+   command solos each track alone, captures it, restores its and every
+   other track's PRIOR solo state (even if a capture fails partway — never
+   leaves the Set soloed), then runs `mix bands` across the results.
+   Needs the AWH Capture Tap; if it's not loaded the error says so
+   plainly, solo state is still restored.
+4. Zero tracks passed to `layers` is a printed state ("nothing to
+   solo/capture/compare"), not an error — don't treat it as a failure.
 
 **Press play, launch a clip/scene, or audition a library clip from chat**
 ("play this back", "start from bar 33", "launch that drop clip", "trigger
