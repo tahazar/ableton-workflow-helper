@@ -2035,3 +2035,76 @@ separate owner-validation session:
       tagging (v1) — `pitch.py`'s existing `per_note` mode is the natural
       extension path if a future need for key-matching basslines/leads
       comes up, not evaluated or built this pass.
+
+## Pitch-aware duck depth targeting (`duck fit --bass`) owner checklist
+
+Built AND validated against the real Set in the same session (2026-08-23),
+directly following M11c — same motivating idea (a real fundamental beats a
+generic low-band proxy), applied to sidechain depth instead of sample
+search. `analysis/awh_analysis/duck.py`'s masking-depth calc previously
+compared BASS and KICK levels in one fixed, generic 150 Hz lowpass band;
+now, when the bass is genuinely voiced, it measures BOTH in a narrow band
+centered on the bass's real fundamental (`pitch.analyze_segment`, reused
+from M6b) via the SAME calibrated Welch machinery `mix bands` already
+uses (`spectrum.welch_psd`/`band_power`, `bands.CALIBRATION_REF_POWER`) —
+no new DSP, just correctly targeting existing tools. Broadband/unvoiced
+bass keeps the ORIGINAL generic-band calc byte-for-byte (a narrowband
+margin is meaningless without a real fundamental). `test_duck.py` (10
+tests, 3 new: tuned-bass narrowband path, broadband-bass fallback with a
+regression-guard confirming it reproduces the exact pre-change number, a
+negative control proving the measurement genuinely responds to WHERE the
+kick's energy sits) — all green, plus the full `pytest -q` (164 tests).
+
+**Real, live-caught bug fixed before this could ship**: the initial design
+gated the narrowband path on `pitch.analyze_segment`'s `state == "voiced"`
+alone — testing against a synthetic white-noise "bass" showed pyin can
+flip to `"voiced"` off a single spurious periodic frame (0.064 voiced
+fraction measured on pure noise, confidence 0.010). Calibrated a proper
+gate (`MASKING_MIN_VOICED_FRACTION = 0.10`) against THREE real numbers
+from this exact session: pure noise 0.064, a genuinely messy-but-real
+Reese growl (from tonight's earlier masking investigation) 0.122, a clean
+sub 0.956 — 0.10 sits between the false positive and the real (if noisy)
+tonal case, so noise now correctly falls back to the generic calc while
+real messy-tonal material like Reese still gets the narrowband treatment.
+
+- [x] Real end-to-end run against the live Set: captured "2 Kick & Snare"
+      and "9 Sub" over the real 4-bar drop span via `awh mix layers`
+      (fully automated solo/capture/unsolo), then `awh mix duck fit
+      <kick capture> --trigger-clip track:17/arr:1 --bass <sub capture>`.
+      The sub's fundamental came back **44.9 Hz** — matching, independently,
+      the EXACT same number `mix pitch` found on the archived `solo-
+      sub.wav` capture from earlier in this session (95.6% voiced there)
+      — a genuine cross-validation between two independently-run tools on
+      related real material, not a coincidence of tuned test data.
+- [x] Compared the new recommendation against the OLD generic-band formula
+      on the SAME real capture pair (old formula reproduced manually,
+      matching the fallback branch's own regression-guarded code path):
+      **old 6.7 dB vs. new 11.4 dB** — a real, substantial, well-explained
+      difference. The old blended measurement understated the conflict
+      because it averaged the kick's broader low-end (including transient
+      content up to 150 Hz) against the sub's broadband level; the new
+      measurement shows the kick is comparatively QUIETER specifically at
+      the sub's actual 44.9 Hz fundamental than the broadband picture
+      implied, correctly calling for more protection right where the real
+      overlap lives.
+- [x] The existing trigger-alignment sanity check (unrelated, pre-existing
+      code, untouched by this change) correctly fired a real WARNING on
+      this exact real capture — the "trap-drums" Trigger clip's note
+      positions don't perfectly match this specific 4-bar window's actual
+      kick placements (plausibly because the drop's kick pattern varies
+      bar-to-bar, A-B-A-C style, while the Trigger clip encodes one fixed
+      pattern). Confirms the sanity check still does its job correctly
+      alongside the new masking-depth logic — flagging real data problems
+      honestly rather than silently producing a confident-looking but
+      misaligned fit. Not chased further this pass (a separate, pre-
+      existing finding, not a regression).
+- [ ] Draw the new recommended envelope into Volume Shaper for real and
+      confirm it sounds like a genuine improvement over the old generic-
+      band recommendation by ear, on material where they differ audibly —
+      not done this pass (would need a real ShaperBox-equipped project;
+      this Set uses the automatic Compressor strategy).
+- [ ] Whether `MASKING_MIN_VOICED_FRACTION = 0.10` is calibrated well
+      enough against only 3 real data points (noise/Reese/sub) — worth
+      revisiting if a future real bass capture sits close to that
+      boundary and the routing (narrowband vs. fallback) looks wrong by
+      ear.
