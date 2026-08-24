@@ -100,10 +100,14 @@ def _decode_mp3_via_ffmpeg(path: str) -> tuple[np.ndarray, int]:
             pass
 
 
-def _load_for_scan(path: str) -> tuple[np.ndarray, int]:
+def load_for_scan(path: str) -> tuple[np.ndarray, int]:
     """Load one sample file. Mirrors `drumstats.load_loop`'s soundfile-
     first / ffmpeg-fallback MP3 path, but reads raw (no `audio.load`
-    1 s-minimum floor)."""
+    1 s-minimum floor) — a one-shot can legitimately be well under 1 s.
+    Public (not `_`-prefixed): reused by `samplepitch.py` (M11c) so pitch
+    tagging loads short one-shots the same correct way `scan_file` does,
+    rather than going through `pitch.pitch()`'s `audio.load`-based path
+    (which has the 1 s floor this function exists to avoid)."""
     try:
         return _read_raw(path)
     except Exception:
@@ -202,7 +206,7 @@ def scan_file(path: str) -> dict[str, Any]:
     `{"path": path, "unreadable": True, "error": "..."}`.
     """
     try:
-        samples, sr = _load_for_scan(path)
+        samples, sr = load_for_scan(path)
     except Exception as exc:  # noqa: BLE001 — decode failure is a record, not a crash
         return {"path": path, "unreadable": True, "error": str(exc)}
 

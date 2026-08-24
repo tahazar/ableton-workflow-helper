@@ -496,10 +496,19 @@ awh samples embed [--model music|general]  # M11b: compute missing/stale CLAP
     # files are skipped; a model switch re-embeds everything, reporting
     # counts). Zero un-embedded files is a normal "up to date" state, not
     # an error. Must run before --semantic works at all.
+awh samples pitch-tag                    # M11c: pitch-tag eligible kick/sub/
+    # 808 one-shots (periodicity-tracked f0 via mix pitch, never a naive
+    # FFT-peak pick) — enables `search --near-note`. Incremental, opt-in;
+    # only one-shots whose energy is low-band-dominated are eligible
+    # (hats/vocals/melodic loops are never candidates, by design).
 awh samples search <query...> [--any] [--type loop|oneshot]
     [--min-dur s] [--max-dur s] [--bpm N --bpm-tol N] [--band low|mid|high]
+    [--near-note <note> --cents N]
     # token match over normalized path tokens (ALL terms by default),
-    # plus trait filters; ranked table, --json for the skill
+    # plus trait filters; ranked table, --json for the skill.
+    # --near-note (M11c, Ableton convention e.g. "F1"): filter to
+    # pitch-tagged kick/sub one-shots within --cents (default 50, a
+    # quarter-tone) of that note — needs `pitch-tag` first.
 awh samples search --semantic "<phrase>" [--type ...] [--min-dur ...]
     [--bpm ...] [--band ...]                # M11b: embeds the phrase (CLAP),
     # ranks by cosine similarity to actual audio CONTENT, not filename
@@ -553,9 +562,18 @@ awh samples stats                        # index size, roots, histograms
   than silently retrying with a guessed query.
 - Token search matches PATH/FOLDER text; semantic search matches AUDIO
   CONTENT (CLAP embeddings); `similar --traits` matches TIMBRAL
-  statistics (MFCCs + spectral shape + band split). None of the three is
-  "perception" or musical key matching — say so if the owner expects
-  harmonic relationships.
+  statistics (MFCCs + spectral shape + band split) — none of these three
+  is musical key matching. `search --near-note` (M11c) IS real key
+  matching, but scoped narrowly: only pitch-TAGGED kick/sub/808 one-shots
+  (`pitch-tag` first), never loops or melodic material — say so if the
+  owner expects a lead/pad/vocal to be key-filterable too, that's out of
+  scope for now.
+- **"Find a kick that matches my sub"**: run (or confirm already-run)
+  `awh samples pitch-tag`, then `search --near-note <key root>` — the note
+  is the SET's active key/scale root or whatever note the owner names, in
+  Ableton convention (same as everywhere else in this CLI). A hit with NO
+  pitch shown was never pitch-tagged or came back unvoiced (a genuinely
+  broadband kick) — don't claim it matches a key either way.
 - BPM only appears when the loop heuristic actually fires (duration +
   onset count); a one-shot or an ambiguous file legitimately has no BPM —
   don't invent one. Relay `bpm_confidence` rather than presenting an
@@ -777,7 +795,16 @@ in this folder"):
    `--traits` forced; the reference doesn't need to be indexed itself.
    Neither is musical key matching — say so if the owner seems to expect
    harmonic matching.
-5. Once picked, hand off to whatever the owner actually wants to DO with
+5. For "find a kick/808 that matches my sub" or any note-specific request
+   for a low-end one-shot (M11c): run `awh samples pitch-tag` first if it
+   hasn't been run (check `awh samples stats`' pitch coverage line), then
+   `search --near-note <note>` with the note the owner names or the Set's
+   active key root, composed with whatever other filters/terms apply
+   (e.g. `search kick --near-note F1`). This IS real key matching, but
+   ONLY for pitch-tagged kick/sub/808 one-shots — never for loops or
+   melodic material (those aren't eligible candidates, see the Sample
+   library section above).
+6. Once picked, hand off to whatever the owner actually wants to DO with
    it — audition via AWH Remote if available, `awh clip from-audio` for
    melodic material, `awh drums detect-onsets`/`awh op match` for
    drum/sound-design uses, or just report the path back.

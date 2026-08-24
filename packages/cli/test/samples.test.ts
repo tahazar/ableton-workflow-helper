@@ -11,12 +11,16 @@ import {
   cosineSimilarity,
   expectedClapModelLabel,
   indexHasClapEmbeddings,
+  isPitchTagCandidate,
   loadSamplesIndex,
   makePythonClapEmbedder,
   makePythonClapTextEmbedder,
+  makePythonPitchTagger,
   makePythonScanner,
   normalizeVector,
+  noteNameToHz,
   pathTokens,
+  pitchDisplayNote,
   planIndexUpdate,
   rankSimilar,
   rankSimilarSemantic,
@@ -25,6 +29,7 @@ import {
   resolveSamplesIndexPath,
   runEmbed,
   runIndex,
+  runPitchTag,
   saveSamplesIndex,
   scanFilesChunked,
   searchIndex,
@@ -32,7 +37,11 @@ import {
   suggestRelaxations,
   summarizeIndex,
   walkSampleFiles,
+  PITCH_ANALYSIS_VERSION,
   type ClapEmbedRecord,
+  type PitchInfo,
+  type PitchTagFn,
+  type RawPitchRecord,
   type SamplesIndexFile,
   type ScanRecord,
   type ScannerFn,
@@ -929,6 +938,303 @@ describe.skipIf(!hasRealPython)(
         // never a silent fallback: no token-search-shaped hit table on stdout
         expect(result.stdout.trim()).toBe("");
       },
+    );
+  },
+);
+
+// ---------------------------------------------------------------------------
+// M11c: pitch tagging (kicks/subs -> f0/note, for key-matched search).
+// Built 2026-08-23 after using `mix pitch` to find a real Reese/Sub
+// conflict — same shape as M11b's embed/search-semantic pattern above:
+// a separate, opt-in enrichment pass, incremental, only over eligible
+// candidates (isPitchTagCandidate).
+// ---------------------------------------------------------------------------
+
+describe("M11c pitch tagging — index/search logic (fake tagger)", () => {
+  /** A candidate record: a one-shot whose energy is low-band-dominated
+   * (the eligibility filter's own criteria). */
+  function candidateRecord(path: string, overrides: Partial<ScanRecord> = {}): ScanRecord {
+    return fakeScanRecord(path, { type_guess: "oneshot", dominant_band: "low", ...overrides });
+  }
+
+  function fakePitchRecord(
+    path: string,
+    overrides: Partial<RawPitchRecord> = {},
+  ): RawPitchRecord {
+    return {
+      path,
+      unreadable: false,
+      error: null,
+      pitch_analysis_version: PITCH_ANALYSIS_VERSION,
+      state: "voiced",
+      f0_hz: 55.0,
+      note: { name: "A1", midi: 33, cents: 0 }, // standard notation, as the real Python side stamps it
+      voiced_fraction: 0.9,
+      confidence: 0.6,
+      f0_stability_semitones: 0.1,
+      harmonic_dominance: {
+        flagged: false,
+        harmonic: null,
+        ratio_db: null,
+        time_s: null,
+        fraction_of_voiced_frames: 0,
+      },
+      ...overrides,
+    };
+  }
+
+  function fakePitchTagger(): { tagger: PitchTagFn; calls: string[][] } {
+    const calls: string[][] = [];
+    const tagger: PitchTagFn = async (files) => {
+      calls.push(files);
+      return files.map((f) => fakePitchRecord(f));
+    };
+    return { tagger, calls };
+  }
+
+  describe("isPitchTagCandidate", () => {
+    it("true for a low-band one-shot", () => {
+      const index = indexFromRecords([candidateRecord("/a.wav")]);
+      expect(isPitchTagCandidate(index.files["/a.wav"]!)).toBe(true);
+    });
+    it("false for a loop (even low-band)", () => {
+      const index = indexFromRecords([
+        fakeScanRecord("/a.wav", { type_guess: "loop", dominant_band: "low" }),
+      ]);
+      expect(isPitchTagCandidate(index.files["/a.wav"]!)).toBe(false);
+    });
+    it("false for a one-shot NOT low-band (a hat, say)", () => {
+      const index = indexFromRecords([
+        fakeScanRecord("/a.wav", { type_guess: "oneshot", dominant_band: "high" }),
+      ]);
+      expect(isPitchTagCandidate(index.files["/a.wav"]!)).toBe(false);
+    });
+    it("false for an unreadable entry", () => {
+      const index = indexFromRecords([
+        { path: "/a.wav", unreadable: true, error: "boom" } as ScanRecord,
+      ]);
+      expect(isPitchTagCandidate(index.files["/a.wav"]!)).toBe(false);
+    });
+  });
+
+  it("runPitchTag tags only candidates and is incremental (second run tags 0)", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "kick.wav"));
+    await touchFile(join(corpus, "hat.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const scanner: ScannerFn = async (files) =>
+      files.map((f) =>
+        f.includes("kick")
+          ? candidateRecord(f)
+          : fakeScanRecord(f, { type_guess: "oneshot", dominant_band: "high" }),
+      );
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const { tagger, calls } = fakePitchTagger();
+    const first = await runPitchTag({ indexPath, tagger });
+    expect(first.tagged).toBe(1);
+    expect(first.neverTagged).toBe(1);
+    expect(first.stale).toBe(0);
+    expect(first.upToDate).toBe(0);
+    expect(first.notCandidate).toBe(1); // the hat
+    expect(first.totalCandidates).toBe(1);
+    expect(calls.flat()).toEqual([join(corpus, "kick.wav")]); // never called for the hat
+
+    const second = await runPitchTag({ indexPath, tagger });
+    expect(second.tagged).toBe(0);
+    expect(second.upToDate).toBe(1);
+  });
+
+  it("re-tags a stale (older PITCH_ANALYSIS_VERSION) entry", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "kick.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const scanner: ScannerFn = async (files) => files.map((f) => candidateRecord(f));
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const index = await loadSamplesIndex(indexPath);
+    const kickPath = join(corpus, "kick.wav");
+    index.files[kickPath]!.pitch = {
+      analysisVersion: 0, // older than PITCH_ANALYSIS_VERSION
+      state: "unvoiced",
+      f0Hz: null,
+      note: null,
+      voicedFraction: 0,
+      confidence: 0,
+      f0StabilitySemitones: null,
+      harmonicDominance: { flagged: false, harmonic: null, ratioDb: null, timeS: null, fractionOfVoicedFrames: 0 },
+    };
+    await saveSamplesIndex(indexPath, index);
+
+    const { tagger } = fakePitchTagger();
+    const result = await runPitchTag({ indexPath, tagger });
+    expect(result.stale).toBe(1);
+    expect(result.neverTagged).toBe(0);
+    expect(result.tagged).toBe(1);
+
+    const reloaded = await loadSamplesIndex(indexPath);
+    expect(reloaded.files[kickPath]!.pitch!.state).toBe("voiced"); // overwritten by the re-tag
+  });
+
+  it("zero eligible candidates is a STATE (totalCandidates=0), not an error", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "hat.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const scanner: ScannerFn = async (files) =>
+      files.map((f) => fakeScanRecord(f, { type_guess: "oneshot", dominant_band: "high" }));
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const { tagger, calls } = fakePitchTagger();
+    const result = await runPitchTag({ indexPath, tagger });
+    expect(result.totalCandidates).toBe(0);
+    expect(result.tagged).toBe(0);
+    expect(calls.length).toBe(0);
+  });
+
+  // ---------------------------------------------------------------------
+  // Octave-convention correctness — the trickiest part of this feature:
+  // Python's pitch.py stamps `note.name` in STANDARD/scientific notation
+  // (C4 = MIDI 60), a full octave apart from this codebase's Ableton
+  // convention (C3 = MIDI 60, @awh/core's pitchToMidi/midiToPitch). Every
+  // note NAME the user ever sees or types must go through the Ableton
+  // convention — the raw Python `name` string must never reach a user.
+  // ---------------------------------------------------------------------
+
+  it("noteNameToHz parses Ableton-convention names (A3 = 440 Hz, not A4)", () => {
+    expect(noteNameToHz("A3")).toBeCloseTo(440, 6);
+    expect(noteNameToHz("C3")).toBeCloseTo(261.6255653, 3); // Ableton C3 = middle C = MIDI 60
+  });
+
+  it("pitchDisplayNote re-derives the Ableton name from midi, ignoring the raw Python name", () => {
+    const info: PitchInfo = {
+      analysisVersion: PITCH_ANALYSIS_VERSION,
+      state: "voiced",
+      f0Hz: 440,
+      note: { name: "A4", midi: 69, cents: 0 }, // Python's own (standard-notation) name — must be ignored
+      voicedFraction: 0.9,
+      confidence: 0.6,
+      f0StabilitySemitones: 0.1,
+      harmonicDominance: { flagged: false, harmonic: null, ratioDb: null, timeS: null, fractionOfVoicedFrames: 0 },
+    };
+    expect(pitchDisplayNote(info)).toBe("A3"); // Ableton convention, NOT the stored "A4"
+  });
+
+  it("pitchDisplayNote returns null when there's no pitch", () => {
+    const info: PitchInfo = {
+      analysisVersion: PITCH_ANALYSIS_VERSION,
+      state: "unvoiced",
+      f0Hz: null,
+      note: null,
+      voicedFraction: 0,
+      confidence: 0,
+      f0StabilitySemitones: null,
+      harmonicDominance: { flagged: false, harmonic: null, ratioDb: null, timeS: null, fractionOfVoicedFrames: 0 },
+    };
+    expect(pitchDisplayNote(info)).toBeNull();
+  });
+
+  // ---------------------------------------------------------------------
+  // search --near-note
+  // ---------------------------------------------------------------------
+
+  function withPitch(rec: ScanRecord, pitch: PitchInfo): SamplesIndexFile["files"][string] {
+    return { path: rec.path, size: 1, mtimeMs: 1, tokens: pathTokens(rec.path), scan: rec, pitch };
+  }
+
+  function voicedPitch(f0Hz: number): PitchInfo {
+    return {
+      analysisVersion: PITCH_ANALYSIS_VERSION,
+      state: "voiced",
+      f0Hz,
+      note: { name: "?", midi: 0, cents: 0 },
+      voicedFraction: 0.9,
+      confidence: 0.6,
+      f0StabilitySemitones: 0.1,
+      harmonicDominance: { flagged: false, harmonic: null, ratioDb: null, timeS: null, fractionOfVoicedFrames: 0 },
+    };
+  }
+
+  it("searchIndex --near-note matches within cents tolerance and excludes untagged/unvoiced entries", () => {
+    const targetHz = noteNameToHz("F1"); // this project's own key root, per the real session
+    const index: SamplesIndexFile = { version: 1, roots: [], files: {} };
+    // exactly on the note
+    index.files["/on-note.wav"] = withPitch(candidateRecord("/on-note.wav"), voicedPitch(targetHz));
+    // 20 cents sharp — inside the default 50-cent tolerance
+    index.files["/close.wav"] = withPitch(
+      candidateRecord("/close.wav"),
+      voicedPitch(targetHz * 2 ** (20 / 1200)),
+    );
+    // a full semitone (100 cents) away — outside the default tolerance
+    index.files["/far.wav"] = withPitch(
+      candidateRecord("/far.wav"),
+      voicedPitch(targetHz * 2 ** (100 / 1200)),
+    );
+    // a candidate that was never tagged
+    index.files["/untagged.wav"] = { ...indexFromRecords([candidateRecord("/untagged.wav")]).files["/untagged.wav"]! };
+    // a tagged-but-unvoiced (broadband) entry sitting numerically at f0Hz=null
+    index.files["/broadband.wav"] = withPitch(candidateRecord("/broadband.wav"), {
+      ...voicedPitch(targetHz),
+      state: "unvoiced",
+      f0Hz: null,
+    });
+
+    const hits = searchIndex(index, [], { nearNoteHz: targetHz });
+    const paths = hits.map((h) => h.path).sort();
+    expect(paths).toEqual(["/close.wav", "/on-note.wav"]);
+  });
+
+  it("suggestRelaxations names untagged eligible candidates when --near-note finds nothing", () => {
+    const targetHz = noteNameToHz("F1");
+    const index: SamplesIndexFile = { version: 1, roots: [], files: {} };
+    index.files["/kick1.wav"] = indexFromRecords([candidateRecord("/kick1.wav")]).files["/kick1.wav"]!;
+    index.files["/kick2.wav"] = indexFromRecords([candidateRecord("/kick2.wav")]).files["/kick2.wav"]!;
+
+    const suggestions = suggestRelaxations(index, [], { nearNoteHz: targetHz });
+    expect(suggestions.some((s) => s.note.includes("pitch-tag"))).toBe(true);
+  });
+});
+
+describe.skipIf(!hasRealPython)(
+  "M11c real samplepitch.py subprocess integration",
+  () => {
+    const SR = 44100;
+    let originalAwhPython: string | undefined;
+
+    beforeEach(() => {
+      originalAwhPython = process.env.AWH_PYTHON;
+      process.env.AWH_PYTHON = MAIN_VENV_PYTHON;
+    });
+    afterEach(() => {
+      if (originalAwhPython === undefined) delete process.env.AWH_PYTHON;
+      else process.env.AWH_PYTHON = originalAwhPython;
+    });
+
+    it(
+      "pitch-tags a real tuned low sine as voiced, and real broadband noise as unvoiced",
+      async () => {
+        const corpus = join(tmpDir, "corpus");
+        const tunedPath = join(corpus, "808.wav");
+        const noisePath = join(corpus, "kick.wav");
+        writeWavMono16(tunedPath, sineSamples(55.0, SR, 0.6), SR);
+        writeWavMono16(noisePath, noiseSamples(0.25, SR, 0.6, 3), SR);
+        const indexPath = join(tmpDir, "index.json");
+        const scanner: ScannerFn = async (files) =>
+          files.map((f) => candidateRecord(f)); // force both eligible regardless of real scan result
+
+        await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+        const { python, cwd } = analysisPython();
+        const tagger = makePythonPitchTagger(python, cwd);
+        const result = await runPitchTag({ indexPath, tagger });
+        expect(result.tagged).toBe(2);
+
+        const reloaded = await loadSamplesIndex(indexPath);
+        expect(reloaded.files[tunedPath]!.pitch!.state).toBe("voiced");
+        expect(reloaded.files[tunedPath]!.pitch!.f0Hz).not.toBeNull();
+        expect(reloaded.files[noisePath]!.pitch!.state).toBe("unvoiced");
+        expect(reloaded.files[noisePath]!.pitch!.f0Hz).toBeNull();
+      },
+      20_000,
     );
   },
 );
