@@ -181,3 +181,51 @@ envelope). Realization strategies (owner decision: ShaperBox is ONE option):
 No taste judgments, no arrangement opinions, no auto-apply of EQ moves
 (report suggests; owner or an explicit follow-up command acts), no stem
 separation here (M8), no "AI mastering" — this is a meter with explanations.
+
+## Future work: real gaps found doing real masking/mix analysis (2026-08-23)
+
+Investigating a real "does my sub compete with my call/response layers"
+question during a live production session required hand-rolling throwaway
+numpy scripts outside `awh` entirely — a sign the toolset has a real gap
+here, not that the question was unusual. Concretely found, in order of
+how much they'd have helped:
+
+- **No real pitch-detection tool.** The only option was a naive
+  "loudest FFT bin" peak-picker, which was CAUGHT being wrong live: a
+  growl patch's 2nd harmonic outshone its own fundamental partway through
+  a sustained note, and the naive picker reported the harmonic as the
+  note. A real tool needs autocorrelation/cepstral/YIN-style tracking
+  (follows the waveform's actual periodicity, not just the tallest
+  spectral spike) — this is the exact class of tool needed to answer "is
+  this sample/patch's fundamental actually where the note name implies,"
+  which is a real, recurring question before stacking/layering anything.
+- **No reusable narrowband energy-compare command.** Comparing sub vs.
+  scoop-zone (140-200 Hz) vs. low-mid energy across isolated layers is a
+  real, recurring masking-diagnosis workflow, not a one-off — deserves to
+  be `awh mix band-compare <fileA> <fileB> ... --bands "20-100,140-200,
+  200-500"` (or similar), not disposable scratch code re-derived each
+  session.
+- **The solo→capture→unsolo-per-layer workflow was entirely manual.** Real
+  risk of leaving a track soloed by mistake between steps. A single
+  command that solos/captures/unsolos a list of tracks in sequence and
+  outputs a comparison table would remove the manual choreography.
+- **Ad-hoc band-energy numbers were relative, not calibrated** — a bare
+  `10*log10(sum of |FFT|^2)` is only meaningful for comparing captures
+  taken in the same sitting at the same gain staging, not a portable
+  measurement. A real tool should output calibrated per-band dBFS (or a
+  LUFS-style per-band level), the same discipline `mix report`'s
+  LUFS-I/true-peak numbers already follow.
+- **One FFT over an entire multi-bar capture smears time away** — treats
+  a rhythmically-changing bassline as if it were a stationary tone.
+  Real narrowband/masking analysis wants either an averaged/windowed
+  periodogram (Welch's method) or per-note segmentation, especially for
+  "does THIS specific note's fundamental land in the danger zone"
+  questions, which are inherently about a moment in time, not an 8-bar
+  average.
+- **Confirmed, not a gap**: `mix report`'s existing spectral tilt is
+  intentionally broad-spectrum (100 Hz-4 kHz, one number) — it correctly
+  answered "is this mix bass-heavy overall" (no) but structurally cannot
+  answer a narrowband masking question like the one above. Worth stating
+  plainly so a future session doesn't assume `mix report` alone covers
+  masking diagnosis — it doesn't, by design, and the gap above is what
+  would close it.
