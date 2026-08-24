@@ -1571,3 +1571,109 @@ reads visible page text/headings.
 - [ ] Skill: "make an endless version of my track to share" → Claude
       follows the Typical Flows entry (plan -> owner fills pools -> build,
       not `awh sections` or hand-composed HTML).
+
+## M12 (AWH Remote) owner checklist
+
+Not yet verified in Live (built without a running Max/Live session — see
+`docs/design/live-remote.md` for the spec and `m4l/README.md`'s "AWH
+Remote" section for the protocol, install steps, and full manual-patching
+fallback). Run this before trusting the device on a real project, and
+before deleting the old `AWH Capture Tap.maxpat` from a Set/the repo.
+
+**Code-side pre-check done (everything possible without opening Max)**:
+`m4l/AWH Remote.maxpat` parses as valid JSON (72 boxes, 89 connections) and
+passed an automated structural check (a builder script, not hand-verified
+by eye) confirming: every connection references a box/outlet/inlet that
+actually exists in range, zero `metro`/`tempo`/`clocker`/`delay` objects
+(no timers, per the design's hard requirement), zero `print` objects, and
+the `record`/`stop`/`loop`/`play` subsystem is wired byte-identically to
+the already-Live-validated `AWH Capture Tap.maxpat`. This cannot confirm
+the patch actually RUNS correctly in Max — only that nothing looks
+malformed at the object/JSON level, same caveat as the Ducker's own
+pre-check.
+
+Independently verified on the CLI/OSC side (no Max needed): `packages/cli
+/test/remote.test.ts` — byte-exact checks for `/awh/fire`/`/awh/scene`/
+`/awh/stopclips`/`/awh/jump`; a full integration suite against a fake UDP
+device (ping→pong v2 handshake, correct message sequencing for `awh
+play`/`stop`/`jump`/`launch`/`stop-clips`, `/awh/error` surfaced as a clear
+thrown Error rather than swallowed); a negative control (no listener on
+the port → clear "requires the AWH Remote device..." error within the
+timeout, confirmed fast — not a hang); and `lib audition` end-to-end
+against a real fake gateway (serve-fake style, in-process) + the fake UDP
+device running simultaneously, covering the sweep-previous-by-exact-name
+behavior (with a same-prefix decoy clip proven to survive), `--keep`,
+`--end`, zero-empty-slots (clear thrown error, nothing fired), and
+unknown-slug (LibraryStore's existing clear error). `pnpm test` fully
+green with this suite included — see the build session's own report for
+the exact count. None of this reaches the real Max runtime; everything
+below this line needs Live open:
+
+- [ ] `m4l/AWH Remote.maxpat` opens/pastes cleanly in Max on the master
+      track (between `plugin~`/`plugout~`) without validator errors. If it
+      doesn't, hand-build from the manual build table in `m4l/README.md` —
+      the table describes every object and connection, organized by
+      subsystem, specifically so this device can be rebuilt from scratch if
+      the generated JSON doesn't survive Max's validator (same fallback
+      discipline as the Ducker).
+- [ ] `awh play` starts the transport; `awh play --from-bar 9` jumps then
+      plays (confirm the jump lands on the right bar by ear/by the
+      playhead, not just that playback starts); `awh stop` stops it.
+- [ ] `awh jump <bar>` moves the arrangement playhead without starting
+      playback.
+- [ ] `awh launch track:N/slot:M` on an OCCUPIED slot fires it audibly, and
+      **respects Live's launch quantization** (confirm it doesn't cut in
+      instantly if quantization is set to e.g. 1 bar — it should wait for
+      the next quantized boundary, since `call fire` goes through Live's
+      normal launch-quantize path, not `set` positioning). `awh launch
+      scene:N` fires the whole scene the same way.
+- [ ] `awh stop-clips track:N` stops just that track's clips; `awh
+      stop-clips` (no arg) stops the whole Set's clips.
+- [ ] Bad-index behavior: `awh launch track:2/slot:-1` (or any negative
+      index) comes back as a clear CLI error sourced from `/awh/error`, not
+      a hang or a silent no-op. A positive-but-out-of-range index (e.g.
+      `fire 99 0` on a smaller Set) is a KNOWN gap (m4l/README.md's
+      "partial, by design" note) — confirm it behaves as documented
+      (silent no-op from Live's side, not a crash) rather than assuming
+      it's caught.
+- [ ] `awh lib audition <slug> <track>` places AND fires — confirm it's
+      audible immediately (respecting launch quantization, same as
+      `launch`). Audition a second slug on the same track → confirm the
+      first is swept (gone from the Set) and the second is now playing.
+      `--keep` → confirm the clip survives a subsequent audition/--end.
+      `awh lib audition --end` → confirm it sweeps the last non-`--keep`
+      audition and reports "nothing to end" cleanly when there isn't one.
+- [ ] **Manual re-init button recovers after a paste-reload** — the
+      specific, real bug the Ducker session found and documented: after
+      select-all/copy/pasting an updated `AWH Remote.maxpat` over an
+      already-open device (not a fresh insert), `awh play`/`awh jump`
+      should fail (stale `live.path`/`live.object` binding) until the
+      MANUAL RE-INIT button is clicked once, after which they should work
+      again without removing/reinserting the device. Per `m4l/README.md`'s
+      Notes, the button only rebinds Pair A (transport/ping) — confirm
+      whether `awh launch`/`awh stop-clips`/`awh jump` (Pairs B–E, which
+      re-resolve their own path fresh on every call and per the design
+      should NOT need re-init) genuinely keep working through a paste-
+      reload with no button click, or whether that assumption doesn't hold
+      in practice — either finding should get written back into the
+      README's Notes.
+- [ ] **Owner performance protocol** (m4l/README.md's "Owner performance
+      protocol" section) — run all three conditions (no device / frozen +
+      editor closed / unfrozen + editor open) and RECORD THE THREE NUMBERS
+      here:
+      - Baseline (no AWH device): ___
+      - Frozen, editor closed: ___
+      - Unfrozen, editor open: ___
+      If the frozen/editor-closed number is meaningfully worse than
+      baseline, that's a real patch-level regression to escalate
+      (unexpected per the object-count diagnosis) — otherwise this closes
+      the owner's original "Capture Tap feels heavy" report as
+      environmental, not a patch defect.
+- [ ] **Migration**: with AWH Remote loaded and confirmed working, remove
+      the old AWH Capture Tap device from the Set (same port, so they
+      can't coexist) and re-confirm `awh mix capture`/`op verify`/`mix duck
+      push` still work unchanged (superset protocol) — this is the actual
+      cutover, not just a side-by-side comparison. Deleting `AWH Capture
+      Tap.maxpat` from the repo afterward is optional and the owner's call.
+- [ ] Freeze to `AWH Remote.amxd` and reload from a fresh Live session (new
+      Set) → still responds on 9720/9721 without re-patching.

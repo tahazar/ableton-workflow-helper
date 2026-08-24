@@ -123,22 +123,42 @@ export async function sendAndAwaitReply(params: {
   matchAddress: string;
   timeoutMs?: number;
 }): Promise<(string | number)[]> {
-  const { address, args = [], sendPort, replyPort, matchAddress, timeoutMs = 1000 } = params;
+  const reply = await sendAndAwaitAnyReply({ ...params, matchAddresses: [params.matchAddress] });
+  return reply.args;
+}
+
+/**
+ * Like `sendAndAwaitReply`, but resolves on the FIRST reply whose address is
+ * any of `matchAddresses` (also returning which one matched) — used by
+ * remote.ts, where a single sent command (e.g. `/awh/fire`) can come back as
+ * either `/awh/status` (success) or `/awh/error` (bad indices), and the
+ * caller needs to tell those apart.
+ */
+export async function sendAndAwaitAnyReply(params: {
+  address: string;
+  args?: OscArg[];
+  sendPort: number;
+  replyPort: number;
+  matchAddresses: string[];
+  timeoutMs?: number;
+}): Promise<{ address: string; args: (string | number)[] }> {
+  const { address, args = [], sendPort, replyPort, matchAddresses, timeoutMs = 1000 } = params;
   const socket = createSocket("udp4");
   try {
-    return await new Promise<(string | number)[]>((resolve, reject) => {
+    return await new Promise<{ address: string; args: (string | number)[] }>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(
           new Error(
-            `no reply to ${address} (expected ${matchAddress} on port ${replyPort}) within ${timeoutMs} ms`,
+            `no reply to ${address} (expected ${matchAddresses.join(" or ")} on port ${replyPort}) ` +
+              `within ${timeoutMs} ms`,
           ),
         );
       }, timeoutMs);
       socket.on("message", (msg) => {
         const decoded = decodeOscMessage(msg);
-        if (decoded.address === matchAddress) {
+        if (matchAddresses.includes(decoded.address)) {
           clearTimeout(timer);
-          resolve(decoded.args);
+          resolve(decoded);
         }
       });
       socket.on("error", (err) => {

@@ -1,8 +1,12 @@
 # Design: AWH Remote (M12 — transport, clip launch, lean M4L consolidation)
 
-- Status: in build (2026-08-20). Owner asks: (1) close the transport /
-  clip-launch gap (the Extensions SDK has neither; the LOM does), and
-  (2) fix the Capture Tap's reported performance impact on Live.
+- Status: built, pending owner validation in Live (2026-08-24 — code,
+  tests, and the M4L device/docs are complete; the owner performance
+  protocol and the fire/scene/jump/re-init checklist below still need a
+  real Live session, see docs/dev-loop.md's "M12 (AWH Remote) owner
+  checklist"). Owner asks: (1) close the transport / clip-launch gap (the
+  Extensions SDK has neither; the LOM does), and (2) fix the Capture Tap's
+  reported performance impact on Live.
 - Diagnosis first, honestly: the committed tap patch is already minimal —
   24 objects, no timers, no UI meters, event-driven throughout. The
   reported heaviness is therefore likely environmental (unfrozen device,
