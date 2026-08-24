@@ -71,6 +71,11 @@ awh vary <clipPath> --arrange [--at-bar N] ...
                                # after the track's last arrangement clip)
 awh sweep <trackPath> --prefix <p>   # delete audition clips by name prefix
                                      # (session AND arrangement)
+
+awh play [--from-bar N] / awh stop / awh jump <bar>   # transport (AWH Remote M4L device)
+awh launch track:0/slot:0 | scene:1                    # fire a clip slot or scene
+awh stop-clips [track:N]                               # call stop_all_clips
+awh lib audition <slug> <track> [--keep] / --end       # place + press play on a library clip
 ```
 
 Source clips can come from either view (`track:0/slot:2` or `track:0/arr:1`).
@@ -251,6 +256,9 @@ awh mix capture -o <file> --from-bar N --bars N   # record post-FX via the M4L t
 awh mix report <file> [--bpm N] [--target name] [--delivery club|streaming|apple]
 awh mix ab <fileA> <fileB> [--bpm N]              # loudness-matched A/B diff
 awh mix target <refFiles...> --save <name>        # measure refs -> genre target
+awh mix pitch <file> [--per-note]                 # periodicity-tracked f0 + harmonic-dominance flag
+awh mix bands <fileA> [fileB...] [--bands "lo-hi,..."]  # calibrated per-band dBFS (masking compare)
+awh mix layers <track:N> <track:M>... [--bars N --from-bar N]  # solo->capture->unsolo per track, then bands
 ```
 
 - **Quote the numbers; never invent one.** The report's findings each carry
@@ -267,6 +275,54 @@ awh mix target <refFiles...> --save <name>        # measure refs -> genre target
 - capture requires the AWH Capture Tap M4L device (m4l/README.md) on the
   master; if it fails, fall back to asking the user to export the span and
   run report on that file.
+- **Masking toolkit** ("does my sub fight my bassline", "is this patch's
+  fundamental where the note name says", "compare these layers"):
+  `mix pitch` tracks f0 by periodicity (pyin), never the loudest FFT bin —
+  it ALSO reports `harmonic_dominance` when a partial outgrows the
+  fundamental (e.g. a growl mid-note); relay both, don't just relay f0.
+  `--per-note` breaks a melody into onset-bounded notes instead of one
+  average. `mix bands` gives calibrated dBFS per named zone (sub/low/scoop
+  zone/low-mid/mid by default, or `--bands "lo-hi,..."`) — 0 dBFS = a
+  full-scale sine, so numbers compare across sessions, not just within
+  one. `mix layers` automates solo→capture→unsolo across a track list and
+  runs `mix bands` on the results — it restores each track's PRIOR solo
+  state (not just "unsoloed") even if a capture fails partway, so it's
+  safe to run mid-session without risking a track left soloed.
+
+## AWH Remote (`awh play` / `awh stop` / `awh jump` / `awh launch` / `awh stop-clips` / `awh lib audition`) — transport + clip launch
+
+```sh
+awh play [--from-bar N] [--sig beatsPerBar]   # start the transport (optionally
+                                               # jumping the playhead first)
+awh stop                                      # stop the transport
+awh jump <bar> [--sig beatsPerBar]            # set current_song_time (arrangement playhead)
+awh launch track:2/slot:0                     # fire a session clip slot
+awh launch scene:1                            # fire a scene
+awh stop-clips [track:N]                      # call stop_all_clips (omit track = whole Set)
+awh lib audition <slug> <track> [--keep]      # place a library clip + press play on it
+awh lib audition --end                        # sweep the pending (non---keep) audition
+```
+
+- The SDK has NO transport or clip-launch API at all (docs/sdk-feedback.md)
+  — every command above is OSC to the **AWH Remote** M4L device
+  (m4l/README.md), which supersedes the older AWH Capture Tap (same 9720/9721
+  ports; `mix capture`/`op verify`/`mix duck` keep working unchanged against
+  it). Requires that device loaded once by hand; if it's not, the error says
+  so plainly ("requires the AWH Remote device...") — don't retry blindly,
+  tell the user to load it (m4l/README.md's Install section).
+- `launch`/`jump`/`stop-clips` respect Live's launch quantization and print
+  the device's echoed reply; a bad index (e.g. a track/slot/scene that
+  doesn't exist) comes back as a clear error from the device, not a hang.
+- `lib audition` is the "make me hear this now" primitive: it places (`lib
+  place`'s empty-slot logic) AND fires in one command. By default the
+  clip is EPHEMERAL — auditioning the next slug (or `awh lib audition --end`)
+  sweeps THIS one first, by its exact clip name (never a prefix sweep, so a
+  similarly-named clip the owner kept is never touched). Pass `--keep` when
+  the owner wants to keep what they're hearing — it then behaves like a
+  normal `lib place` and won't be auto-swept.
+- Zero empty session slots on the target track is a clear thrown error (same
+  convention as `lib place`/`drop respond`) — tell the user to free one up or
+  pick a different track, don't guess a slot to overwrite.
 
 ## Operator assistant (`awh op`) — recipes + audio-sample sound matching
 
@@ -423,6 +479,92 @@ tracks (`track.create/update/delete/duplicate/clear-range/mixer`), scenes,
 devices (`device.insert/get/param/delete` — stock Live devices only),
 drum racks (`drum.pad-note`), Simpler (`simpler.sample`), `set.tempo`,
 audio clips (`clip.create-audio`).
+
+## Sample library (`awh samples`) — index, search, similarity
+
+A machine-local index of the owner's OWN sample folders — never their
+in-Live library clips (that's `awh lib`) — so "find me an amen break" can
+be answered from material they already own instead of guessed at.
+
+```sh
+awh samples index <dir...> [--rescan]   # walk folders (wav/aiff/flac/mp3),
+    # extract features, write ~/.awh/samples-index.json (override with
+    # AWH_SAMPLES_INDEX). Incremental by path+size+mtime; deleted files
+    # under the given folders are pruned; --rescan forces a full re-scan.
+awh samples embed [--model music|general]  # M11b: compute missing/stale CLAP
+    # embeddings for the whole index (batch, incremental — already-embedded
+    # files are skipped; a model switch re-embeds everything, reporting
+    # counts). Zero un-embedded files is a normal "up to date" state, not
+    # an error. Must run before --semantic works at all.
+awh samples search <query...> [--any] [--type loop|oneshot]
+    [--min-dur s] [--max-dur s] [--bpm N --bpm-tol N] [--band low|mid|high]
+    # token match over normalized path tokens (ALL terms by default),
+    # plus trait filters; ranked table, --json for the skill
+awh samples search --semantic "<phrase>" [--type ...] [--min-dur ...]
+    [--bpm ...] [--band ...]                # M11b: embeds the phrase (CLAP),
+    # ranks by cosine similarity to actual audio CONTENT, not filename
+    # tokens. Composes with the same trait filters as token search (filter
+    # first, rank semantically) — NOT with plain query terms in the same
+    # call. Files without an embedding are excluded and counted in a
+    # footer ("N of M files not embedded — run awh samples embed"). If the
+    # index has ZERO embeddings at all, this is a loud error naming
+    # `awh samples embed` — it NEVER silently falls back to token search.
+awh samples similar <file> [--count N] [--semantic | --traits]
+    # ranks indexed samples against a reference file (need not be indexed
+    # itself — embedded/scanned on the fly). Semantic (CLAP) is the
+    # DEFAULT once the index has any embeddings; --traits forces the v1
+    # MFCC/spectral/band-split vector; --semantic forces CLAP even if the
+    # default would have picked traits (e.g. no embeddings yet, in which
+    # case it errors rather than silently using traits).
+awh samples stats                        # index size, roots, histograms
+```
+
+- **THE LLM CONTRACT — which search tool first**: for a CONTENT-language
+  query — describing what the sound IS or DOES ("dusty breakbeat", "dark
+  growl bass", "something like a four-on-the-floor techno drum loop") —
+  try `search --semantic` FIRST (after confirming the index has
+  embeddings; run `awh samples embed` first if not). For a NAME-like query
+  — the owner names a pack, filename fragment, or exact trait ("the
+  Vengeance snare", "amen break", "anything at 128 BPM") — token
+  `search` remains first; it's exact and free, semantic search adds
+  nothing when the owner already knows the name. Either way: search
+  first, never invent a path. If the search narrows to ONE clear winner,
+  use it and say why ("used `amen-break-170.wav` — the only hit for
+  'amen break', 170 BPM matches the Set's tempo", or for semantic: "used
+  `<path>` — top score 0.34 for 'dusty breakbeat', closest in the
+  library"). If SEVERAL are plausible, present the top few with their
+  traits (duration/type/BPM/band) AND their score if semantic, and ASK
+  the owner which one — never silently pick among several equally-good
+  candidates. Combined with AWH Remote's audition, candidates become
+  listenable in Live before committing to one.
+- **Scores are shown, never overclaimed.** A semantic score is "closest
+  in the library" — relative ranking, not a confidence that it's "a
+  match" or "the right sound." Relay it as a number for the owner to
+  judge, the same spirit as `bpm_confidence` below.
+- `index` must run before `search`/`similar` do anything useful — if asked
+  to find a sample and the index is empty (or plainly stale — the owner
+  mentions a folder that was never indexed), run `awh samples index
+  <folder>` first rather than reporting "not found" against an empty index.
+  `embed` is a separate, additional step on top of `index` — semantic
+  search/similarity do nothing until it's run at least once.
+- Zero hits is a normal result, not an error: relay the printed
+  relaxation suggestions (fewer terms, `--any`, dropped filters) for
+  token search, or the not-embedded footer for semantic search, rather
+  than silently retrying with a guessed query.
+- Token search matches PATH/FOLDER text; semantic search matches AUDIO
+  CONTENT (CLAP embeddings); `similar --traits` matches TIMBRAL
+  statistics (MFCCs + spectral shape + band split). None of the three is
+  "perception" or musical key matching — say so if the owner expects
+  harmonic relationships.
+- BPM only appears when the loop heuristic actually fires (duration +
+  onset count); a one-shot or an ambiguous file legitimately has no BPM —
+  don't invent one. Relay `bpm_confidence` rather than presenting an
+  estimate as certain.
+- The index (and its embeddings) is machine-local and never committed
+  (absolute paths, meaningless off-machine) — don't suggest saving it to
+  the repo or `awh lib`; if the owner wants a sample kept for reuse
+  across projects, that's still `awh save`/`awh lib place` after they've
+  picked it.
 
 ## Endless player (`awh endless`) — seeded, ever-different arrangements
 
@@ -597,6 +739,49 @@ garage hats", "use my saved bassline"):
    matching placeholder clip) on a sensibly-named track, or ask the owner
    where they want it.
 
+**Find a sample from the owner's own folders** ("find me an amen break",
+"got any deep house kicks in my packs", "find something dusty and
+breakbeat-y", "find something like this sample", "what samples do I have
+in this folder"):
+1. If the relevant folder has never been indexed (or the owner mentions a
+   folder you haven't seen before), `awh samples index <folder...>` first —
+   it's incremental (unchanged files are skipped on repeat runs), so
+   re-indexing a folder the owner already indexed is cheap and safe to do
+   whenever unsure.
+2. **Pick token or semantic search first, by query SHAPE** (see the
+   Sample library section's LLM CONTRACT above): a CONTENT-language
+   description ("dusty breakbeat", "dark growl bass") → `awh samples
+   embed` (if the index has no embeddings yet — skip if it already does)
+   then `awh samples search --semantic "<phrase>" [--type ...] [--bpm ...]
+   [--band ...]`. A NAME-like query (pack name, filename fragment, exact
+   trait like a BPM) → `awh samples search <query terms...> [--type
+   loop|oneshot] [--bpm N --bpm-tol N] [--band low|mid|high]` — token
+   search over path/folder names (pack folder names are often the best
+   metadata a sample has). Zero hits is normal either way: relay the
+   printed relaxation suggestions (token search: fewer terms, `--any`,
+   dropped filters) or the not-embedded footer (semantic search) instead
+   of silently guessing a different query or switching modes unasked.
+3. **THE CONTRACT**: one clear winner (by tokens+filters, or top semantic
+   score well ahead of the rest) → use it and tell the owner why ("used
+   `amen-break-170.wav` — the only hit for 'amen break', and 170 matches
+   the Set's tempo", or "used `<path>` — the clear top semantic score for
+   'dusty breakbeat'"). Several plausible candidates → present the top few
+   WITH their traits (duration/type/BPM/dominant band) and score if
+   semantic, and ASK the owner which one — never silently pick among
+   several equally-good options, never invent a path that didn't come out
+   of search/similar. Semantic scores are relative ranking ("closest in
+   the library"), never presented as "a match" or a confidence level.
+4. For "something like this sample": `awh samples similar <refFile>
+   [--count N]` — semantic (CLAP) by default once the index has
+   embeddings, timbral (MFCC/spectral/band features) otherwise or with
+   `--traits` forced; the reference doesn't need to be indexed itself.
+   Neither is musical key matching — say so if the owner seems to expect
+   harmonic matching.
+5. Once picked, hand off to whatever the owner actually wants to DO with
+   it — audition via AWH Remote if available, `awh clip from-audio` for
+   melodic material, `awh drums detect-onsets`/`awh op match` for
+   drum/sound-design uses, or just report the path back.
+
 **Generate or rework a drum pattern** ("give me a house groove", "make this
 beat trap", "humanize my drums", "variations of my drum loop"):
 1. `awh status --json` → find the drum-rack track (drum tracks list
@@ -684,6 +869,52 @@ loud enough for clubs", "did that EQ change help"):
    full-mix bleed). The on/off `ab` pair remains the gold-standard proof.
 4. No target yet? Offer `awh mix target <owner's reference tracks> --save
    <genre>` first — comparisons run against THEIR references, not folklore.
+
+**Masking / "does my sub fight my bassline", "is this patch's fundamental
+where I think it is", "compare these layers"** (narrowband/masking
+diagnosis — `mix report`'s spectral tilt is broad-spectrum and can't
+answer this by design):
+1. Pitch check on one sample/patch: `awh mix pitch <file> [--per-note]` —
+   f0 via periodicity tracking (never the loudest FFT bin); relay
+   `harmonic_dominance` too when it's flagged (a partial outgrew the
+   fundamental partway through — real information, not a detector error).
+   `--per-note` on a melodic phrase/growl that changes note-to-note.
+2. Narrowband energy compare: `awh mix bands <fileA> [fileB...] [--bands
+   "20-100,140-200,200-500"]` — calibrated dBFS (0 dBFS = a full-scale
+   sine, so it's comparable across sessions, not just within one) per
+   named danger zone, plus each band's fraction of that file's total
+   energy. Multiple files get an aligned table with deltas vs. the first.
+3. Comparing several LIVE tracks/layers (not pre-rendered files):
+   `awh mix layers <track:N> <track:M>... [--bars N --from-bar N]` — one
+   command solos each track alone, captures it, restores its and every
+   other track's PRIOR solo state (even if a capture fails partway — never
+   leaves the Set soloed), then runs `mix bands` across the results.
+   Needs the AWH Capture Tap; if it's not loaded the error says so
+   plainly, solo state is still restored.
+4. Zero tracks passed to `layers` is a printed state ("nothing to
+   solo/capture/compare"), not an error — don't treat it as a failure.
+
+**Press play, launch a clip/scene, or audition a library clip from chat**
+("play this back", "start from bar 33", "launch that drop clip", "trigger
+scene 2", "stop everything", "let me hear that garage hat loop on drums"):
+1. This needs the AWH Remote M4L device (m4l/README.md) — the SDK has no
+   transport or clip-launch API at all. If a command fails with "requires
+   the AWH Remote device...", tell the owner to load it once (Install
+   section); don't retry blindly or fake success.
+2. Transport: `awh play [--from-bar N]` / `awh stop` / `awh jump <bar>` —
+   jump sets the arrangement playhead (`current_song_time`), play optionally
+   jumps first via `--from-bar`.
+3. Launch: `awh launch track:2/slot:0` (session clip slot) or `awh launch
+   scene:1` (scene) — respects Live's launch quantization; `awh stop-clips
+   [track:N]` stops one track's clips or (no arg) the whole Set.
+4. "Let me hear my saved X on this track": `awh lib audition <slug> <track>`
+   — one command that places (empty-slot logic, same as `lib place`) AND
+   fires. It's EPHEMERAL by default: auditioning the next slug (or `awh lib
+   audition --end`) sweeps this one first, by its EXACT clip name (never a
+   prefix — a similarly-named clip the owner kept is safe). Pass `--keep` if
+   the owner wants to keep what they just heard.
+5. A bad track/slot/scene index comes back from the device as a clear error,
+   not a hang or silence — relay it, don't guess a different index.
 
 **Sound-design an Operator patch** ("give me a growl bass on Operator",
 "make this sound like <sample>", "dial in a pluck patch"):

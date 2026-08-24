@@ -10,7 +10,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import a2m, ab, drumstats, duck, opmatch, pumpcheck, ref, report, targets
+from . import a2m, ab, bands, clapembed, drumstats, duck, opmatch, pitch, pumpcheck, ref, report, samplescan, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -352,6 +352,96 @@ def _cmd_onsets(args: argparse.Namespace) -> int:
     return 0
 
 
+def _render_pitch_segment_text(seg: dict, indent: str = "") -> list[str]:
+    if seg["state"] != "voiced":
+        return [f"{indent}state: {seg['state']} (no stable pitch)"]
+    note = seg["note"]
+    lines = [
+        f"{indent}f0 {seg['f0_hz']:.1f} Hz -> {note['name']} ({note['cents']:+.0f} cents)  "
+        f"voiced {seg['voiced_fraction'] * 100:.0f}%  confidence {seg['confidence']:.2f}  "
+        f"stability {_fmt(seg['f0_stability_semitones'], 2)} semitones",
+    ]
+    dom = seg["harmonic_dominance"]
+    if dom["flagged"]:
+        lines.append(
+            f"{indent}!! harmonic {dom['harmonic']} exceeds the fundamental by "
+            f"{dom['ratio_db']:.1f} dB at {_fmt(dom['time_s'], 2)}s "
+            f"({dom['fraction_of_voiced_frames'] * 100:.0f}% of voiced frames) — "
+            "the fundamental is still reported above via periodicity tracking, "
+            "not the loudest partial"
+        )
+    return lines
+
+
+def _render_pitch_text(result: dict) -> str:
+    lines = [
+        f"File: {result['file']}  ({result['samplerate']} Hz, {result['duration_s']:.2f} s)",
+        "",
+    ] + _render_pitch_segment_text(result)
+    if "notes" in result:
+        lines += ["", f"Per-note ({len(result['notes'])} note(s), onset-segmented):"]
+        if not result["notes"]:
+            lines.append("  (no clean onsets detected)")
+        for i, n in enumerate(result["notes"]):
+            lines.append(f"  [{i}] {n['start_s']:.3f}s - {n['end_s']:.3f}s")
+            lines += _render_pitch_segment_text(n, indent="      ")
+    return "\n".join(lines)
+
+
+def _cmd_pitch(args: argparse.Namespace) -> int:
+    result = pitch.pitch(
+        args.file,
+        start_s=args.from_,
+        end_s=args.to,
+        per_note=args.per_note,
+    )
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_pitch_text(result))
+    return 0
+
+
+def _render_bands_text(result: dict) -> str:
+    files = result["files"]
+    multi = len(files) > 1
+    lines = [f"calibration: {result['calibration']}", ""]
+    header = f"{'band':<14s} {'range':<14s}" + "".join(
+        f"{'  ' + f['file']:>22s}" for f in files
+    )
+    lines.append(header)
+    labels = [b["label"] for b in files[0]["bands"]]
+    for idx, label in enumerate(labels):
+        row = f"{label:<14s} "
+        b0 = files[0]["bands"][idx]
+        range_text = f"{b0['lo_hz']:g}-{b0['hi_hz']:g}Hz"
+        row += f"{range_text:<14s}"
+        for f in files:
+            b = f["bands"][idx]
+            cell = f"{_fmt(b['dbfs'], 1)} dBFS"
+            if multi and b.get("delta_db") is not None:
+                cell += f" ({b['delta_db']:+.1f})"
+            row += f"{cell:>22s}"
+        lines.append(row)
+    lines.append("")
+    for f in files:
+        lines.append(
+            f"{f['file']}: "
+            + ", ".join(f"{b['label']}={b['fraction_of_total'] * 100:.0f}%" for b in f["bands"])
+            + "  (fraction of total signal power)"
+        )
+    return "\n".join(lines)
+
+
+def _cmd_bands(args: argparse.Namespace) -> int:
+    result = bands.compare_files(args.files, bands_spec=args.bands, start_s=args.from_, end_s=args.to)
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_bands_text(result))
+    return 0
+
+
 def _render_opmatch_text(result: dict) -> str:
     a = result["analysis"]
     f0 = a["f0"]
@@ -493,6 +583,37 @@ def _cmd_drumstats(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_samplescan(args: argparse.Namespace) -> int:
+    from .audio import sanitize_json
+
+    files = list(args.files)
+    if not files:
+        files = [line.strip() for line in sys.stdin if line.strip()]
+    for path in files:
+        try:
+            record = samplescan.scan_file(path)
+        except Exception as exc:  # noqa: BLE001 — never crash the batch on one bad file
+            record = {"path": path, "unreadable": True, "error": str(exc)}
+        print(json.dumps(sanitize_json(record)))
+    return 0
+
+
+def _cmd_clapembed(args: argparse.Namespace) -> int:
+    from .audio import sanitize_json
+
+    if args.text is not None:
+        record = clapembed.embed_text(args.text, model_key=args.model)
+        print(json.dumps(sanitize_json({"text": args.text, "clap": record})))
+        return 0
+
+    files = list(args.files)
+    if not files:
+        files = [line.strip() for line in sys.stdin if line.strip()]
+    for record in clapembed.embed_audio_batch(files, model_key=args.model):
+        print(json.dumps(sanitize_json(record)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -584,6 +705,32 @@ def build_parser() -> argparse.ArgumentParser:
     p_on.add_argument("--json", action="store_true")
     p_on.set_defaults(func=_cmd_onsets)
 
+    p_pitch = sub.add_parser(
+        "pitch",
+        help="Periodicity-tracked f0 (pyin) with honest harmonic-dominance reporting "
+        "— never a naive FFT-peak pick",
+    )
+    p_pitch.add_argument("file")
+    p_pitch.add_argument("--per-note", action="store_true",
+                         help="segment via onset detection and report f0 per note")
+    p_pitch.add_argument("--from", dest="from_", type=float, default=None)
+    p_pitch.add_argument("--to", type=float, default=None)
+    p_pitch.add_argument("--json", action="store_true")
+    p_pitch.set_defaults(func=_cmd_pitch)
+
+    p_bands = sub.add_parser(
+        "bands",
+        help="Calibrated per-band dBFS via Welch PSD (masking-diagnosis narrowband "
+        "compare); multiple files -> aligned table with deltas vs. the first",
+    )
+    p_bands.add_argument("files", nargs="+")
+    p_bands.add_argument("--bands", type=str, default=None,
+                         help=f'comma-separated "lo-hi" Hz ranges (default: "{bands.DEFAULT_BANDS_ARG}")')
+    p_bands.add_argument("--from", dest="from_", type=float, default=None)
+    p_bands.add_argument("--to", type=float, default=None)
+    p_bands.add_argument("--json", action="store_true")
+    p_bands.set_defaults(func=_cmd_bands)
+
     p_drumstats = sub.add_parser(
         "drumstats",
         help="Mine band-split rhythm statistics (16th-grid position probabilities) from a folder of drum loops",
@@ -622,6 +769,31 @@ def build_parser() -> argparse.ArgumentParser:
     p_opcompare.add_argument("cand")
     p_opcompare.add_argument("--json", action="store_true")
     p_opcompare.set_defaults(func=_cmd_opcompare)
+
+    p_samplescan = sub.add_parser(
+        "samplescan",
+        help="Scan sample files -> one JSONL feature record per line (M11 sample library)",
+    )
+    p_samplescan.add_argument(
+        "files", nargs="*",
+        help="file paths (or read newline-separated paths from stdin if omitted)",
+    )
+    p_samplescan.set_defaults(func=_cmd_samplescan)
+
+    p_clapembed = sub.add_parser(
+        "clapembed",
+        help="CLAP audio/text embeddings for semantic sample search (M11b) -> JSONL per file, "
+        "or one JSON object with --text",
+    )
+    p_clapembed.add_argument(
+        "files", nargs="*",
+        help="audio file paths (or read newline-separated paths from stdin if omitted)",
+    )
+    p_clapembed.add_argument("--model", choices=clapembed.MODEL_CHOICES, default=clapembed.DEFAULT_MODEL,
+                             help="CLAP checkpoint: music (default, music-tuned) or general (AudioSet)")
+    p_clapembed.add_argument("--text", type=str, default=None,
+                             help="embed this text phrase instead of the file list")
+    p_clapembed.set_defaults(func=_cmd_clapembed)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")

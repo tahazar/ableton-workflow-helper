@@ -7,27 +7,39 @@ whatever feedback channel the beta program offers.
 
 ## Blocking gaps (features we could not build)
 
-1. **No raw↔display mapping for DeviceParameter.** Only normalized raw
+1. **No transport control AND no session clip-launch API** — neither
+   play/stop/position, nor firing a session clip slot or scene, nor
+   `stop_all_clips`. This is the SDK's clearest gap: "press play" is core to
+   ANY DAW automation story, and the LOM has had all of this (`Song.
+   start_playing`/`stop_playing`/`current_song_time`, `ClipSlot.fire()`,
+   `Scene.fire()`, `Track.stop_all_clips()`) for years — none of it is
+   exposed through `@ableton-extensions/sdk` v1.0.0-beta.1. We work around
+   it with an M4L device over OSC (`m4l/AWH Remote.maxpat`, M12), which also
+   covers post-FX capture (superseding the earlier AWH Capture Tap) — but
+   that means every one of these operations needs a sidecar Max device
+   loaded by hand in every Set, purely to reach LOM surface the SDK could
+   expose directly. Ask: `Song.startPlaying()`/`stopPlaying()`/
+   `currentSongTime`, `ClipSlot.fire()`/`Scene.fire()`/`Track.
+   stopAllClips()` (or equivalent) on the SDK's own object model.
+2. **No raw↔display mapping for DeviceParameter.** Only normalized raw
    values are exposed — no display string, no transfer function. Effect:
    `awh mix duck calibrate` can converge on a measured target but cannot
    report what Threshold reads in Live's UI, and `track.mixer` volume needed
    empirical calibration (raw 0.85 = 0 dB; docs/research/mixer-calibration.md,
    knowledge/setup/compressor-raw-display-mapping.md). Ask: a
    `displayValue` accessor (or value↔display conversion) on DeviceParameter.
-2. **No routing API.** A compressor's sidechain Audio From (or any
+3. **No routing API.** A compressor's sidechain Audio From (or any
    input/output routing) cannot be set. Effect: "automatic sidechain" keeps
    one unavoidable manual click. Ask: read/write routing on tracks/devices.
-3. **No automation / clip-envelope API.** Volume-automation ducking,
+4. **No automation / clip-envelope API.** Volume-automation ducking,
    envelope following, any parameter automation writing — all out. (Accepted
-   in ADR-001; still the single biggest capability gap.)
-4. **Packaged .ablx never activates** (v1.0.0-beta.1): manifest.json +
+   in ADR-001; still the single biggest capability gap besides #1.)
+5. **Packaged .ablx never activates** (v1.0.0-beta.1): manifest.json +
    dist/main.js install correctly to the extensions folder and match the
    SDK's own examples, but the extension never starts — no ExtensionHost.txt,
    nothing in Log.txt, no error; Developer Mode on, multiple restarts.
    Dev-mode (`extensions-cli run`) works fully. (First hit: M0 follow-up,
    2026-08-17.)
-5. **No transport control** (play/stop/position) — we work around it with an
-   M4L device over OSC (m4l/), which also covers post-FX capture.
 
 ## Paper cuts
 
