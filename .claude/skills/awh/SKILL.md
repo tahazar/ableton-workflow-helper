@@ -475,43 +475,80 @@ awh samples index <dir...> [--rescan]   # walk folders (wav/aiff/flac/mp3),
     # extract features, write ~/.awh/samples-index.json (override with
     # AWH_SAMPLES_INDEX). Incremental by path+size+mtime; deleted files
     # under the given folders are pruned; --rescan forces a full re-scan.
+awh samples embed [--model music|general]  # M11b: compute missing/stale CLAP
+    # embeddings for the whole index (batch, incremental — already-embedded
+    # files are skipped; a model switch re-embeds everything, reporting
+    # counts). Zero un-embedded files is a normal "up to date" state, not
+    # an error. Must run before --semantic works at all.
 awh samples search <query...> [--any] [--type loop|oneshot]
     [--min-dur s] [--max-dur s] [--bpm N --bpm-tol N] [--band low|mid|high]
     # token match over normalized path tokens (ALL terms by default),
     # plus trait filters; ranked table, --json for the skill
-awh samples similar <file> [--count N]  # cosine similarity over the MFCC +
-    # spectral + band-split feature vector; reference file need not be
-    # indexed (scanned on the fly); per-file traits shown so the ranking
-    # is inspectable
+awh samples search --semantic "<phrase>" [--type ...] [--min-dur ...]
+    [--bpm ...] [--band ...]                # M11b: embeds the phrase (CLAP),
+    # ranks by cosine similarity to actual audio CONTENT, not filename
+    # tokens. Composes with the same trait filters as token search (filter
+    # first, rank semantically) — NOT with plain query terms in the same
+    # call. Files without an embedding are excluded and counted in a
+    # footer ("N of M files not embedded — run awh samples embed"). If the
+    # index has ZERO embeddings at all, this is a loud error naming
+    # `awh samples embed` — it NEVER silently falls back to token search.
+awh samples similar <file> [--count N] [--semantic | --traits]
+    # ranks indexed samples against a reference file (need not be indexed
+    # itself — embedded/scanned on the fly). Semantic (CLAP) is the
+    # DEFAULT once the index has any embeddings; --traits forces the v1
+    # MFCC/spectral/band-split vector; --semantic forces CLAP even if the
+    # default would have picked traits (e.g. no embeddings yet, in which
+    # case it errors rather than silently using traits).
 awh samples stats                        # index size, roots, histograms
 ```
 
-- **THE LLM CONTRACT**: search first, never invent a path. If the search
-  narrows to ONE clear winner (by tokens + filters), use it and say why
-  ("used `amen-break-170.wav` — the only hit for 'amen break', 170 BPM
-  matches the Set's tempo"). If SEVERAL are plausible, present the top few
-  with their traits (duration/type/BPM/band) and ASK the owner which one —
-  never silently pick among several equally-good candidates. Combined with
-  AWH Remote's audition, candidates become listenable in Live before
-  committing to one.
+- **THE LLM CONTRACT — which search tool first**: for a CONTENT-language
+  query — describing what the sound IS or DOES ("dusty breakbeat", "dark
+  growl bass", "something like a four-on-the-floor techno drum loop") —
+  try `search --semantic` FIRST (after confirming the index has
+  embeddings; run `awh samples embed` first if not). For a NAME-like query
+  — the owner names a pack, filename fragment, or exact trait ("the
+  Vengeance snare", "amen break", "anything at 128 BPM") — token
+  `search` remains first; it's exact and free, semantic search adds
+  nothing when the owner already knows the name. Either way: search
+  first, never invent a path. If the search narrows to ONE clear winner,
+  use it and say why ("used `amen-break-170.wav` — the only hit for
+  'amen break', 170 BPM matches the Set's tempo", or for semantic: "used
+  `<path>` — top score 0.34 for 'dusty breakbeat', closest in the
+  library"). If SEVERAL are plausible, present the top few with their
+  traits (duration/type/BPM/band) AND their score if semantic, and ASK
+  the owner which one — never silently pick among several equally-good
+  candidates. Combined with AWH Remote's audition, candidates become
+  listenable in Live before committing to one.
+- **Scores are shown, never overclaimed.** A semantic score is "closest
+  in the library" — relative ranking, not a confidence that it's "a
+  match" or "the right sound." Relay it as a number for the owner to
+  judge, the same spirit as `bpm_confidence` below.
 - `index` must run before `search`/`similar` do anything useful — if asked
   to find a sample and the index is empty (or plainly stale — the owner
   mentions a folder that was never indexed), run `awh samples index
   <folder>` first rather than reporting "not found" against an empty index.
+  `embed` is a separate, additional step on top of `index` — semantic
+  search/similarity do nothing until it's run at least once.
 - Zero hits is a normal result, not an error: relay the printed
-  relaxation suggestions (fewer terms, `--any`, dropped filters) rather
+  relaxation suggestions (fewer terms, `--any`, dropped filters) for
+  token search, or the not-embedded footer for semantic search, rather
   than silently retrying with a guessed query.
-- Similarity is TIMBRAL statistics (MFCCs + spectral shape + band split),
-  not perception — good for "another break like this," not for musical
-  key relationships. Say so if the owner expects harmonic matching.
+- Token search matches PATH/FOLDER text; semantic search matches AUDIO
+  CONTENT (CLAP embeddings); `similar --traits` matches TIMBRAL
+  statistics (MFCCs + spectral shape + band split). None of the three is
+  "perception" or musical key matching — say so if the owner expects
+  harmonic relationships.
 - BPM only appears when the loop heuristic actually fires (duration +
   onset count); a one-shot or an ambiguous file legitimately has no BPM —
   don't invent one. Relay `bpm_confidence` rather than presenting an
   estimate as certain.
-- The index is machine-local and never committed (absolute paths,
-  meaningless off-machine) — don't suggest saving it to the repo or
-  `awh lib`; if the owner wants a sample kept for reuse across projects,
-  that's still `awh save`/`awh lib place` after they've picked it.
+- The index (and its embeddings) is machine-local and never committed
+  (absolute paths, meaningless off-machine) — don't suggest saving it to
+  the repo or `awh lib`; if the owner wants a sample kept for reuse
+  across projects, that's still `awh save`/`awh lib place` after they've
+  picked it.
 
 ## Endless player (`awh endless`) — seeded, ever-different arrangements
 
@@ -687,32 +724,43 @@ garage hats", "use my saved bassline"):
    where they want it.
 
 **Find a sample from the owner's own folders** ("find me an amen break",
-"got any deep house kicks in my packs", "find something like this sample",
-"what samples do I have in this folder"):
+"got any deep house kicks in my packs", "find something dusty and
+breakbeat-y", "find something like this sample", "what samples do I have
+in this folder"):
 1. If the relevant folder has never been indexed (or the owner mentions a
    folder you haven't seen before), `awh samples index <folder...>` first —
    it's incremental (unchanged files are skipped on repeat runs), so
    re-indexing a folder the owner already indexed is cheap and safe to do
    whenever unsure.
-2. `awh samples search <query terms...> [--type loop|oneshot] [--bpm N
-   --bpm-tol N] [--band low|mid|high]` — token search over path/folder
-   names (pack folder names are often the best metadata a sample has),
-   narrowed with trait filters when the owner gives them (tempo, one-shot
-   vs loop, etc). Zero hits is normal: relay the printed relaxation
-   suggestions (fewer terms, `--any`, dropped filters) instead of
-   silently guessing a different query.
-3. **THE CONTRACT**: one clear winner (by tokens + filters) → use it and
-   tell the owner why ("used `amen-break-170.wav` — the only hit for
-   'amen break', and 170 matches the Set's tempo"). Several plausible
-   candidates → present the top few WITH their traits (duration/type/BPM/
-   dominant band) and ASK the owner which one — never silently pick among
+2. **Pick token or semantic search first, by query SHAPE** (see the
+   Sample library section's LLM CONTRACT above): a CONTENT-language
+   description ("dusty breakbeat", "dark growl bass") → `awh samples
+   embed` (if the index has no embeddings yet — skip if it already does)
+   then `awh samples search --semantic "<phrase>" [--type ...] [--bpm ...]
+   [--band ...]`. A NAME-like query (pack name, filename fragment, exact
+   trait like a BPM) → `awh samples search <query terms...> [--type
+   loop|oneshot] [--bpm N --bpm-tol N] [--band low|mid|high]` — token
+   search over path/folder names (pack folder names are often the best
+   metadata a sample has). Zero hits is normal either way: relay the
+   printed relaxation suggestions (token search: fewer terms, `--any`,
+   dropped filters) or the not-embedded footer (semantic search) instead
+   of silently guessing a different query or switching modes unasked.
+3. **THE CONTRACT**: one clear winner (by tokens+filters, or top semantic
+   score well ahead of the rest) → use it and tell the owner why ("used
+   `amen-break-170.wav` — the only hit for 'amen break', and 170 matches
+   the Set's tempo", or "used `<path>` — the clear top semantic score for
+   'dusty breakbeat'"). Several plausible candidates → present the top few
+   WITH their traits (duration/type/BPM/dominant band) and score if
+   semantic, and ASK the owner which one — never silently pick among
    several equally-good options, never invent a path that didn't come out
-   of search/similar.
+   of search/similar. Semantic scores are relative ranking ("closest in
+   the library"), never presented as "a match" or a confidence level.
 4. For "something like this sample": `awh samples similar <refFile>
-   [--count N]` — cosine similarity over MFCC/spectral/band features (the
-   reference doesn't need to be indexed itself). This is TIMBRAL
-   similarity ("another break like this"), not musical key matching — say
-   so if the owner seems to expect harmonic matching.
+   [--count N]` — semantic (CLAP) by default once the index has
+   embeddings, timbral (MFCC/spectral/band features) otherwise or with
+   `--traits` forced; the reference doesn't need to be indexed itself.
+   Neither is musical key matching — say so if the owner seems to expect
+   harmonic matching.
 5. Once picked, hand off to whatever the owner actually wants to DO with
    it — audition via AWH Remote if available, `awh clip from-audio` for
    melodic material, `awh drums detect-onsets`/`awh op match` for

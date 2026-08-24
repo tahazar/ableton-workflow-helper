@@ -10,7 +10,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import a2m, ab, drumstats, duck, opmatch, pumpcheck, ref, report, samplescan, targets
+from . import a2m, ab, clapembed, drumstats, duck, opmatch, pumpcheck, ref, report, samplescan, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -508,6 +508,22 @@ def _cmd_samplescan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_clapembed(args: argparse.Namespace) -> int:
+    from .audio import sanitize_json
+
+    if args.text is not None:
+        record = clapembed.embed_text(args.text, model_key=args.model)
+        print(json.dumps(sanitize_json({"text": args.text, "clap": record})))
+        return 0
+
+    files = list(args.files)
+    if not files:
+        files = [line.strip() for line in sys.stdin if line.strip()]
+    for record in clapembed.embed_audio_batch(files, model_key=args.model):
+        print(json.dumps(sanitize_json(record)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -647,6 +663,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="file paths (or read newline-separated paths from stdin if omitted)",
     )
     p_samplescan.set_defaults(func=_cmd_samplescan)
+
+    p_clapembed = sub.add_parser(
+        "clapembed",
+        help="CLAP audio/text embeddings for semantic sample search (M11b) -> JSONL per file, "
+        "or one JSON object with --text",
+    )
+    p_clapembed.add_argument(
+        "files", nargs="*",
+        help="audio file paths (or read newline-separated paths from stdin if omitted)",
+    )
+    p_clapembed.add_argument("--model", choices=clapembed.MODEL_CHOICES, default=clapembed.DEFAULT_MODEL,
+                             help="CLAP checkpoint: music (default, music-tuned) or general (AudioSet)")
+    p_clapembed.add_argument("--text", type=str, default=None,
+                             help="embed this text phrase instead of the file list")
+    p_clapembed.set_defaults(func=_cmd_clapembed)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")

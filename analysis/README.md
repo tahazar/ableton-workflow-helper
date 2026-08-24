@@ -110,6 +110,78 @@ needed for the constraint as written.
 
 No TensorFlow, no GPL/AGPL packages entered the venv.
 
+### M11b (`clap` — semantic sample search, CLAP embeddings)
+
+`awh samples embed`/`search --semantic`/`similar --semantic` need
+[LAION-CLAP](https://github.com/LAION-AI/CLAP) (`laion_clap`), which joint-
+embeds audio and text so a text query ("dusty breakbeat") can rank actual
+audio content instead of filename tokens. Unlike Basic Pitch, `laion_clap`
+has no unconditional TensorFlow-style dependency problem — it uses the
+`torch` already in this venv (M6's `report`/`ab` etc. don't need torch, but
+nothing here excludes it, and it's already installed) — so no `--no-deps`
+workaround is required, just the extras group.
+
+**NOT INSTALLED in this dev container** — its checkpoint has to come from
+Hugging Face, which is egress-blocked here, so there is nothing useful to
+run the real model against inside this checkout anyway (same reasoning as
+why the container doesn't bother installing Basic Pitch's actual weights
+issue would apply if HF were also blocked for it). `AWH_CLAP_STUB=1`
+(handled inside `clapembed.py` itself — deterministic hash-derived
+vectors, `model: "stub-v1"`) covers every Node/Python test in this repo
+without `laion_clap`/`torch`'s CLAP path ever loading. Install for real use
+on the owner's own machine:
+
+```sh
+cd analysis && ../.venv/bin/pip install -e '.[clap]'   # or: pip install laion_clap
+```
+
+**Checkpoint** — download the music-tuned checkpoint (the CLI's default,
+`--model music`) into `~/.awh/models/` (create the folder first):
+
+```sh
+mkdir -p ~/.awh/models
+curl -L https://huggingface.co/lukewys/laion_clap/resolve/main/music_audioset_epoch_15_esc_90.14.pt \
+    -o ~/.awh/models/music_audioset_epoch_15_esc_90.14.pt
+# --model general instead:
+curl -L https://huggingface.co/lukewys/laion_clap/resolve/main/630k-audioset-best.pt \
+    -o ~/.awh/models/630k-audioset-best.pt
+```
+
+`awh samples embed`/`search --semantic`/`similar --semantic` fail loudly
+with this exact install-hint error (never a bare stack trace, never a
+silent auto-download) if the checkpoint file isn't present — see
+`clapembed._not_installed_message`.
+
+**License stance**: LAION-CLAP code + checkpoints only. **No CC-BY-NC
+weights anywhere in this path** — both checkpoints above are the project's
+own open (non-commercial-restricted) releases, same stance as
+`docs/design/sample-semantic.md`.
+
+**License audit (2026-08-24, `pip install laion_clap --dry-run` against
+this venv — network was reachable from this container for this one PyPI
+metadata check; the package itself was NOT actually installed, per the
+"don't install it here" rule above)**. `torch` itself is already present
+(2.13.0+cu130) and not re-installed by this extra:
+
+| Package | License | Package | License |
+|---|---|---|---|
+| laion_clap | Apache-2.0 (PyPI classifier; the package's own `license` metadata field oddly embeds CC0 legal text instead — a packaging artifact, not a re-license: treated as Apache-2.0 per the classifier and upstream's stated stance) | pydantic / pydantic_core | MIT |
+| annotated-types | MIT | python-dateutil | Apache-2.0 / BSD (dual) |
+| braceexpand | MIT | sentry-sdk | MIT |
+| ftfy | Apache-2.0 | torchlibrosa | MIT |
+| h5py | BSD-3-Clause | typing-inspection | MIT |
+| opentelemetry-api | Apache-2.0 | wandb | MIT |
+| pandas | BSD-3-Clause | wcwidth | MIT |
+| progressbar (2.5) | BSD / LGPL-3.0 (dual) — permissive-enough as an ordinary imported dependency, same reasoning as `soxr` above; not GPL/AGPL | webdataset | BSD-3-Clause |
+| | | wget | Public domain |
+
+No TensorFlow, no GPL/AGPL packages in this dependency tree. One caveat
+worth flagging before an owner installs for real: the dry-run resolved
+`numpy==1.26.4` for `laion_clap`'s own pin, which is OLDER than this venv's
+current `numpy` (2.4.6) — worth watching for a downgrade/conflict warning
+on real install; not something this container could verify further without
+actually installing.
+
 ## Everyday
 
 ```sh

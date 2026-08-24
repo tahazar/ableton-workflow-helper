@@ -35,6 +35,16 @@ a2m = [
     "typing_extensions",
 ]
 
+# M11b (`clapembed` — semantic sample search): LAION-CLAP, torch CPU (torch
+# is already a base install, see analysis/README.md). NOT installed in the
+# dev container (its checkpoint is unreachable there anyway — Hugging Face
+# is egress-blocked); AWH_CLAP_STUB=1 covers all container/CI testing
+# without ever importing this extra. See analysis/README.md for the
+# checkpoint download + license audit.
+clap = [
+    "laion_clap",
+]
+
 [project.scripts]
 awh-analysis = "awh_analysis.__main__:main"
 

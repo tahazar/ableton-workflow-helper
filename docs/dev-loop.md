@@ -1734,3 +1734,66 @@ haven't been run through this yet:
       against real material — it was picked to cleanly separate the
       synthetic corpus, not measured against a real pack's actual mix of
       short fills, long one-shots, and loops.
+
+## M11b (semantic search) owner checklist
+
+Built + tested entirely under `AWH_CLAP_STUB=1` — `analysis/tests/test_clapembed.py`
+(stub determinism/text-mode/L2-normalization/6-decimal rounding/the
+"model not installed" error naming the exact package+checkpoint+path/JSONL
+shape through `sanitize_json`) and `packages/cli/test/samples.test.ts`'s
+M11b blocks (embed fills + is incremental; a model switch makes every
+prior vector stale and re-embeds, reporting counts; `search --semantic`
+composes with the v1 trait filters and reports the not-embedded footer;
+`similar --semantic` ranks a byte-identical copy of the reference first;
+the NEGATIVE CONTROL — `search --semantic` against an index with ZERO
+embeddings anywhere errors naming `awh samples embed` and never silently
+falls back to token search, checked via a real subprocess spawn of the
+built CLI). A scratchpad smoke run indexed 14 REAL mp3 loops (WaivOps
+TR9 examples — real audio, not synthetic) end-to-end through
+`index -> embed -> search --semantic -> similar --semantic`, confirming
+the plumbing works on real files; the stub has NO real semantics (every
+score in that run was noise clustered near 0 — random unit vectors in a
+512-dim space), so it proved WIRING, not embedding quality. Nothing here
+has run against the real LAION-CLAP checkpoint — that requires an owner
+machine (Hugging Face is egress-blocked in the dev container, see
+`analysis/README.md`'s M11b section for the exact install + checkpoint
+download):
+
+- [ ] Install `laion_clap` (`pip install -e '.[clap]'` from `analysis/`)
+      and download the music checkpoint (`music_audioset_epoch_15_esc_90.14.pt`,
+      ~600 MB+ depending on host) into `~/.awh/models/` per
+      `analysis/README.md`. Confirm `awh samples embed` fails with the
+      clear install-hint error BEFORE the checkpoint is present, and
+      succeeds after — never a bare stack trace either way.
+- [ ] `samples embed` timing at REAL library scale: how long does the
+      first full embed of the owner's actual sample library take (torch
+      CPU inference is much heavier per file than `samplescan`'s DSP
+      pass), and is the "embedded N/M" progress line useful at that
+      cadence or too sparse/chatty? Re-running immediately should embed 0
+      (incremental skip) — confirm that holds at real scale too.
+- [ ] Three CONTENT-language queries against a REAL, already-embedded
+      library — "dusty breakbeat" plus two more the owner picks — judged
+      BY EAR against each query's actual top-5 `search --semantic`
+      results. This is the first real test of whether CLAP-space
+      similarity tracks the owner's actual sense of what a phrase
+      describes; the stub only proves the plumbing moves data, never
+      whether the ranking means anything.
+- [ ] A `similar --semantic` query on a REAL favorite sample the owner
+      already knows well: do the top few results actually sound similar
+      by ear, and does `similar --semantic` actually default to semantic
+      (not `--traits`) once the owner's index has embeddings, without
+      needing to be told?
+- [ ] Spot-check that NO CC-BY-NC (or any other restrictively-licensed)
+      checkpoint was fetched — only the two open LAION-CLAP checkpoints
+      named in `analysis/README.md` (`music_audioset_epoch_15_esc_90.14.pt`,
+      `630k-audioset-best.pt`) should ever land in `~/.awh/models/`.
+- [ ] Confirm the `search --semantic` vs token-`search` split in
+      `.claude/skills/awh/SKILL.md` (content-language queries first try
+      semantic, name-like queries first try tokens) actually holds up in
+      a fresh-agent session against real "find me a ___" requests — the
+      written contract is untested against a live conversation so far.
+- [ ] PANNs tagging (`awh samples tag`, `docs/design/sample-semantic.md`'s
+      optional stretch) is DESIGNED, NOT BUILT — decide whether it's worth
+      building as a follow-up milestone, or whether CLAP semantic search
+      alone covers the "find a kick" case well enough that a separate
+      tag-based filter isn't worth the second model/cache.
