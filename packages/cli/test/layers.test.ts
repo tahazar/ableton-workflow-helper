@@ -53,6 +53,10 @@ async function soloMap(caller: OpCaller): Promise<Map<string, boolean>> {
   return new Map([...summary.tracks, ...summary.returnTracks].map((t) => [t.path, t.soloed]));
 }
 
+// Fast options for tests: no real sleeps; retries pinned explicitly per test
+// so each test states its attempt semantics.
+const FAST = { sleep: async () => {}, interTrackSettleMs: 0 };
+
 describe("layerFileName", () => {
   it("is order-prefixed and slug-safe", () => {
     expect(layerFileName("track:0", 0)).toBe("00-track-0.wav");
@@ -77,7 +81,7 @@ describe("runLayers — happy path", () => {
       return 1.5;
     };
 
-    const results = await runLayers(caller, ["track:0", "track:2"], "/tmp/awh-layers-test", capture);
+    const results = await runLayers(caller, ["track:0", "track:2"], "/tmp/awh-layers-test", capture, FAST);
 
     expect(results).toHaveLength(2);
     expect(results.map((r) => r.trackPath)).toEqual(["track:0", "track:2"]);
@@ -108,7 +112,7 @@ describe("runLayers — happy path", () => {
     const capture: LayerCaptureFn = async () => {
       throw new Error("capture must never be called for zero tracks");
     };
-    const results = await runLayers(countingCaller, [], "/tmp/awh-layers-test", capture);
+    const results = await runLayers(countingCaller, [], "/tmp/awh-layers-test", capture, FAST);
     expect(results).toEqual([]);
     expect(calls).toBe(0);
   });
@@ -117,7 +121,7 @@ describe("runLayers — happy path", () => {
     const caller = await startFakeGateway();
     const before = await soloMap(caller);
     const capture: LayerCaptureFn = async () => 1.0;
-    await expect(runLayers(caller, ["track:99"], "/tmp/x", capture)).rejects.toThrow(/track not found: track:99/);
+    await expect(runLayers(caller, ["track:99"], "/tmp/x", capture, FAST)).rejects.toThrow(/track not found: track:99/);
     expect(await soloMap(caller)).toEqual(before);
   });
 });
@@ -139,7 +143,7 @@ describe("runLayers — negative control: a mid-run capture failure must still r
       return 1.0;
     };
 
-    await expect(runLayers(caller, ["track:0", "track:1", "track:2"], "/tmp/x", capture)).rejects.toThrow(
+    await expect(runLayers(caller, ["track:0", "track:1", "track:2"], "/tmp/x", capture, { ...FAST, retries: 0 })).rejects.toThrow(
       /AWH Capture Tap/,
     );
 
@@ -171,8 +175,55 @@ describe("runLayers — negative control: a mid-run capture failure must still r
       if (trackPath === "track:0") throw new Error("boom");
       return 1.0;
     };
-    await expect(runLayers(caller, ["track:0", "track:1"], "/tmp/x", capture)).rejects.toThrow("boom");
+    await expect(runLayers(caller, ["track:0", "track:1"], "/tmp/x", capture, { ...FAST, retries: 0 })).rejects.toThrow("boom");
     expect(seen).toEqual(["track:0"]);
+    expect(await soloMap(caller)).toEqual(before);
+  });
+});
+
+describe("runLayers — retry on the known rapid-capture flake", () => {
+  it("retries a failed capture once, marks the result, keeps solo state exact throughout", async () => {
+    const caller = await startFakeGateway();
+    await caller("track.update", { path: "track:3", soloed: true });
+    const before = await soloMap(caller);
+
+    let attempts = 0;
+    const retriedTracks: string[] = [];
+    const capture: LayerCaptureFn = async (trackPath) => {
+      attempts++;
+      // First attempt on track:1 aborts (the live-observed intermittent
+      // race in rapid back-to-back sfrecord~ cycles); the retry succeeds.
+      if (trackPath === "track:1" && attempts === 2) throw new Error("recording aborted");
+      return 2.0;
+    };
+
+    const results = await runLayers(caller, ["track:0", "track:1"], "/tmp/x", capture, {
+      ...FAST,
+      retries: 1,
+      onRetry: (trackPath) => retriedTracks.push(trackPath),
+    });
+
+    expect(attempts).toBe(3); // track:0 once, track:1 twice
+    expect(retriedTracks).toEqual(["track:1"]);
+    expect(results).toHaveLength(2);
+    expect(results[0]!.retried).toBe(false);
+    expect(results[1]!.retried).toBe(true);
+    expect(results[1]!.seconds).toBe(2.0);
+    expect(await soloMap(caller)).toEqual(before);
+  });
+
+  it("exhausted retries still throw and still restore solo state", async () => {
+    const caller = await startFakeGateway();
+    const before = await soloMap(caller);
+    let attempts = 0;
+    const capture: LayerCaptureFn = async () => {
+      attempts++;
+      throw new Error("recording aborted");
+    };
+    await expect(
+      runLayers(caller, ["track:0"], "/tmp/x", capture, { ...FAST, retries: 1 }),
+    ).rejects.toThrow("recording aborted");
+    expect(attempts).toBe(2); // initial + one retry, then give up
     expect(await soloMap(caller)).toEqual(before);
   });
 });
