@@ -13,6 +13,11 @@ dependencies = [
     "scipy",
     "soundfile",
     "pyloudnorm",
+    # M11 (`samplescan` — sample-library index/search/similarity): spectral
+    # centroid/rolloff/flatness + MFCCs. ISC license, already audited below
+    # (a2m pulled it in first) — promoted from the a2m extra to a base
+    # dependency since `awh samples index` is not an optional feature.
+    "librosa",
 ]
 
 # B1 (audio-to-MIDI, `a2m`): the ONNX-backend runtime deps for basic-pitch,
@@ -23,7 +28,6 @@ dependencies = [
 [project.optional-dependencies]
 a2m = [
     "onnxruntime",
-    "librosa",
     "mir_eval",
     "pretty_midi",
     "resampy",

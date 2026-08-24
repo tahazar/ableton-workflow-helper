@@ -1,6 +1,8 @@
 # Design: Sample library (M11 — index, search, similarity)
 
-- Status: in build (2026-08-20). Owner ask: index their own sample
+- Status: built, pending owner validation (2026-08-24) — see "M11 (sample
+  library) owner checklist" in docs/dev-loop.md. Owner ask: index their own
+  sample
   folders so the CLI (or an LLM driving it) can answer "find me an amen
   break" from material they already own — search by text, filter by
   audio traits, rank by similarity to a reference sound — and either pick

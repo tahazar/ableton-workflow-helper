@@ -12,6 +12,20 @@ import { spawn } from "node:child_process";
 import { basename, dirname, join, resolve } from "node:path";
 import { Command } from "commander";
 import { TAP_PORT, sendToTap } from "./osc.js";
+import { analysisPython } from "./analysis-python.js";
+import {
+  DEFAULT_BPM_TOL,
+  loadSamplesIndex,
+  makePythonScanner,
+  rankSimilar,
+  resolveReferenceVector,
+  resolveSamplesIndexPath,
+  runIndex,
+  searchIndex,
+  suggestRelaxations,
+  summarizeIndex,
+  type SearchOptions,
+} from "./samples.js";
 import { DUCK_PORT, DUCK_REPLY_PORT, pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from "./duck.js";
 import {
   RECIPE_SLUG_PREFIX,
@@ -2660,13 +2674,6 @@ function repoRoot(): string {
   return dirname(findLibraryRoot());
 }
 
-function analysisPython(): { python: string; cwd: string } {
-  const root = repoRoot();
-  const venv = join(root, ".venv", "bin", "python");
-  const python = process.env.AWH_PYTHON ?? (existsSync(venv) ? venv : "python3");
-  return { python, cwd: join(root, "analysis") };
-}
-
 /** Run `python -m awh_analysis <args>` streaming stdio through. */
 async function runAnalysis(args: string[]): Promise<void> {
   const { python, cwd } = analysisPython();
@@ -2883,6 +2890,221 @@ mix
       rows.length === 0
         ? "no measurement records yet — awh mix report <file> --save"
         : rows.map((r) => `${r.name.padEnd(32)} ${r.saved}  ${r.summary}`).join("\n"),
+    );
+  });
+
+// ---------------------------------------------------------------------------
+// M11: sample library — local index, search, similarity
+// (docs/design/sample-library.md; logic lives in samples.ts)
+// ---------------------------------------------------------------------------
+
+const samplesCmd = program
+  .command("samples")
+  .description(
+    "Local sample-library index: text/trait search over your own sample folders, " +
+      "ranked by cosine similarity to a reference sound — never invents a path " +
+      "(docs/design/sample-library.md)",
+  );
+
+function requireAnalysisEngine(): { python: string; cwd: string } {
+  const { python, cwd } = analysisPython();
+  if (!existsSync(cwd)) {
+    throw new Error(`analysis engine not found at ${cwd} — is the repo checkout complete?`);
+  }
+  return { python, cwd };
+}
+
+samplesCmd
+  .command("index <dirs...>")
+  .description(
+    "Walk folders (wav/aiff/flac/mp3) and (re)build the local index — incremental by " +
+      "path+size+mtime; deleted files under the given folders are pruned",
+  )
+  .option("--rescan", "force re-scan every file, ignoring the incremental cache", false)
+  .action(async (dirs: string[], cmdOpts: { rescan: boolean }) => {
+    const opts = program.opts<GlobalOpts>();
+    const { python, cwd } = requireAnalysisEngine();
+    const indexPath = resolveSamplesIndexPath();
+
+    let lastPrinted = 0;
+    const result = await runIndex(dirs, {
+      rescan: cmdOpts.rescan,
+      indexPath,
+      scanner: makePythonScanner(python, cwd),
+      onProgress: (done, total) => {
+        if (done - lastPrinted >= 1000 || done === total) {
+          process.stderr.write(`scanned ${done}/${total}\n`);
+          lastPrinted = done;
+        }
+      },
+    });
+
+    const summary = {
+      scanned: result.scanned,
+      unreadable: result.unreadable,
+      unchanged: result.unchanged,
+      pruned: result.pruned,
+      totalFiles: result.totalFiles,
+      indexPath,
+    };
+    output(opts, summary, () =>
+      `indexed ${result.scanned} file(s) (${result.unreadable} unreadable), ` +
+        `${result.unchanged} unchanged, ${result.pruned} pruned -> ${indexPath}`,
+    );
+  });
+
+samplesCmd
+  .command("search <query...>")
+  .description(
+    "Search the index by path tokens (ALL terms must match by default) plus trait filters",
+  )
+  .option("--any", "match ANY query term instead of ALL", false)
+  .option("--type <type>", "filter: loop | oneshot")
+  .option("--min-dur <seconds>", "minimum duration in seconds")
+  .option("--max-dur <seconds>", "maximum duration in seconds")
+  .option("--bpm <bpm>", "filter to samples near this BPM")
+  .option("--bpm-tol <bpm>", "BPM tolerance", String(DEFAULT_BPM_TOL))
+  .option("--band <band>", "filter: low | mid | high (dominant band)")
+  .action(
+    async (
+      query: string[],
+      cmdOpts: {
+        any: boolean;
+        type?: string;
+        minDur?: string;
+        maxDur?: string;
+        bpm?: string;
+        bpmTol: string;
+        band?: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const indexPath = resolveSamplesIndexPath();
+      const index = await loadSamplesIndex(indexPath);
+      if (Object.keys(index.files).length === 0) {
+        output(opts, { hits: [] }, () =>
+          `no samples indexed yet — run \`awh samples index <dir...>\` first (index: ${indexPath})`,
+        );
+        return;
+      }
+      if (cmdOpts.type !== undefined && cmdOpts.type !== "loop" && cmdOpts.type !== "oneshot") {
+        throw new Error(`--type must be "loop" or "oneshot" (got "${cmdOpts.type}")`);
+      }
+      if (cmdOpts.band !== undefined && !["low", "mid", "high"].includes(cmdOpts.band)) {
+        throw new Error(`--band must be "low", "mid", or "high" (got "${cmdOpts.band}")`);
+      }
+      const searchOpts: SearchOptions = {
+        any: cmdOpts.any,
+        type: cmdOpts.type as "loop" | "oneshot" | undefined,
+        minDurS: cmdOpts.minDur !== undefined ? Number(cmdOpts.minDur) : undefined,
+        maxDurS: cmdOpts.maxDur !== undefined ? Number(cmdOpts.maxDur) : undefined,
+        bpm: cmdOpts.bpm !== undefined ? Number(cmdOpts.bpm) : undefined,
+        bpmTol: Number(cmdOpts.bpmTol),
+        band: cmdOpts.band as "low" | "mid" | "high" | undefined,
+      };
+      const hits = searchIndex(index, query, searchOpts);
+
+      if (hits.length === 0) {
+        const relaxations = suggestRelaxations(index, query, searchOpts);
+        output(opts, { hits: [], relaxations }, () =>
+          [
+            `0 hits for "${query.join(" ")}"`,
+            ...relaxations.map(
+              (r) => `  ${r.count} for "${r.terms.join(" ")}" (${r.note})`,
+            ),
+          ].join("\n"),
+        );
+        return;
+      }
+
+      output(opts, hits, () =>
+        hits
+          .map((h) => {
+            const s = h.entry.scan;
+            return (
+              `${h.path.padEnd(60)} ${(s.duration_s ?? 0).toFixed(2).padStart(6)}s  ` +
+              `${(s.type_guess ?? "?").padEnd(7)}` +
+              (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "          ") +
+              `  ${s.dominant_band ?? "?"}`
+            );
+          })
+          .join("\n"),
+      );
+    },
+  );
+
+samplesCmd
+  .command("similar <file>")
+  .description(
+    "Rank indexed samples by cosine similarity (MFCC + spectral + band-split feature " +
+      "vector) to a reference file — the reference need not be indexed",
+  )
+  .option("--count <n>", "how many results to show", "10")
+  .action(async (file: string, cmdOpts: { count: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const indexPath = resolveSamplesIndexPath();
+    const index = await loadSamplesIndex(indexPath);
+    const readable = Object.values(index.files).filter(
+      (e) => !e.scan.unreadable && e.scan.similarity_vector,
+    );
+    if (readable.length === 0) {
+      output(opts, { hits: [] }, () =>
+        `no samples indexed yet — run \`awh samples index <dir...>\` first (index: ${indexPath})`,
+      );
+      return;
+    }
+
+    const { python, cwd } = requireAnalysisEngine();
+    const { vector: refVector, fromIndex } = await resolveReferenceVector(
+      index,
+      file,
+      makePythonScanner(python, cwd),
+    );
+
+    const candidates = readable.map((e) => ({
+      path: e.path,
+      vector: e.scan.similarity_vector!,
+      entry: e,
+    }));
+    const count = Math.max(1, Number(cmdOpts.count));
+    const ranked = rankSimilar(refVector, candidates, file).slice(0, count);
+
+    output(opts, { fromIndex, hits: ranked }, () =>
+      [
+        fromIndex ? `(reference read from the index)` : `(reference scanned on the fly — not indexed)`,
+        ...ranked.map((h) => {
+          const s = h.entry.scan;
+          return (
+            `${h.similarity.toFixed(3)}  ${h.path.padEnd(50)} ${(s.type_guess ?? "?").padEnd(7)} ` +
+            `${(s.duration_s ?? 0).toFixed(2).padStart(6)}s` +
+            (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "") +
+            `  ${s.dominant_band ?? "?"}`
+          );
+        }),
+      ].join("\n"),
+    );
+  });
+
+samplesCmd
+  .command("stats")
+  .description("Summary of the local sample index (size, roots, type/duration/band histograms)")
+  .action(async () => {
+    const opts = program.opts<GlobalOpts>();
+    const indexPath = resolveSamplesIndexPath();
+    const index = await loadSamplesIndex(indexPath);
+    const stats = summarizeIndex(index);
+    output(opts, { ...stats, indexPath }, () =>
+      [
+        `${stats.totalFiles} file(s) indexed -> ${indexPath}`,
+        `  roots: ${stats.roots.length ? stats.roots.join(", ") : "(none)"}`,
+        `  type:  ${stats.byType.loop} loop, ${stats.byType.oneshot} oneshot, ` +
+          `${stats.byType.unreadable} unreadable`,
+        `  band:  low ${stats.byBand.low}  mid ${stats.byBand.mid}  high ${stats.byBand.high}`,
+        stats.durationStats
+          ? `  duration: ${stats.durationStats.minS.toFixed(2)}s - ` +
+            `${stats.durationStats.maxS.toFixed(2)}s (mean ${stats.durationStats.meanS.toFixed(2)}s)`
+          : `  duration: (no readable files yet)`,
+      ].join("\n"),
     );
   });
 
