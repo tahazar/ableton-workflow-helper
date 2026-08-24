@@ -1677,3 +1677,60 @@ below this line needs Live open:
       Tap.maxpat` from the repo afterward is optional and the owner's call.
 - [ ] Freeze to `AWH Remote.amxd` and reload from a fresh Live session (new
       Set) → still responds on 9720/9721 without re-patching.
+## M11 (sample library) owner checklist
+
+Built + tested against a SYNTHETIC corpus only (sine-tone one-shots, a
+noise-burst hat, a decaying-sine kick loop at a known BPM) —
+`analysis/tests/test_samplescan.py` (feature ranges, type-guess/BPM
+recovery, determinism, unreadable-file records, JSONL-via-CLI, no NaN/
+Infinity tokens) and `packages/cli/test/samples.test.ts` (incremental
+index build/skip/prune against a fake scanner; the real analysis engine
+for an end-to-end index build plus the similarity NEGATIVE CONTROL — a
+second sine bass ranks above two noise hats for a sine-bass reference,
+with a hat ranked dead last; search token/filter matrix; zero-hits
+relaxation suggestions; missing-dir loud error; `AWH_SAMPLES_INDEX`
+honored, `~/.awh` never touched by the test suite). A one-off scratchpad
+smoke run (tiny hand-built corpus: a bass one-shot, a noise hat, a
+120 BPM kick loop) confirmed `index` → `search` → `similar` work
+end-to-end from the built CLI, but every test corpus so far is
+synthetic — real sample packs are messier (inconsistent naming,
+silence-padded files, odd sample rates, genuinely mixed-BPM folders) and
+haven't been run through this yet:
+
+- [ ] Point `awh samples index` at a REAL sample folder tree (a few
+      thousand files across nested pack folders is the realistic case) and
+      check: does the walk find everything expected (recursive, all four
+      extensions), does the reported unreadable count make sense for
+      whatever's actually corrupt/odd in the folder, and does re-running
+      immediately report 0 rescanned (real filesystem timestamps, not
+      synthetic ones)? Touch a handful of files (edit tags, re-export)
+      and confirm only those get rescanned.
+- [ ] Timing at real scale: how long does a first full index of the
+      owner's actual sample library take (thousands of files, librosa's
+      ~1s import amortized over 200-file chunks per the design), and is
+      the "progress per 1000 files" line actually useful at that size or
+      too sparse/too chatty? If it's materially slower than expected,
+      profile whether it's the librosa MFCC/spectral pass or the tempo
+      autocorrelation refinement (`ref._refine_period_by_comb`'s
+      Nelder-Mead polish) that dominates.
+- [ ] The actual "find me an amen break" flow, end to end: index a real
+      breaks/loops folder, ask Claude (fresh session, following the new
+      Typical Flows entry) to find an amen break, confirm it searches
+      first rather than guessing a filename, and confirm the one-clear-
+      winner-vs-ask-when-several behavior actually holds against real,
+      messily-named files (not the clean synthetic names in the test
+      corpus).
+- [ ] A `similar`-to query against a REAL favorite sample the owner
+      already knows well: does the ranked list's TOP few actually sound
+      similar by ear, and does the ranking's own printed traits
+      (type/duration/BPM/band) make the "why" legible even when the ear
+      and the cosine score disagree? This is the first real test of
+      whether MFCC/spectral/band-split timbral similarity tracks the
+      owner's actual sense of "sounds like this" — the synthetic
+      negative control only proves sine-vs-noise separates cleanly, not
+      that real timbral nuance ranks sensibly.
+- [ ] Decide whether the loop/one-shot duration+onset heuristic
+      (`samplescan.LOOP_MIN_DURATION_S`/`LOOP_MIN_ONSETS`) needs tuning
+      against real material — it was picked to cleanly separate the
+      synthetic corpus, not measured against a real pack's actual mix of
+      short fills, long one-shots, and loops.

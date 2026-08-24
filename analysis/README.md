@@ -11,9 +11,13 @@ One-time, from the repo root:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install numpy scipy soundfile pyloudnorm pytest
+.venv/bin/pip install numpy scipy soundfile pyloudnorm librosa pytest
 cd analysis && ../.venv/bin/pytest -q && cd ..   # engine self-test
 ```
+
+`librosa` (ISC, license audit below) is a base dependency as of M11 —
+`awh samples index`'s `samplescan` uses it for spectral centroid/rolloff/
+flatness + MFCCs, not just the `a2m` extra below.
 
 ### B1 (`a2m` — audio-to-MIDI transcription)
 

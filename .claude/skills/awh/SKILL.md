@@ -464,6 +464,55 @@ devices (`device.insert/get/param/delete` — stock Live devices only),
 drum racks (`drum.pad-note`), Simpler (`simpler.sample`), `set.tempo`,
 audio clips (`clip.create-audio`).
 
+## Sample library (`awh samples`) — index, search, similarity
+
+A machine-local index of the owner's OWN sample folders — never their
+in-Live library clips (that's `awh lib`) — so "find me an amen break" can
+be answered from material they already own instead of guessed at.
+
+```sh
+awh samples index <dir...> [--rescan]   # walk folders (wav/aiff/flac/mp3),
+    # extract features, write ~/.awh/samples-index.json (override with
+    # AWH_SAMPLES_INDEX). Incremental by path+size+mtime; deleted files
+    # under the given folders are pruned; --rescan forces a full re-scan.
+awh samples search <query...> [--any] [--type loop|oneshot]
+    [--min-dur s] [--max-dur s] [--bpm N --bpm-tol N] [--band low|mid|high]
+    # token match over normalized path tokens (ALL terms by default),
+    # plus trait filters; ranked table, --json for the skill
+awh samples similar <file> [--count N]  # cosine similarity over the MFCC +
+    # spectral + band-split feature vector; reference file need not be
+    # indexed (scanned on the fly); per-file traits shown so the ranking
+    # is inspectable
+awh samples stats                        # index size, roots, histograms
+```
+
+- **THE LLM CONTRACT**: search first, never invent a path. If the search
+  narrows to ONE clear winner (by tokens + filters), use it and say why
+  ("used `amen-break-170.wav` — the only hit for 'amen break', 170 BPM
+  matches the Set's tempo"). If SEVERAL are plausible, present the top few
+  with their traits (duration/type/BPM/band) and ASK the owner which one —
+  never silently pick among several equally-good candidates. Combined with
+  AWH Remote's audition, candidates become listenable in Live before
+  committing to one.
+- `index` must run before `search`/`similar` do anything useful — if asked
+  to find a sample and the index is empty (or plainly stale — the owner
+  mentions a folder that was never indexed), run `awh samples index
+  <folder>` first rather than reporting "not found" against an empty index.
+- Zero hits is a normal result, not an error: relay the printed
+  relaxation suggestions (fewer terms, `--any`, dropped filters) rather
+  than silently retrying with a guessed query.
+- Similarity is TIMBRAL statistics (MFCCs + spectral shape + band split),
+  not perception — good for "another break like this," not for musical
+  key relationships. Say so if the owner expects harmonic matching.
+- BPM only appears when the loop heuristic actually fires (duration +
+  onset count); a one-shot or an ambiguous file legitimately has no BPM —
+  don't invent one. Relay `bpm_confidence` rather than presenting an
+  estimate as certain.
+- The index is machine-local and never committed (absolute paths,
+  meaningless off-machine) — don't suggest saving it to the repo or
+  `awh lib`; if the owner wants a sample kept for reuse across projects,
+  that's still `awh save`/`awh lib place` after they've picked it.
+
 ## Endless player (`awh endless`) — seeded, ever-different arrangements
 
 A standalone deliverable, separate from everything above: it builds a
@@ -636,6 +685,38 @@ garage hats", "use my saved bassline"):
    guess a target silently — pick an empty session slot (or an obviously
    matching placeholder clip) on a sensibly-named track, or ask the owner
    where they want it.
+
+**Find a sample from the owner's own folders** ("find me an amen break",
+"got any deep house kicks in my packs", "find something like this sample",
+"what samples do I have in this folder"):
+1. If the relevant folder has never been indexed (or the owner mentions a
+   folder you haven't seen before), `awh samples index <folder...>` first —
+   it's incremental (unchanged files are skipped on repeat runs), so
+   re-indexing a folder the owner already indexed is cheap and safe to do
+   whenever unsure.
+2. `awh samples search <query terms...> [--type loop|oneshot] [--bpm N
+   --bpm-tol N] [--band low|mid|high]` — token search over path/folder
+   names (pack folder names are often the best metadata a sample has),
+   narrowed with trait filters when the owner gives them (tempo, one-shot
+   vs loop, etc). Zero hits is normal: relay the printed relaxation
+   suggestions (fewer terms, `--any`, dropped filters) instead of
+   silently guessing a different query.
+3. **THE CONTRACT**: one clear winner (by tokens + filters) → use it and
+   tell the owner why ("used `amen-break-170.wav` — the only hit for
+   'amen break', and 170 matches the Set's tempo"). Several plausible
+   candidates → present the top few WITH their traits (duration/type/BPM/
+   dominant band) and ASK the owner which one — never silently pick among
+   several equally-good options, never invent a path that didn't come out
+   of search/similar.
+4. For "something like this sample": `awh samples similar <refFile>
+   [--count N]` — cosine similarity over MFCC/spectral/band features (the
+   reference doesn't need to be indexed itself). This is TIMBRAL
+   similarity ("another break like this"), not musical key matching — say
+   so if the owner seems to expect harmonic matching.
+5. Once picked, hand off to whatever the owner actually wants to DO with
+   it — audition via AWH Remote if available, `awh clip from-audio` for
+   melodic material, `awh drums detect-onsets`/`awh op match` for
+   drum/sound-design uses, or just report the path back.
 
 **Generate or rework a drum pattern** ("give me a house groove", "make this
 beat trap", "humanize my drums", "variations of my drum loop"):

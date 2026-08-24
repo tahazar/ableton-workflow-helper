@@ -10,7 +10,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import a2m, ab, drumstats, duck, opmatch, pumpcheck, ref, report, targets
+from . import a2m, ab, drumstats, duck, opmatch, pumpcheck, ref, report, samplescan, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -493,6 +493,21 @@ def _cmd_drumstats(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_samplescan(args: argparse.Namespace) -> int:
+    from .audio import sanitize_json
+
+    files = list(args.files)
+    if not files:
+        files = [line.strip() for line in sys.stdin if line.strip()]
+    for path in files:
+        try:
+            record = samplescan.scan_file(path)
+        except Exception as exc:  # noqa: BLE001 — never crash the batch on one bad file
+            record = {"path": path, "unreadable": True, "error": str(exc)}
+        print(json.dumps(sanitize_json(record)))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -622,6 +637,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_opcompare.add_argument("cand")
     p_opcompare.add_argument("--json", action="store_true")
     p_opcompare.set_defaults(func=_cmd_opcompare)
+
+    p_samplescan = sub.add_parser(
+        "samplescan",
+        help="Scan sample files -> one JSONL feature record per line (M11 sample library)",
+    )
+    p_samplescan.add_argument(
+        "files", nargs="*",
+        help="file paths (or read newline-separated paths from stdin if omitted)",
+    )
+    p_samplescan.set_defaults(func=_cmd_samplescan)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")
