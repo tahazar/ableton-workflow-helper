@@ -45,6 +45,12 @@ import {
 import { DUCK_PORT, DUCK_REPLY_PORT, pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from "./duck.js";
 import { runLayers, type LayerCaptureFn } from "./layers.js";
 import {
+  enrichActionsWithDevices,
+  readMasterChainDevices,
+  resolveMeasurementRecordPath,
+  type MasterDevice,
+} from "./advise.js";
+import {
   RECIPE_SLUG_PREFIX,
   applyRecipePlan,
   loadRecipeFromEntry,
@@ -2816,10 +2822,11 @@ mix
     const opts = program.opts<GlobalOpts>();
     const dir = join(findLibraryRoot(), "measurements");
 
-    // Two record "kinds" share library/measurements/: single-file mix
-    // reports (report.save_record, `kind` field absent) and multi-file
-    // drumstats records (drumstats.save_record, `kind: "drumstats"`) —
-    // both must render (not crash) in `mix records`/`mix records <name>`.
+    // Record "kinds" sharing library/measurements/: single-file mix reports
+    // (report.save_record, `kind` field absent), multi-file drumstats
+    // records (`kind: "drumstats"`), M13's `mix layers --save`
+    // (`kind: "layers"`) and `mix advise --save` (`kind: "advice"`) —
+    // ALL must render (not crash) in `mix records`/`mix records <name>`.
     interface DrumStatsRecordFile {
       kind: "drumstats";
       saved: string;
@@ -2838,7 +2845,23 @@ mix
       };
       findings: { severity: string; explanation: string; suggestion: string }[];
     }
-    type RecordFile = DrumStatsRecordFile | MixReportRecordFile;
+    interface LayersRecordFile {
+      kind: "layers";
+      saved: string;
+      tracks: { trackPath: string; trackName: string; file: string }[];
+      bands: { calibration?: string };
+    }
+    interface AdviceRecordFile {
+      kind: "advice";
+      saved: string;
+      source: string;
+      preset: string;
+      has_target: boolean;
+      has_layers: boolean;
+      items: AdviceItem[];
+      healthy: AdviceHealthy | null;
+    }
+    type RecordFile = DrumStatsRecordFile | MixReportRecordFile | LayersRecordFile | AdviceRecordFile;
 
     if (name !== undefined) {
       const file = join(dir, `${name}.json`);
@@ -2856,6 +2879,31 @@ mix
             ...(record.attribution?.note ? [`  attribution: ${record.attribution.note}`] : []),
             ``,
             `full JSON: ${file} (or --json); re-run: awh drums mine <dir> --dataset ${s.dataset}`,
+          ].join("\n"),
+        );
+        return;
+      }
+      if (record.kind === "layers") {
+        output(opts, record, () =>
+          [
+            `${name} — saved ${record.saved} (layers: ${record.tracks.length} track(s))`,
+            ...record.tracks.map((t) => `  ${t.trackPath.padEnd(10)} "${t.trackName}"`),
+            ``,
+            `full JSON: ${file} (or --json); unlocks: awh mix advise ... --layers ${name}`,
+          ].join("\n"),
+        );
+        return;
+      }
+      if (record.kind === "advice") {
+        const actionable = record.items.filter((it) => it.kind === "finding");
+        output(opts, record, () =>
+          [
+            `${name} — saved ${record.saved} (advice: ${record.source}, preset ${record.preset})`,
+            record.healthy
+              ? `  HEALTHY — ${record.healthy.message}`
+              : `  ${actionable.length} actionable item(s), top: #${actionable[0]?.rank} ${actionable[0]?.id}`,
+            ``,
+            `full JSON: ${file} (or --json); re-run: awh mix advise ... --compare ${name}`,
           ].join("\n"),
         );
         return;
@@ -2893,6 +2941,23 @@ mix
             name,
             saved: r.saved,
             summary: `drumstats: ${r.stats.n_loops} loop(s), ${r.stats.dataset}`,
+          };
+        }
+        if (r.kind === "layers") {
+          return {
+            name,
+            saved: r.saved,
+            summary: `layers: ${r.tracks.length} track(s) (${r.tracks.map((t) => t.trackName).join(", ")})`,
+          };
+        }
+        if (r.kind === "advice") {
+          const actionable = r.items.filter((it) => it.kind === "finding");
+          return {
+            name,
+            saved: r.saved,
+            summary: r.healthy
+              ? `advice: healthy (${r.source})`
+              : `advice: ${actionable.length} actionable item(s) (${r.source})`,
           };
         }
         return {
@@ -3933,6 +3998,11 @@ mix
     'comma-separated "lo-hi" Hz ranges for the comparison (default: `mix bands`\' own default)',
   )
   .option("--keep", "keep the per-track capture files (temp dir path is always printed)")
+  .option(
+    "--save [name]",
+    "also save a layers/bands record to library/measurements/ (default name: from the " +
+      "track list) — unlocks `awh mix advise --layers <name>`'s masking stage",
+  )
   .action(
     async (
       tracks: string[],
@@ -3944,6 +4014,7 @@ mix
         tail: string;
         bands?: string;
         keep?: boolean;
+        save?: string | boolean;
       },
     ) => {
       const opts = program.opts<GlobalOpts>();
@@ -4003,11 +4074,56 @@ mix
           "\n",
       );
 
+      let compareResult: Record<string, unknown> | undefined;
+      let savedRecordPath: string | undefined;
+      if (cmdOpts.save !== undefined) {
+        compareResult = (await runAnalysisJson([...bandsArgs, "--json"])) as unknown as Record<
+          string,
+          unknown
+        >;
+        const name =
+          typeof cmdOpts.save === "string"
+            ? cmdOpts.save
+            : slugify(tracks.join("-")) || "layers";
+        savedRecordPath = join(findLibraryRoot(), "measurements", `${name}.json`);
+        // `file` here matches EXACTLY what was passed to `bands` (results[].outPath)
+        // so `awh mix advise`'s masking rule can map compareResult's per-file band
+        // levels back to track names.
+        const record = {
+          kind: "layers",
+          schema: 1,
+          saved: new Date().toISOString().slice(0, 10),
+          tracks: results.map((r) => ({
+            trackPath: r.trackPath,
+            trackName: r.trackName,
+            file: r.outPath,
+          })),
+          bands: compareResult,
+        };
+        await mkdir(dirname(savedRecordPath), { recursive: true });
+        await writeFile(savedRecordPath, `${JSON.stringify(record, null, 2)}\n`, "utf8");
+        process.stderr.write(`record -> ${savedRecordPath}\n`);
+      }
+
       if (opts.json) {
-        const compareResult = await runAnalysisJson([...bandsArgs, "--json"]);
+        if (!compareResult) {
+          compareResult = (await runAnalysisJson([...bandsArgs, "--json"])) as unknown as Record<
+            string,
+            unknown
+          >;
+        }
         if (!cmdOpts.keep) await rm(outDir, { recursive: true, force: true });
         process.stdout.write(
-          `${JSON.stringify({ results, outDir: cmdOpts.keep ? outDir : null, compare: compareResult }, null, 2)}\n`,
+          `${JSON.stringify(
+            {
+              results,
+              outDir: cmdOpts.keep ? outDir : null,
+              compare: compareResult,
+              ...(savedRecordPath ? { savedRecord: savedRecordPath } : {}),
+            },
+            null,
+            2,
+          )}\n`,
         );
       } else {
         // Same bands table `awh mix bands` itself prints — no separate
@@ -4015,6 +4131,186 @@ mix
         await runAnalysis(bandsArgs);
         if (!cmdOpts.keep) await rm(outDir, { recursive: true, force: true });
       }
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// M13: the mix advisor — a deterministic rule engine over the SAME
+// measurement pipeline `mix report` uses (docs/design/mix-advisor.md). The
+// rule table lives in analysis/awh_analysis/advise.py; this command only
+// resolves CLI inputs to file paths, optionally enriches action text with
+// real master-chain device names (--set, additive/offline-safe — see
+// advise.ts), and renders the ranked plan.
+// ---------------------------------------------------------------------------
+
+interface AdviceItem {
+  id: string;
+  kind: "finding" | "placeholder" | "info";
+  stage: string;
+  rank: number;
+  evidence: Record<string, unknown>;
+  issue: string;
+  action: string;
+  verify: string;
+  confidence: string;
+  basis: string;
+  magnitude: number;
+  blockedBy: number[];
+}
+interface AdviceHealthy {
+  message: string;
+  marginal_metrics: { id: string; margin: number; unit: string; evidence: Record<string, unknown> }[];
+}
+interface AdviceCompareEntry {
+  id: string;
+  status: "resolved" | "improved" | "unchanged" | "new";
+  old_magnitude?: number;
+  new_magnitude?: number;
+  old_evidence: unknown;
+  new_evidence: unknown;
+}
+interface AdviseResult {
+  preset: string;
+  has_target: boolean;
+  has_layers: boolean;
+  items: AdviceItem[];
+  healthy: AdviceHealthy | null;
+  compare?: AdviceCompareEntry[];
+}
+
+function renderAdvisePretty(result: AdviseResult): string {
+  const lines: string[] = [
+    `preset: ${result.preset}   target: ${result.has_target ? "yes" : "no"}   ` +
+      `layers: ${result.has_layers ? "yes" : "no"}`,
+    "",
+  ];
+  if (result.healthy) {
+    lines.push(`HEALTHY — ${result.healthy.message}`);
+    for (const m of result.healthy.marginal_metrics) {
+      lines.push(`  closest to tripping: ${m.id}  margin ${m.margin.toFixed(2)} ${m.unit}`);
+    }
+    lines.push("");
+  }
+  for (const it of result.items) {
+    lines.push(
+      it.kind === "finding"
+        ? `#${it.rank} [${it.stage}] ${it.id}`
+        : `#${it.rank} [${it.stage}] ${it.id} (${it.kind})`,
+    );
+    lines.push(`  ${it.issue}`);
+    lines.push(`  -> ${it.action}`);
+    if (it.verify !== "n/a") lines.push(`  verify:  ${it.verify}`);
+    if (it.blockedBy.length > 0) lines.push(`  blockedBy: #${it.blockedBy.join(", #")}`);
+    if (it.kind === "finding") lines.push(`  confidence: ${it.confidence}   basis: ${it.basis}`);
+    lines.push("");
+  }
+  if (result.compare) {
+    lines.push("compare vs. saved advice record:");
+    for (const c of result.compare) {
+      const extra =
+        c.old_magnitude !== undefined && c.new_magnitude !== undefined
+          ? `  (${c.old_magnitude.toFixed(2)} -> ${c.new_magnitude.toFixed(2)})`
+          : "";
+      lines.push(`  [${c.status.padEnd(9)}] ${c.id}${extra}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+mix
+  .command("advise [captureFile]")
+  .description(
+    "Deterministic rule-based mix advice: a ranked, cited, verifiable plan across the " +
+      "dependency ladder (integrity -> phase -> masking -> tonal -> dynamics -> loudness). " +
+      "Zero actionable items is the healthy state, not an error.",
+  )
+  .option(
+    "--record <nameOrPath>",
+    "use a saved mix-report measurement record instead of measuring a capture file " +
+      "(mutually exclusive with <captureFile>)",
+  )
+  .option("--target <nameOrPath>", "genre target — unlocks the tonal-balance stage")
+  .option(
+    "--layers <nameOrPath>",
+    "a record saved by `mix layers --save` — unlocks the inter-element masking stage",
+  )
+  .option("--preset <preset>", "delivery preset: club | streaming | apple", "club")
+  .option(
+    "--set",
+    "name real devices on the master chain in actions (reads via device.get when the " +
+      "gateway is up; purely additive — works offline without it)",
+  )
+  .option("--save [name]", "also save an advice record to library/measurements/")
+  .option("--compare <nameOrPath>", "diff this run against a previously-saved advice record")
+  .action(
+    async (
+      captureFile: string | undefined,
+      cmdOpts: {
+        record?: string;
+        target?: string;
+        layers?: string;
+        preset: string;
+        set?: boolean;
+        save?: string | boolean;
+        compare?: string;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+
+      if (Boolean(captureFile) === Boolean(cmdOpts.record)) {
+        throw new Error(
+          "awh mix advise requires exactly one of <captureFile> or --record <nameOrPath>",
+        );
+      }
+
+      const libraryRoot = findLibraryRoot();
+      const args = ["advise"];
+      if (captureFile) args.push(captureFile);
+      if (cmdOpts.record) {
+        args.push("--record", resolveMeasurementRecordPath(cmdOpts.record, libraryRoot));
+      }
+      if (cmdOpts.target) args.push("--target", resolveTarget(cmdOpts.target));
+      if (cmdOpts.layers) {
+        args.push("--layers", resolveMeasurementRecordPath(cmdOpts.layers, libraryRoot));
+      }
+      args.push("--preset", cmdOpts.preset);
+      if (cmdOpts.compare) {
+        args.push("--compare", resolveMeasurementRecordPath(cmdOpts.compare, libraryRoot));
+      }
+
+      let savePath: string | undefined;
+      if (cmdOpts.save !== undefined) {
+        const base =
+          typeof cmdOpts.save === "string"
+            ? cmdOpts.save
+            : slugify(
+                cmdOpts.record ?? basename(captureFile ?? "advice").replace(/\.[^.]+$/, ""),
+              ) || "advice";
+        savePath = join(libraryRoot, "measurements", `${base}.json`);
+        await mkdir(dirname(savePath), { recursive: true });
+        args.push("--save-record", savePath);
+      }
+
+      const result = (await runAnalysisJson(args)) as unknown as AdviseResult;
+
+      // --set is additive and offline-safe: any gateway failure (not up,
+      // wrong port, etc.) just leaves masterDevices empty rather than
+      // failing the whole plan. Enrichment is display-only — it never
+      // touches the record --save already wrote (device indices on the
+      // master chain aren't stable enough to bake into a saved plan).
+      if (cmdOpts.set) {
+        let masterDevices: MasterDevice[] = [];
+        try {
+          masterDevices = await readMasterChainDevices((name, a) => op(opts, name, a));
+        } catch {
+          // additive only — see comment above
+        }
+        result.items = enrichActionsWithDevices(result.items, masterDevices);
+      }
+
+      if (savePath) process.stderr.write(`record -> ${savePath}\n`);
+
+      output(opts, result, () => renderAdvisePretty(result));
     },
   );
 

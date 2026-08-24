@@ -2108,3 +2108,68 @@ real messy-tonal material like Reese still gets the narrowband treatment.
       revisiting if a future real bass capture sits close to that
       boundary and the routing (narrowband vs. fallback) looks wrong by
       ear.
+
+## M13 (mix advisor) owner checklist
+
+Built (offline, AI-buildable half) in response to the owner's post-public
+ask captured in `docs/design/mix-advisor.md`: "with this mix report — I
+want to be able to derive recommendations on what to do to improve the
+mix." `analysis/awh_analysis/advise.py` is a deterministic rule table over
+the SAME measurement dict `mix report` already produces (never re-measures
+with different logic) — six fixed stages (integrity → phase → masking →
+tonal → dynamics → loudness), each rule citing its `docs/research/
+data-driven-mixing.md` or existing-module basis, capped EQ amounts
+(`min(|delta|, 3) dB`), tilt-vs-bands exclusivity, `blockedBy` links across
+the dependency ladder, and a healthy-mix state (zero actionable items +
+the two most marginal metrics). `analysis/tests/test_advise.py` (15 tests:
+one real-audio fixture + negative control per named rule — clipped sine/
+safe sine → integrity, decorrelated/correlated low band → phase,
+band-boosted/unboosted noise vs a real saved target → capped EQ, quiet
+streaming-level mix → healthy state — plus dict-fixture tests for masking,
+tilt-vs-bands exclusivity, two-stage ordering/blockedBy, determinism, and
+`--compare` resolution categories) and `packages/cli/test/advise.test.ts`
+(record-name resolution, `--set` device-name enrichment against a real
+fake gateway, and full CLI integration through the built binary + real
+Python engine: arg mapping, missing-target/-layers placeholders in real
+output, `--record`/`--target`/`--layers` resolving saved records by name,
+`--set` naming a real master-chain device end to end, `--compare`
+resolved/new) are the AI-buildable half — all green (Python 179/179 total
+incl. the 15 new; Node core 344/344, cli 146+15/161). Re-running the
+ORIGINAL question end-to-end against the owner's real WIP track is the
+owner's:
+
+- [ ] `awh mix advise <realWipCapture> --target <realGenreTarget> --layers
+      <realLayersRecord>` on the actual project this milestone was built
+      for — not a synthetic fixture. Confirm the ranked plan actually
+      reflects the dependency ladder on real numbers (e.g. does a real
+      phase or tonal issue genuinely outrank a lower-priority one, and does
+      `blockedBy` fire when it should).
+- [ ] **The credibility test**: read the top-3 items before looking at the
+      numbers and judge, by ear/experience, whether they match what you
+      already suspected was wrong with the mix. Disagreement is fine and
+      expected sometimes — the design's own stance is that disagreement is
+      a reason to edit a rule (threshold or wording), not a reason to
+      distrust the whole tool. Note which items (if any) surprised you and
+      why.
+- [ ] Act on ONE item for real (the move the `action` field names — an
+      actual EQ Eight move, a Utility Bass Mono, a limiter ceiling change),
+      re-capture, then `awh mix advise <newCapture> --compare <savedName>`
+      — confirm the item you fixed shows `resolved` (or `improved` with
+      honest numbers) and nothing else you didn't touch got miscategorized.
+- [ ] Try `--set` against the real Set with the real master chain loaded —
+      confirm it names actual devices already there (not the generic "add
+      an EQ Eight" phrasing) where one exists, and does nothing surprising
+      when it doesn't.
+- [ ] Skill check: ask a fresh agent "what should I fix in my mix" or "is
+      this ready for release" and confirm it reaches for `mix advise` from
+      the Typical flows entry, presents the plan top-down, quotes evidence
+      verbatim, and never layers a folklore suggestion the engine didn't
+      emit on top. Not run this pass.
+- [ ] Whether the open-detail decisions made where the design left specifics
+      unstated hold up against real material: the masking "comparable
+      energy" significance threshold (5% of a layer capture's total signal
+      power, not an absolute dBFS), the extreme-asymmetry integrity
+      threshold (2x report.py's existing 3 dB flag, i.e. 6 dB), and the
+      `--compare` improved/unchanged epsilon per rule (docs/design/
+      mix-advisor.md doesn't pin any of these down) — revisit if a real
+      run's judgment calls look miscalibrated by ear.

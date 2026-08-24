@@ -10,7 +10,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import a2m, ab, bands, clapembed, drumstats, duck, opmatch, pitch, pumpcheck, ref, report, samplepitch, samplescan, targets
+from . import a2m, ab, advise as advise_mod, bands, clapembed, drumstats, duck, opmatch, pitch, pumpcheck, ref, report, samplepitch, samplescan, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -629,6 +629,79 @@ def _cmd_clapembed(args: argparse.Namespace) -> int:
     return 0
 
 
+def _render_advise_text(result: dict) -> str:
+    lines = [
+        f"preset: {result['preset']}   target: {'yes' if result['has_target'] else 'no'}   "
+        f"layers: {'yes' if result['has_layers'] else 'no'}",
+        "",
+    ]
+    if result.get("healthy"):
+        h = result["healthy"]
+        lines.append(f"HEALTHY — {h['message']}")
+        for m in h.get("marginal_metrics", []):
+            lines.append(f"  closest to tripping: {m['id']}  margin {_fmt(m['margin'])} {m['unit']}")
+        lines.append("")
+
+    for it in result["items"]:
+        header = f"#{it['rank']} [{it['stage']}] {it['id']}"
+        if it["kind"] != "finding":
+            header += f"  ({it['kind']})"
+        lines.append(header)
+        lines.append(f"  {it['issue']}")
+        lines.append(f"  -> {it['action']}")
+        if it["verify"] != "n/a":
+            lines.append(f"  verify:  {it['verify']}")
+        if it.get("blockedBy"):
+            lines.append(f"  blockedBy: {it['blockedBy']}")
+        if it["kind"] == "finding":
+            lines.append(f"  confidence: {it['confidence']}   basis: {it['basis']}")
+        lines.append("")
+
+    if "compare" in result:
+        lines.append("compare vs. saved advice record:")
+        for c in result["compare"]:
+            extra = ""
+            if c["status"] in ("improved", "unchanged") and "old_magnitude" in c:
+                extra = f"  ({_fmt(c['old_magnitude'])} -> {_fmt(c['new_magnitude'])})"
+            lines.append(f"  [{c['status']:9s}] {c['id']}{extra}")
+    return "\n".join(lines)
+
+
+def _cmd_advise(args: argparse.Namespace) -> int:
+    if bool(args.file) == bool(args.record):
+        raise ValueError("advise requires exactly one of <file> or --record <path>")
+
+    if args.record:
+        record = advise_mod.load_json_record(args.record)
+        measurements = record.get("measurements")
+        if measurements is None:
+            raise ValueError(
+                f"{args.record} is not a mix-report measurement record (no 'measurements' field)"
+            )
+        source_label = args.record
+    else:
+        measurements = report.analyze(args.file)
+        source_label = args.file
+
+    target = targets.load_target(args.target) if args.target else None
+    layers = advise_mod.load_json_record(args.layers) if args.layers else None
+
+    result = advise_mod.advise(measurements, target, layers, args.preset)
+
+    if args.save_record:
+        advise_mod.save_advice_record(args.save_record, source_label, result)
+
+    if args.compare:
+        old_record = advise_mod.load_json_record(args.compare)
+        result = {**result, "compare": advise_mod.compare_advice(old_record, result)}
+
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_advise_text(result))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -827,6 +900,35 @@ def build_parser() -> argparse.ArgumentParser:
                           help="also write a per-source measurement record into this directory")
     p_target.add_argument("--json", action="store_true")
     p_target.set_defaults(func=_cmd_target)
+
+    p_advise = sub.add_parser(
+        "advise",
+        help="Deterministic rule-based mix advice (M13): a ranked, cited, verifiable plan",
+    )
+    p_advise.add_argument(
+        "file", nargs="?", default=None, help="audio capture to measure (omit with --record)"
+    )
+    p_advise.add_argument(
+        "--record", type=str, default=None,
+        help="a saved mix-report measurement record path instead of re-measuring a capture",
+    )
+    p_advise.add_argument(
+        "--target", type=str, default=None,
+        help="genre target path (library/targets/<name>.json) — unlocks the tonal-balance stage",
+    )
+    p_advise.add_argument(
+        "--layers", type=str, default=None,
+        help="a saved mix-layers record path — unlocks the inter-element masking stage",
+    )
+    p_advise.add_argument("--preset", choices=["club", "streaming", "apple"], default="club")
+    p_advise.add_argument(
+        "--compare", type=str, default=None,
+        help="a previously-saved advice record path to diff this run against",
+    )
+    p_advise.add_argument("--save-record", type=str, default=None,
+                          help="also write an advice record JSON to this path")
+    p_advise.add_argument("--json", action="store_true")
+    p_advise.set_defaults(func=_cmd_advise)
 
     return parser
 
