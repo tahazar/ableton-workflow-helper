@@ -18,7 +18,9 @@ from __future__ import annotations
 import numpy as np
 from scipy.signal import butter, sosfiltfilt
 
+from . import pitch, spectrum
 from .audio import to_mono
+from .bands import CALIBRATION_REF_POWER
 
 LOW_BAND_HZ = 150.0
 ENV_WINDOW_S = 0.005
@@ -33,6 +35,105 @@ KICK_OVER_BASS_MARGIN_DB = 6.0  # ducked bass sits >= this below the kick peak
 RELEASE_HEADROOM = 0.85  # release fully done by this fraction of the gap
 PEAK_ALIGN_MAX_FRACTION = 0.25  # low-band peak later than this into the window -> misaligned triggers
 FLOOR_SILENCE_SUSPECT_DB = 90.0  # peak-over-floor beyond this -> floor is digital silence (live pathology read 174 dB)
+
+# --- M6b follow-up: pitch-aware masking depth (2026-08-23) ----------------
+# The masking-depth calc below originally compared BASS and KICK levels in
+# one generic, fixed 150 Hz lowpass band (LOW_BAND_HZ above) — never asking
+# what the bass's actual fundamental is, or measuring the kick's energy
+# specifically AT that frequency. Real masking analysis this session (`mix
+# pitch`/`mix bands`, a real Reese/Sub conflict) proved a narrowband, real-
+# fundamental measurement is materially more accurate than a generic low-
+# band proxy — this applies the same upgrade here, reusing pitch.py's
+# periodicity tracker and bands.py/spectrum.py's calibrated Welch machinery
+# rather than inventing new DSP. Only fires for VOICED bass (a real
+# fundamental to center the band on) — broadband/unvoiced bass keeps the
+# original generic-low-band calc verbatim, since a narrowband margin is
+# meaningless without a real fundamental.
+MASKING_BAND_HALF_CENTS = 50.0  # a quarter-tone each side (same constant as
+# M11c's sample-search DEFAULT_CENTS_TOL, packages/cli/src/samples.ts)
+MASKING_BODY_WINDOW_FLOOR_S = 0.02  # never analyze a shorter-than-this body
+# window — a degenerate (near-zero) hold_end_s would starve the Welch PSD
+# of enough samples for a meaningful reading
+MASKING_MIN_VOICED_FRACTION = 0.10  # pitch.analyze_segment's `state` field
+# alone isn't a strong enough gate — it flips to "voiced" the instant pyin
+# finds even ONE periodic frame, which real white noise did in testing
+# (spurious f0, voiced_fraction 0.064). Calibrated against real captures
+# from this session: pure noise measured 0.064, a genuinely messy-but-
+# tonal Reese growl measured 0.122, a clean sub measured 0.956 — 0.10 sits
+# between the noise false-positive and the real (if noisy) tonal case.
+
+
+def _narrow_band_hz(f0_hz: float, sr: int) -> tuple[float, float]:
+    """A cents-wide band centered on `f0_hz`, floored at the Welch engine's
+    own frequency resolution (2 bins, same "never narrower than the FFT can
+    resolve" principle as pitch.py's harmonic_dominance mainlobe floor —
+    computed against THIS module's FFT size via spectrum.WELCH_NFFT, not
+    pitch.py's different one)."""
+    mainlobe_half_hz = 2.0 * sr / spectrum.WELCH_NFFT
+    cents_half_hz = f0_hz * (2.0 ** (MASKING_BAND_HALF_CENTS / 1200.0) - 1.0)
+    half = max(mainlobe_half_hz, cents_half_hz)
+    return max(0.0, f0_hz - half), f0_hz + half
+
+
+def _calibrated_band_dbfs(x: np.ndarray, sr: int, lo_hz: float, hi_hz: float) -> float:
+    """Calibrated dBFS (0 dBFS = a full-scale sine, same reference as
+    bands.py) over the WHOLE signal for one [lo_hz, hi_hz] band — used for
+    the bass capture's own level in its narrow band (bass is usually
+    sustained; one whole-capture reading, same scope as the original
+    generic-band calc's single bass_low_db number)."""
+    mono = to_mono(np.asarray(x, dtype=np.float64))
+    psd_result = spectrum.welch_psd(mono, sr)
+    if psd_result is None:
+        return -120.0  # inaudible floor — too short a signal for a real PSD
+    freqs, psd = psd_result
+    lo_c = max(lo_hz, float(freqs[0]))
+    hi_c = min(hi_hz, float(freqs[-1]))
+    power = spectrum.band_power(freqs, psd, lo_c, hi_c) if hi_c > lo_c else 0.0
+    if power <= 0.0:
+        return -120.0
+    return float(10.0 * np.log10(power / CALIBRATION_REF_POWER))
+
+
+def _kick_band_dbfs_over_body(
+    x: np.ndarray, sr: int, trigger_times_s: list[float], body_window_s: float, lo_hz: float, hi_hz: float
+) -> float:
+    """The kick's calibrated energy in [lo_hz, hi_hz], averaged (in LINEAR
+    power, never in dB — averaging dB values directly would bias the
+    result) across each trigger's own RAW body-window segment.
+
+    Deliberately NOT built on trigger_aligned_envelope's output: that
+    function's mean_power_signal is already power-combined (sqrt-of-mean-
+    of-squares) across trigger instances, which destroys the phase
+    information a real Welch/FFT band-power measurement needs — reusing it
+    would be meaningless. This re-slices RAW segments independently
+    instead, with its own small bounds-checked loop, so it puts zero risk
+    on that already-tested, already-shipped function."""
+    body_window_s = max(body_window_s, MASKING_BODY_WINDOW_FLOOR_S)
+    mono = to_mono(np.asarray(x, dtype=np.float64))
+    win_samples = int(round(body_window_s * sr))
+    duration_s = mono.shape[0] / sr
+
+    powers: list[float] = []
+    for t in sorted(trigger_times_s):
+        if t < 0 or t + body_window_s > duration_s:
+            continue
+        start = int(round(t * sr))
+        segment = mono[start : start + win_samples]
+        psd_result = spectrum.welch_psd(segment, sr)
+        if psd_result is None:
+            continue
+        freqs, psd = psd_result
+        lo_c = max(lo_hz, float(freqs[0]))
+        hi_c = min(hi_hz, float(freqs[-1]))
+        power = spectrum.band_power(freqs, psd, lo_c, hi_c) if hi_c > lo_c else 0.0
+        powers.append(power)
+
+    if not powers:
+        return -120.0
+    mean_power = float(np.mean(powers))
+    if mean_power <= 0.0:
+        return -120.0
+    return float(10.0 * np.log10(mean_power / CALIBRATION_REF_POWER))
 
 
 def _low_band(x: np.ndarray, sr: int) -> np.ndarray:
@@ -136,14 +237,39 @@ def fit_duck_envelope(
     depth_source = "parameter"
     if depth_db is None:
         if bass is not None and bass_sr is not None:
-            bass_low = _low_band(bass, bass_sr)
-            bass_low_db = float(20.0 * np.log10(max(np.sqrt(np.mean(bass_low**2)), 1e-9)))
-            needed = bass_low_db - (peak_db - KICK_OVER_BASS_MARGIN_DB)
-            depth_db = float(np.clip(needed, MIN_DEPTH_DB, MAX_DEPTH_DB))
-            depth_source = (
-                f"masking: bass low-band RMS {bass_low_db:.1f} dB vs kick peak "
-                f"{peak_db:.1f} dB, margin {KICK_OVER_BASS_MARGIN_DB:.0f} dB"
-            )
+            bass_mono = to_mono(np.asarray(bass, dtype=np.float64))
+            bass_pitch = pitch.analyze_segment(bass_mono, bass_sr)
+            if (
+                bass_pitch["state"] == "voiced"
+                and bass_pitch["f0_hz"]
+                and bass_pitch["voiced_fraction"] >= MASKING_MIN_VOICED_FRACTION
+            ):
+                f0_hz = float(bass_pitch["f0_hz"])
+                lo_hz, hi_hz = _narrow_band_hz(f0_hz, bass_sr)
+                bass_band_db = _calibrated_band_dbfs(bass_mono, bass_sr, lo_hz, hi_hz)
+                kick_band_db = _kick_band_dbfs_over_body(
+                    x, sr, trigger_times_s, hold_end_s, lo_hz, hi_hz
+                )
+                needed = bass_band_db - (kick_band_db - KICK_OVER_BASS_MARGIN_DB)
+                depth_db = float(np.clip(needed, MIN_DEPTH_DB, MAX_DEPTH_DB))
+                depth_source = (
+                    f"masking (narrowband, bass fundamental {f0_hz:.1f} Hz): band "
+                    f"{lo_hz:.1f}-{hi_hz:.1f} Hz — bass {bass_band_db:.1f} dBFS vs kick "
+                    f"{kick_band_db:.1f} dBFS, margin {KICK_OVER_BASS_MARGIN_DB:.0f} dB"
+                )
+            else:
+                # broadband/unvoiced bass — no real fundamental to center a
+                # narrow band on, fall back to the original generic-low-band
+                # calc verbatim (unchanged from before this pitch-aware pass)
+                bass_low = _low_band(bass, bass_sr)
+                bass_low_db = float(20.0 * np.log10(max(np.sqrt(np.mean(bass_low**2)), 1e-9)))
+                needed = bass_low_db - (peak_db - KICK_OVER_BASS_MARGIN_DB)
+                depth_db = float(np.clip(needed, MIN_DEPTH_DB, MAX_DEPTH_DB))
+                depth_source = (
+                    f"masking (broadband bass, no clear fundamental): bass low-band RMS "
+                    f"{bass_low_db:.1f} dB vs kick peak {peak_db:.1f} dB, margin "
+                    f"{KICK_OVER_BASS_MARGIN_DB:.0f} dB"
+                )
         else:
             depth_db = DEFAULT_DEPTH_DB
             depth_source = (
