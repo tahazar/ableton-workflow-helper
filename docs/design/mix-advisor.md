@@ -1,6 +1,7 @@
 # Design: Mix advisor (M13 — `awh mix advise`)
 
-- Status: in build (2026-08-24). Owner ask, post-public: "with this mix
+- Status: built (pending owner validation), 2026-08-24 — see "M13 (mix
+  advisor) owner checklist" in docs/dev-loop.md. Owner ask, post-public: "with this mix
   report — I want to be able to derive recommendations on what to do to
   improve the mix." The measurement surface exists (report, targets,
   bands/layers/pitch, duck, pump); what's missing is the layer that

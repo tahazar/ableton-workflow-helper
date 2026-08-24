@@ -259,6 +259,7 @@ awh mix target <refFiles...> --save <name>        # measure refs -> genre target
 awh mix pitch <file> [--per-note]                 # periodicity-tracked f0 + harmonic-dominance flag
 awh mix bands <fileA> [fileB...] [--bands "lo-hi,..."]  # calibrated per-band dBFS (masking compare)
 awh mix layers <track:N> <track:M>... [--bars N --from-bar N]  # solo->capture->unsolo per track, then bands
+awh mix advise <capture.wav | --record name> [--target name] [--layers name] [--preset club|streaming|apple] [--set] [--save [name]] [--compare name]
 ```
 
 - **Quote the numbers; never invent one.** The report's findings each carry
@@ -288,6 +289,34 @@ awh mix layers <track:N> <track:M>... [--bars N --from-bar N]  # solo->capture->
   runs `mix bands` on the results — it restores each track's PRIOR solo
   state (not just "unsoloed") even if a capture fails partway, so it's
   safe to run mid-session without risking a track left soloed.
+- **Mix advisor** ("what should I fix", "give me a prioritized plan", "how
+  do I get this ready for release") — `mix advise` runs the SAME
+  measurement pipeline as `mix report` through a deterministic rule engine
+  (`analysis/awh_analysis/advise.py`) and returns a RANKED plan, not a flat
+  findings list. Ranking follows a fixed dependency ladder — integrity
+  (clipping/headroom) → phase (low-band correlation) → masking (needs
+  `--layers`) → tonal balance (needs `--target`) → dynamics (PSR) →
+  loudness (LUFS vs `--preset`) — because an earlier stage's problems make
+  later measurements unreliable (a phasey low end makes tonal deltas
+  meaningless until it's fixed). **THE CONTRACT**: present the plan
+  TOP-DOWN by rank, quote each item's evidence numbers VERBATIM (never
+  round differently or restate a number the item didn't print), run an
+  item's `verify` command when the owner asks you to confirm a fix landed,
+  and NEVER add a move the engine didn't emit — no folklore EQ advice
+  layered on top. A `blockedBy` list on an item names the ranks of
+  earlier-stage items still open — tell the owner to fix those first;
+  "re-measure after #1" is the engine's own honesty, not your paraphrase.
+  Missing `--target`/`--layers` shows up as its OWN ranked item (what
+  running `mix target`/`mix layers --save` would unlock), not silence.
+  Zero actionable items is the HEALTHY state — say so plainly, don't
+  invent problems to fill space; the engine still names the two metrics
+  closest to tripping so the owner knows where the headroom actually is.
+  `--set` additively names real devices already on the master chain in
+  actions (e.g. "your existing EQ Eight" instead of "add an EQ Eight") —
+  works fine without the gateway. `--save [name]` writes an advice record
+  (`mix records`); `--compare <name>` diffs a fresh run against a saved
+  one into resolved/improved/unchanged/new per item — the before/after
+  loop after the owner acts on something.
 
 ## AWH Remote (`awh play` / `awh stop` / `awh jump` / `awh launch` / `awh stop-clips` / `awh lib audition`) — transport + clip launch
 
@@ -896,6 +925,33 @@ loud enough for clubs", "did that EQ change help"):
    full-mix bleed). The on/off `ab` pair remains the gold-standard proof.
 4. No target yet? Offer `awh mix target <owner's reference tracks> --save
    <genre>` first — comparisons run against THEIR references, not folklore.
+
+**Get a prioritized fix list / "what should I fix first", "is this ready to
+release"** (a ranked plan, not a flat findings list):
+1. Get audio (capture or export) as above. `awh mix advise <file>` alone
+   already works — the dependency-ladder ranking and healthy-state check
+   don't need `--target`/`--layers`.
+2. Offer to unlock more of the ladder: `--target <name>` (build one first
+   with `awh mix target` if the owner doesn't have one) for the tonal-
+   balance stage, `--layers <name>` (from `awh mix layers ... --save
+   <name>`) for the inter-element masking stage. Missing either shows up
+   as its own ranked item telling the owner what running it would unlock
+   — don't treat that as an error or silently skip the stage.
+3. Present the ranked plan TOP-DOWN, quote every evidence number verbatim,
+   and relay `blockedBy` as "fix #N first — this may change once you do."
+   Never add a move the engine didn't emit, even a "usually you'd also…"
+   aside — the whole point is a legible, cited rule table, not vibes.
+4. Zero actionable items is the HEALTHY state, not a failure — say so, and
+   relay the two metrics closest to tripping (with their margins) so the
+   owner knows where the real headroom is.
+5. `--set` (needs the gateway) additively names real master-chain devices
+   in the actions instead of "add an EQ Eight" — offer it when the owner
+   is in Live, skip it offline, never block on it.
+6. After the owner (or you, on request) acts on one item: re-capture,
+   `awh mix advise <newFile> --compare <savedAdviceName>` — relay resolved/
+   improved/unchanged/new per item instead of re-explaining the whole plan
+   from scratch. `--save [name]` on the FIRST run is what makes `--compare`
+   possible later — offer it up front.
 
 **Masking / "does my sub fight my bassline", "is this patch's fundamental
 where I think it is", "compare these layers"** (narrowband/masking
