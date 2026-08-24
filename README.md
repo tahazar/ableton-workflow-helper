@@ -47,8 +47,8 @@ Arranging and referencing:
 - `awh endless` — build an infinite, never-identical browser player for
   your own song from bounced stems and a small grammar file: weighted
   section transitions, per-layer variant pools, continuous mix
-  fluctuation. Inspired by the Jai Paul x Bronze release; implemented as a
-  legible spec instead of a black box.
+  fluctuation. The grammar is a small readable spec, and any performance
+  can be reproduced from its seed.
 
 Mixing and measurement:
 
