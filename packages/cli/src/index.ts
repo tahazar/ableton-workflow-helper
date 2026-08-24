@@ -3900,7 +3900,14 @@ mix
 
       let results;
       try {
-        results = await runLayers(caller, tracks, outDir, capture);
+        results = await runLayers(caller, tracks, outDir, capture, {
+          onRetry: (trackPath, err) =>
+            process.stderr.write(
+              `mix layers: capture of ${trackPath} aborted (${(err as Error).message}) — ` +
+                `retrying once; rapid back-to-back captures are a known intermittent flake, ` +
+                `solo state is intact\n`,
+            ),
+        });
       } catch (err) {
         process.stderr.write(
           `mix layers: aborted (solo state has been restored) — ${(err as Error).message}\n` +
@@ -3914,7 +3921,12 @@ mix
 
       process.stderr.write(
         `captured ${results.length} layer(s) -> ${outDir}${cmdOpts.keep ? "" : " (will be deleted after comparing; pass --keep to retain)"}\n` +
-          results.map((r) => `  ${r.trackPath.padEnd(10)} "${r.trackName}" -> ${r.outPath}`).join("\n") +
+          results
+            .map(
+              (r) =>
+                `  ${r.trackPath.padEnd(10)} "${r.trackName}" -> ${r.outPath}${r.retried ? " (succeeded on retry)" : ""}`,
+            )
+            .join("\n") +
           "\n",
       );
 

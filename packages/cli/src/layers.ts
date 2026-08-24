@@ -24,6 +24,26 @@ export interface LayerResult {
   trackName: string;
   outPath: string;
   seconds: number;
+  /** True when the first capture attempt aborted and the retry succeeded
+   *  (the known intermittent race in rapid back-to-back sfrecord~ cycles —
+   *  see the 2026-08-24 live-validation note in docs/dev-loop.md). */
+  retried?: boolean;
+}
+
+export interface RunLayersOptions {
+  /** Pause between one track's restore and the next track's solo, letting
+   *  sfrecord~ fully close out — the live-observed race is specific to
+   *  rapid back-to-back record cycles, not single captures. */
+  interTrackSettleMs?: number;
+  /** Extra attempts per track after a failed capture (default 1). */
+  retries?: number;
+  /** Pause before a retry attempt. */
+  retrySettleMs?: number;
+  /** Injected for tests; defaults to a real setTimeout sleep. */
+  sleep?: (ms: number) => Promise<void>;
+  /** Called when a capture aborts and a retry is about to run, so the CLI
+   *  can tell the user this is a known flake, not a broken tool. */
+  onRetry?: (trackPath: string, error: unknown) => void;
 }
 
 function allTracks(summary: SetSummary): TrackSummary[] {
@@ -56,10 +76,17 @@ export async function runLayers(
   tracks: string[],
   outDir: string,
   capture: LayerCaptureFn,
+  opts: RunLayersOptions = {},
 ): Promise<LayerResult[]> {
+  const interTrackSettleMs = opts.interTrackSettleMs ?? 750;
+  const retries = opts.retries ?? 1;
+  const retrySettleMs = opts.retrySettleMs ?? 1000;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+
   const results: LayerResult[] = [];
   for (let i = 0; i < tracks.length; i++) {
     const trackPath = tracks[i]!;
+    if (i > 0 && interTrackSettleMs > 0) await sleep(interTrackSettleMs);
     const summary = (await caller("set.summary")) as SetSummary;
     const targets = allTracks(summary);
     const target = targets.find((t) => t.path === trackPath);
@@ -82,8 +109,20 @@ export async function runLayers(
         }
       }
       const outPath = join(outDir, layerFileName(trackPath, i));
-      const seconds = await capture(trackPath, outPath);
-      results.push({ trackPath, trackName: target.name, outPath, seconds });
+      let seconds: number | undefined;
+      let retried = false;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          seconds = await capture(trackPath, outPath);
+          break;
+        } catch (err) {
+          if (attempt >= retries) throw err;
+          retried = true;
+          opts.onRetry?.(trackPath, err);
+          await sleep(retrySettleMs);
+        }
+      }
+      results.push({ trackPath, trackName: target.name, outPath, seconds, retried });
     } finally {
       for (const p of changed) {
         await caller("track.update", { path: p, soloed: priorSolo.get(p)! });
