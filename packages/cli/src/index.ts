@@ -118,6 +118,7 @@ import {
   listDrumStyles,
   listDrumVariants,
   mapPadRoles,
+  roleOfNote,
   midiToPitch,
   parseDrumStyleSpec,
   parseProgression,
@@ -148,6 +149,17 @@ import {
   listArpStyles,
   listArpVariants,
   parseArpSpec,
+  DEFAULT_FILL_SPEC,
+  HALFTIME_SPEC,
+  JUNGLE_CLASSIC_SPEC,
+  generateBreakFill,
+  generateBreakPattern,
+  listBreakStyles,
+  parseBreakSpec,
+  parseChopMap,
+  type BreakSpec,
+  type ChopMap,
+  type SliceNoteMode,
   type PhraseSpec,
   type ResponseRecipeName,
   type DrumStyleSpec,
@@ -1537,6 +1549,69 @@ interface DrumStatsResult {
   generated_by: string;
 }
 
+interface ChopMapSliceRaw {
+  index: number;
+  start_s: number;
+  end_s: number;
+  duration_s: number;
+  grid_step: number;
+  bar: number;
+  pos: number;
+  offset_ms: number;
+  role: string;
+  confidence: number;
+  is_ghost: boolean;
+  peak_db_rel: number;
+  bands: { low: number; mid: number; high: number };
+}
+
+interface ChopMapResult {
+  file: string;
+  samplerate: number;
+  duration_s: number;
+  bpm: number;
+  bpm_confidence: number;
+  bpm_source: string;
+  bpm_runner_up: number | null;
+  grid_steps_per_bar: number;
+  beats_per_bar: number;
+  min_gap_s: number;
+  ghost_threshold_db: number;
+  n_slices: number;
+  slices: ChopMapSliceRaw[];
+  tail_decay_s?: number | null;
+  downbeat_check: unknown;
+  assumptions: string[];
+  export?: { dir: string; readme: string; files: { index: number; file: string; path: string; frames: number; byte_length: number }[] };
+}
+
+function renderChopTable(result: ChopMapResult): string {
+  const lines = [
+    `${result.file} — ${result.duration_s.toFixed(2)}s, BPM ${result.bpm.toFixed(1)} ` +
+      `(${result.bpm_source}, confidence ${result.bpm_confidence.toFixed(2)})`,
+    `${result.n_slices} slice(s), grid ${result.grid_steps_per_bar}/bar`,
+    "",
+  ];
+  if (result.n_slices === 0) {
+    lines.push("(no onsets detected — nothing to slice; a state, not an error)");
+    return lines.join("\n");
+  }
+  lines.push(`${"#".padStart(3)} ${"start".padStart(8)} ${"end".padStart(8)} ${"grid".padStart(8)} ${"offset".padStart(8)}  role     conf`);
+  for (const s of result.slices) {
+    const grid = `${s.bar + 1}|${s.pos + 1}`;
+    const ghost = s.is_ghost ? "*" : " ";
+    lines.push(
+      `${String(s.index).padStart(3)} ${s.start_s.toFixed(3).padStart(8)} ${s.end_s.toFixed(3).padStart(8)} ` +
+        `${grid.padStart(8)} ${`${s.offset_ms >= 0 ? "+" : ""}${s.offset_ms.toFixed(1)}ms`.padStart(8)}  ` +
+        `${s.role.padEnd(6)}${ghost} ${s.confidence.toFixed(2)}`,
+    );
+  }
+  if (result.export) {
+    lines.push("", `exported ${result.export.files.length} slice(s) -> ${result.export.dir}`);
+  }
+  return lines.join("\n");
+}
+
 function renderDrumStatsTable(result: DrumStatsResult): string {
   const bands: Array<"low" | "mid" | "high"> = ["low", "mid", "high"];
   const grid = result.grid;
@@ -2837,14 +2912,27 @@ mix
     // Record "kinds" sharing library/measurements/: single-file mix reports
     // (report.save_record, `kind` field absent), multi-file drumstats
     // records (`kind: "drumstats"`), M13's `mix layers --save`
-    // (`kind: "layers"`) and `mix advise --save` (`kind: "advice"`) —
-    // ALL must render (not crash) in `mix records`/`mix records <name>`.
+    // (`kind: "layers"`), `mix advise --save` (`kind: "advice"`), and M15's
+    // `awh breaks chop --save` (`kind: "chopmap"`) — ALL must render (not
+    // crash) in `mix records`/`mix records <name>`.
     interface DrumStatsRecordFile {
       kind: "drumstats";
       saved: string;
       n_sources: number;
       stats: DrumStatsResult;
       attribution?: { note?: string; [k: string]: unknown };
+    }
+    interface ChopMapRecordFile {
+      kind: "chopmap";
+      saved: string;
+      file: string;
+      chopmap: {
+        n_slices: number;
+        bpm: number;
+        bpm_source: string;
+        grid_steps_per_bar: number;
+        slices: { role: string; confidence: number }[];
+      };
     }
     interface MixReportRecordFile {
       kind?: undefined;
@@ -2873,7 +2961,12 @@ mix
       items: AdviceItem[];
       healthy: AdviceHealthy | null;
     }
-    type RecordFile = DrumStatsRecordFile | MixReportRecordFile | LayersRecordFile | AdviceRecordFile;
+    type RecordFile =
+      | DrumStatsRecordFile
+      | MixReportRecordFile
+      | LayersRecordFile
+      | AdviceRecordFile
+      | ChopMapRecordFile;
 
     if (name !== undefined) {
       const file = join(dir, `${name}.json`);
@@ -2916,6 +3009,21 @@ mix
               : `  ${actionable.length} actionable item(s), top: #${actionable[0]?.rank} ${actionable[0]?.id}`,
             ``,
             `full JSON: ${file} (or --json); re-run: awh mix advise ... --compare ${name}`,
+          ].join("\n"),
+        );
+        return;
+      }
+      if (record.kind === "chopmap") {
+        const c = record.chopmap;
+        const roleCounts = new Map<string, number>();
+        for (const s of c.slices) roleCounts.set(s.role, (roleCounts.get(s.role) ?? 0) + 1);
+        output(opts, record, () =>
+          [
+            `${name} — saved ${record.saved} (chopmap: ${basename(record.file)})`,
+            `  ${c.n_slices} slice(s)  bpm ${c.bpm.toFixed(1)} (${c.bpm_source})  grid ${c.grid_steps_per_bar}/bar`,
+            `  roles  ${[...roleCounts.entries()].map(([r, n]) => `${r} x${n}`).join("  ")}`,
+            ``,
+            `full JSON: ${file} (or --json); use with: awh breaks pattern <target> --map ${name}`,
           ].join("\n"),
         );
         return;
@@ -2970,6 +3078,13 @@ mix
             summary: r.healthy
               ? `advice: healthy (${r.source})`
               : `advice: ${actionable.length} actionable item(s) (${r.source})`,
+          };
+        }
+        if (r.kind === "chopmap") {
+          return {
+            name,
+            saved: r.saved,
+            summary: `chopmap: ${r.chopmap.n_slices} slice(s), ${r.chopmap.bpm.toFixed(1)} bpm (${basename(r.file)})`,
           };
         }
         return {
@@ -5206,6 +5321,385 @@ program
           `${sourceLine} -> ${result.path} (${bars} bars, ${notes.length} notes)`,
           specLine,
           "this is a generated pattern — audition it, then shape/vary from there.",
+        ].join("\n"),
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Break engine (M15): chop a break sample into a labeled slice map (Python),
+// then re-sequence it (pattern/fill, pure core) or place a canonical
+// knowledge break-pattern. See docs/design/break-engine.md.
+// ---------------------------------------------------------------------------
+
+const BREAK_BUILTIN_SPECS: Record<string, BreakSpec> = {
+  "jungle-classic": JUNGLE_CLASSIC_SPEC,
+  halftime: HALFTIME_SPEC,
+};
+
+/** Resolve --style: built-in first, else a `break-style-<name>` knowledge
+ *  entry's ```awh-break-spec``` block — same convention as `drums gen`/
+ *  `awh arp`/`drop phrase`. */
+async function resolveBreakSpec(style: string): Promise<{ spec: BreakSpec; styleTier?: string }> {
+  const builtin = BREAK_BUILTIN_SPECS[style];
+  if (builtin) return { spec: builtin };
+  let entry;
+  try {
+    entry = await knowledgeStore().loadEntry(`break-style-${style}`);
+  } catch {
+    throw new Error(
+      `unknown break style "${style}" — built-ins: ${listBreakStyles().join(", ")}; ` +
+        `data styles need a knowledge entry with slug break-style-${style} (see knowledge/README.md)`,
+    );
+  }
+  const specText = extractFencedBlock(entry.body, "awh-break-spec");
+  if (!specText) {
+    throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-break-spec block`);
+  }
+  return { spec: parseBreakSpec(specText), styleTier: entry.tier };
+}
+
+/** Resolve --map <name> to a saved chop-map record (library/measurements/,
+ *  kind "chopmap" — see `awh breaks chop --save`). */
+function loadChopMapRecord(name: string): { map: ChopMap; recordPath: string } {
+  const file = join(findLibraryRoot(), "measurements", `${name}.json`);
+  if (!existsSync(file)) {
+    throw new Error(`no chop map record ${file} — run \`awh breaks chop <wav.wav> --save ${name}\` first`);
+  }
+  const raw = JSON.parse(readFileSync(file, "utf8")) as { kind?: string; chopmap?: unknown };
+  if (raw.kind !== "chopmap") {
+    throw new Error(`${file} is not a chop-map record (kind: ${JSON.stringify(raw.kind)}, expected "chopmap")`);
+  }
+  return { map: parseChopMap(raw.chopmap), recordPath: file };
+}
+
+const breaksCmd = program
+  .command("breaks")
+  .description(
+    "Break-sample chop engine: chop a real break into a labeled slice map, then " +
+      "re-sequence it (pattern/fill), or place a canonical break-pattern-<name> " +
+      "knowledge entry — docs/design/break-engine.md",
+  );
+
+breaksCmd
+  .command("chop <wav>")
+  .description(
+    "Onset-slice a break sample into a labeled chop map: per-slice role guess " +
+      "(kick/snare/hat/ghost) + confidence, BPM, and MEASURED 16th-grid offsets",
+  )
+  .option("--save [name]", "save a chop-map record to library/measurements/ (default name: the file's basename)")
+  .option("--export <dir>", "cut slices to <nn>-<role>.wav + a README.md mapping table (drag-into-Drum-Rack path)")
+  .option("--bpm <bpm>", "override the BPM estimate")
+  .action(async (wav: string, cmdOpts: { save?: string | boolean; export?: string; bpm?: string }) => {
+    const opts = program.opts<GlobalOpts>();
+    const args = ["breakchop", wav];
+    if (cmdOpts.bpm) args.push("--bpm", cmdOpts.bpm);
+    if (cmdOpts.export) args.push("--export", cmdOpts.export);
+    let recordPath: string | undefined;
+    if (cmdOpts.save !== undefined) {
+      const name =
+        typeof cmdOpts.save === "string"
+          ? cmdOpts.save
+          : slugify(basename(wav).replace(/\.[^.]+$/, "") || "chopmap");
+      recordPath = join(findLibraryRoot(), "measurements", `${name}.json`);
+      await mkdir(dirname(recordPath), { recursive: true });
+      args.push("--save-record", recordPath);
+      process.stderr.write(`record -> ${recordPath}\n`);
+    }
+    const result = (await runAnalysisJson(args)) as unknown as ChopMapResult;
+    output(opts, result, () => renderChopTable(result));
+  });
+
+breaksCmd
+  .command("pattern <target>")
+  .description(
+    "BreakSpec-driven re-sequencing of a chopped break onto <target>: a verbatim " +
+      "statement, then a turnaround that chops/substitutes/displaces/ghost-shuffles " +
+      "— built-ins jungle-classic (state then chop the tail) and halftime (sparse " +
+      "placement of the same slices), or a knowledge break-style-<name>",
+  )
+  .requiredOption("--map <name>", "chop map record (see `awh breaks chop --save`)")
+  .option("--style <style>", `built-in (${listBreakStyles().join(", ")}) or a knowledge break-style-<name>`, "jungle-classic")
+  .option("--seed <seed>", "random seed (same seed = same pattern)", "1")
+  .option("--variant <variant>", "numeric seed offset (BreakSpec has no named cell/recipe table to draw a variant from)")
+  .option("--bars <bars>", "total bars to generate", "4")
+  .option(
+    "--mode <mode>",
+    "drum-rack (default, pairs with --export — max 16 slices) | live-slices (Live's own chromatic slicer, unlimited but count-checked)",
+    "drum-rack",
+  )
+  .option("--at-bar <bar>", "arrangement position for track targets")
+  .option("--name <name>", "clip name (default: <style>-break)")
+  .option("--dry-run", "print the notation preview without touching Live")
+  .action(
+    async (
+      target: string,
+      cmdOpts: {
+        map: string;
+        style: string;
+        seed: string;
+        variant?: string;
+        bars: string;
+        mode: string;
+        atBar?: string;
+        name?: string;
+        dryRun?: boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const { map } = loadChopMapRecord(cmdOpts.map);
+      const { spec, styleTier } = await resolveBreakSpec(cmdOpts.style);
+      if (cmdOpts.mode !== "drum-rack" && cmdOpts.mode !== "live-slices") {
+        throw new Error(`--mode must be "drum-rack" or "live-slices" (got ${JSON.stringify(cmdOpts.mode)})`);
+      }
+      const mode = cmdOpts.mode as SliceNoteMode;
+      const bars = Number(cmdOpts.bars);
+      const variant = cmdOpts.variant !== undefined ? Number(cmdOpts.variant) : undefined;
+
+      const { notes, warnings, meta } = generateBreakPattern(map, spec, {
+        seed: Number(cmdOpts.seed),
+        bars,
+        mode,
+        ...(variant !== undefined ? { variant } : {}),
+      });
+      const lengthBeats = bars * map.beatsPerBar;
+      const specLine =
+        `style ${cmdOpts.style}${styleTier ? ` [${styleTier}]` : ""} — statement ${meta.statementBars} bar(s), ` +
+        `substitution ${meta.substitutionAllowed}, seed ${meta.seed}`;
+
+      const allWarnings = [...warnings];
+      if (mode === "live-slices") {
+        allWarnings.push(
+          `LIVE-SLICES MODE: this assumes Live's own Slice-to-New-MIDI-Track detects EXACTLY ` +
+            `${map.slices.length} slice(s) on this file at whatever transient sensitivity you use in Live — ` +
+            "a different count there means these notes trigger the WRONG slice. Verify the slice count in " +
+            "Live before trusting this (the SDK cannot configure or read back Simpler's own slicing).",
+        );
+      }
+
+      const isSlot = /\/slot:\d+$/.test(target);
+      if (!isSlot && cmdOpts.atBar === undefined) {
+        throw new Error("track targets need --at-bar (or pass a slot path)");
+      }
+
+      if (cmdOpts.dryRun) {
+        output(opts, { notes, lengthBeats, meta, warnings: allWarnings }, () =>
+          [
+            `dry run: chop map ${cmdOpts.map} (${map.slices.length} slices) -> ${target} ` +
+              `(${bars} bars, ${notes.length} notes; ${specLine}):`,
+            ...allWarnings.map((w) => `  WARNING: ${w}`),
+            serializeNotation(notes, { beatsPerBar: map.beatsPerBar }),
+          ].join("\n"),
+        );
+        return;
+      }
+
+      const targetSpec = isSlot
+        ? { type: "session", slotPath: target }
+        : {
+            type: "arrangement",
+            trackPath: target,
+            startBeat: (Number(cmdOpts.atBar) - 1) * map.beatsPerBar,
+          };
+      const result = (await op(opts, "clip.create-midi", {
+        target: targetSpec,
+        lengthBeats,
+        notes,
+        name: cmdOpts.name ?? `${cmdOpts.style}-break`,
+      })) as { path: string };
+
+      output(opts, { path: result.path, notes: notes.length, meta, warnings: allWarnings }, () =>
+        [
+          `${cmdOpts.map} -> ${result.path} (${bars} bars, ${notes.length} notes)`,
+          specLine,
+          ...allWarnings.map((w) => `WARNING: ${w}`),
+        ].join("\n"),
+      );
+    },
+  );
+
+breaksCmd
+  .command("fill <target>")
+  .description(
+    "Turnaround fill grammar over a chop map: snare-rush (ratchet), stutter, " +
+      `triplet, and tail-rearrange cells, at most ${DEFAULT_FILL_SPEC.maxDevices} device(s) per ` +
+      "candidate (restraint rule) — N seeded candidates dropped into consecutive slots",
+  )
+  .requiredOption("--map <name>", "chop map record (see `awh breaks chop --save`)")
+  .option("--beats <beats>", "fill length in beats", "2")
+  .option("--seed <seed>", "base random seed", "1")
+  .option("--count <count>", "number of seeded candidates", "3")
+  .option("--at-bar <bar>", "lay candidates out sequentially on the arrangement instead of session slots")
+  .option("--dry-run", "print the notation preview for each candidate without touching Live")
+  .action(
+    async (
+      target: string,
+      cmdOpts: { map: string; beats: string; seed: string; count: string; atBar?: string; dryRun?: boolean },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+      const { map } = loadChopMapRecord(cmdOpts.map);
+      const beats = Number(cmdOpts.beats);
+      const count = Number(cmdOpts.count);
+      const { candidates, warnings } = generateBreakFill(map, { seed: Number(cmdOpts.seed), beats, count });
+
+      if (candidates.length === 0) {
+        // Zero-slices map is a STATE, not an error (docs/lessons-learned.md #5).
+        output(opts, { candidates: [], warnings }, () => warnings.join("\n") || "no fill candidates generated");
+        return;
+      }
+
+      if (cmdOpts.dryRun) {
+        output(opts, { candidates, warnings }, () =>
+          [
+            `dry run: ${count} fill candidate(s) over chop map ${cmdOpts.map} (${beats} beats):`,
+            ...warnings.map((w) => `WARNING: ${w}`),
+            ...candidates.map((c) =>
+              [`-- ${c.name} (devices: ${c.devicesUsed.join(", ")}) --`, serializeNotation(c.notes, { beatsPerBar: map.beatsPerBar })].join(
+                "\n",
+              ),
+            ),
+          ].join("\n\n"),
+        );
+        return;
+      }
+
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
+      if (!track) throw new Error(`track not found: ${target}`);
+
+      let targets: { target: unknown; path: string }[];
+      if (cmdOpts.atBar !== undefined) {
+        const startBeat = (Number(cmdOpts.atBar) - 1) * map.beatsPerBar;
+        targets = candidates.map((_c, i) => {
+          const at = startBeat + i * beats;
+          return {
+            target: { type: "arrangement", trackPath: target, startBeat: at },
+            path: `${target} @ bar ${at / map.beatsPerBar + 1}`,
+          };
+        });
+      } else {
+        const occupied = new Set(track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])));
+        const empty = Array.from({ length: track.slotCount }, (_v, i) => i).filter((i) => !occupied.has(i));
+        if (empty.length < candidates.length) {
+          throw new Error(
+            `need ${candidates.length} empty session slots on ${target}, found ${empty.length} — ` +
+              `add scenes, use --at-bar, or awh sweep`,
+          );
+        }
+        targets = empty.slice(0, candidates.length).map((slot) => {
+          const slotPath = `${target}/slot:${slot}`;
+          return { target: { type: "session", slotPath }, path: slotPath };
+        });
+      }
+
+      const created: { path: string; name: string; notes: number }[] = [];
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i]!;
+        const t = targets[i]!;
+        await op(opts, "clip.create-midi", { target: t.target, lengthBeats: beats, notes: c.notes, name: c.name });
+        created.push({ path: t.path, name: c.name, notes: c.notes.length });
+      }
+      output(opts, { created, warnings }, () =>
+        [
+          `${candidates.length} fill candidate(s) from chop map ${cmdOpts.map} (seed ${cmdOpts.seed}):`,
+          ...warnings.map((w) => `WARNING: ${w}`),
+          ...created.map((c) => `  ${c.path.padEnd(22)} ${c.name} (${c.notes} notes)`),
+          `audition them, then keep favourites and run: awh sweep ${target} --prefix "fill "`,
+        ].join("\n"),
+      );
+    },
+  );
+
+breaksCmd
+  .command("place <patternName> <target>")
+  .description(
+    "Resolve a break-pattern-<name> knowledge entry's awh-notation block (canonical " +
+      "amen/think/funky-drummer etc., on GM drum mapping) and write it — kit-aware via " +
+      "mapPadRoles where the target has a drum rack (same convention as `drums gen`)",
+  )
+  .option("--at-bar <bar>", "arrangement position (1-based bar) for track targets")
+  .option("--name <name>", "clip name (default: the slug)")
+  .action(
+    async (patternName: string, target: string, cmdOpts: { atBar?: string; name?: string }) => {
+      const opts = program.opts<GlobalOpts>();
+      let entry;
+      try {
+        entry = await knowledgeStore().loadEntry(`break-pattern-${patternName}`);
+      } catch {
+        throw new Error(
+          `unknown break pattern "${patternName}" — needs a knowledge entry with slug ` +
+            `break-pattern-${patternName} (see knowledge/README.md)`,
+        );
+      }
+      const notationText = extractFencedBlock(entry.body, "awh-notation");
+      if (!notationText) {
+        throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-notation block`);
+      }
+      const { notes: gmNotes, suggestedLengthBeats } = parseNotation(notationText, {});
+
+      const isSlotPath = /\/slot:\d+$/.test(target);
+      const isArrPath = /\/arr:\d+$/.test(target);
+      const trackPath = isSlotPath || isArrPath ? target.replace(/\/(slot|arr):\d+$/, "") : target;
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const { kit, usedRack } = trackDrumKit(summary, trackPath);
+      const sourceNotes: NoteSpec[] = gmNotes.map((n) => {
+        const role = roleOfNote(GM_DRUM_KIT, n.pitch);
+        const mapped = role ? kit[role] : undefined;
+        return mapped !== undefined ? { ...n, pitch: mapped } : n;
+      });
+
+      let existing: { path: string; lengthBeats: number } | undefined;
+      if (isSlotPath || isArrPath) {
+        try {
+          const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
+          existing = { path: target, lengthBeats: detail.duration };
+        } catch {
+          if (isArrPath) {
+            throw new Error(`no clip at ${target} — arr paths must point at an existing clip to fill`);
+          }
+        }
+      } else if (cmdOpts.atBar !== undefined) {
+        const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
+        if (!track) throw new Error(`track not found: ${target}`);
+        const startBeat = (Number(cmdOpts.atBar) - 1) * 4;
+        const endBeat = startBeat + suggestedLengthBeats;
+        const overlap = track.arrangementClips.find(
+          (c) => startBeat < (c.endTime ?? 0) && endBeat > (c.startTime ?? 0),
+        );
+        if (overlap) existing = { path: overlap.path, lengthBeats: overlap.duration };
+      } else {
+        throw new Error("Track targets need --at-bar <bar> (or pass a slot/arr clip path).");
+      }
+
+      let result: { path: string };
+      let placedNotes = sourceNotes;
+      if (existing) {
+        placedNotes = tileNotes(sourceNotes, suggestedLengthBeats, existing.lengthBeats);
+        await op(opts, "clip.notes", { path: existing.path, notes: placedNotes });
+        await op(opts, "clip.update", { path: existing.path, name: cmdOpts.name ?? patternName });
+        result = { path: existing.path };
+      } else {
+        result = (await op(opts, "clip.create-midi", {
+          target: isSlotPath
+            ? { type: "session", slotPath: target }
+            : {
+                type: "arrangement",
+                trackPath: target,
+                startBeat: (Number(cmdOpts.atBar) - 1) * 4,
+              },
+          lengthBeats: suggestedLengthBeats,
+          notes: sourceNotes,
+          name: cmdOpts.name ?? patternName,
+        })) as { path: string };
+      }
+      output(opts, result, () =>
+        [
+          `placed ${patternName} [${entry.tier}] -> ${result.path} ` +
+            `(${placedNotes.length} notes, ${existing ? existing.lengthBeats : suggestedLengthBeats} beats` +
+            `${existing ? ", filled existing clip" : ""})`,
+          usedRack
+            ? "pad roles mapped from the track's drum rack"
+            : `NOTE: no drum rack on ${trackPath} — used General MIDI note numbers`,
         ].join("\n"),
       );
     },

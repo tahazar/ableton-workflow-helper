@@ -2244,3 +2244,101 @@ actually sounds like the trance/techno/psy-ratchet idiom it names:
       to odd-indexed steps as a fraction of the step (the "drum-engine
       convention" the design cites without pinning a formula) — revisit if
       a real run's feel doesn't match what any of these imply on paper.
+
+## M15 (break engine) owner checklist
+
+Built per `docs/design/break-engine.md`. Two independent halves: Half 1
+(`awh breaks place`) plays a knowledge-carried canonical break pattern as
+MIDI on any kit — no audio slicing, built on the existing notation path
+(kit-aware via `mapPadRoles`, same convention as `drums gen`); the seeding
+agent's `break-pattern-<name>` entries land separately and were smoke-tested
+against this milestone only with a scratch knowledge entry (mechanism, not
+the seeded entries' musical claims). Half 2 chops a REAL break sample
+(`analysis/awh_analysis/breakchop.py` — reuses `duck.detect_onsets` for
+onsets, `drumstats._band_split`'s exact low/mid/high proxy filters for the
+per-slice kick/snare/hat role guess, and `ref.onset_and_subband`/
+`estimate_tempo` for BPM) into a labeled chop map, then re-sequences it
+purely in core (`packages/core/src/breaks/{spec,chopmap,engine}.ts` —
+BreakSpec-driven `pattern` generation and a fixed built-in `fill` grammar,
+chop map in/notes out, no Python needed to test it).
+
+`pnpm test` green (core 382 -> 416 incl. 34 new: `parseBreakSpec` typo/
+range rejection + built-in round-trips, `parseChopMap`'s snake_case
+adapter, `sliceNote`'s drum-rack 16-pad cap vs. live-slices' uncapped
+range, the statement phase's byte-exact/rng-independent verbatim output,
+role-substitution-honors-roles and snare-displacement property tests, the
+all-low-confidence negative control (warns, restricts to same-slice
+tricks), zero-slices states for both `pattern` and `fill`, the fill
+restraint rule (never >`maxDevices` distinct device types) across 20
+seeded candidates, frozen determinism for both built-ins, and a chop-map-
+record `knowledge.test.ts` case; cli 167 -> 182 incl. 15 new: a real
+`awh_analysis.breakchop` subprocess run against a synthetic break wav
+(`--save`/`--export`/`mix records` rendering the "chopmap" kind end to
+end), `--map` record resolution, `--mode live-slices`'s loud count-
+mismatch warning naming the map's own slice count, the drum-rack 16-slice
+cap surfacing as a clear CLI error, the low-confidence and zero-slices
+negative paths, the unknown-style error, the knowledge `break-style-<name>`
+fallback with tier printed via an isolated `AWH_LIBRARY`, `fill` writing N
+named ("fill <devices> s<seed>") candidates into consecutive session
+slots, and `place` resolving a temp `break-pattern-<name>` entry through
+the GM-fallback path); Python 179 -> 189 incl. 10 new in
+`analysis/tests/test_breakchop.py` (exact slice count/roles/small offsets
+on a synthetic kick/snare/hat break, a shifted-hits synthetic proving
+offsets are MEASURED not snapped, a ghost negative control, zero-onsets as
+a state, `--export` byte-length-matches-span, determinism, BPM estimation
+without an override, the saved-record shape, and two real CLI subprocess
+smoke tests). `skill-flows.test.ts` gate green for `awh breaks`.
+
+Smoke-tested against a synthetic amen-shaped break WAV (kick/ghost/snare/
+hat, 90 BPM, real onset detection — not a fake gateway substitute for the
+Python engine): `breaks chop --save --export` produced a 7-slice table
+(the ghost hit in that particular capture didn't cross the onset
+threshold — a real, honest miss, not a bug; the negative control above
+covers a case tuned to land it), `breaks pattern --style jungle-classic
+--dry-run` and `--mode live-slices` (loud warning, exact slice count
+named), `breaks fill --dry-run` with 3 seeded candidates showing an
+escalating snare-rush ratchet / a fixed-slice stutter / a 7-slice-cycling
+triplet cell, the low-confidence and zero-slices negative paths, the >16-
+slice drum-rack refusal, and `breaks place` against `awh serve-fake` with
+a scratch knowledge entry (GM fallback, since standing up a fake Drum Rack
+with real pads isn't exercised by any existing test in the repo either —
+see the build session's report). The owner still needs to validate this
+AUDITIONED IN LIVE — synthetic slices and property tests prove the pinned
+mechanics as coded, not whether the fill grammar's four devices actually
+read as tasteful jungle/DnB moves, or whether a real amen/think/funky-
+drummer break chops the way the design's craft assumptions expect:
+
+- [ ] `awh breaks chop <a real amen/think break from the sample library>
+      --export <dir> --save <name>` end to end → confirm the role guesses
+      and grid offsets match what the ear expects on genuinely well-known
+      material, not just the synthetic fixtures in the test suite.
+- [ ] Drag the `--export`ed slices into an empty Drum Rack, confirm the
+      pad order lines up with `--mode drum-rack`'s C1-up assumption
+      exactly as the README table claims.
+- [ ] `awh breaks pattern <target> --map <name> --style jungle-classic` and
+      `--style halftime`, then `awh breaks fill` a few turnarounds — judge
+      by ear whether jungle-classic's statement-then-chop and halftime's
+      sparse-same-slices genuinely read as those idioms, and whether any
+      fill's devices (snare-rush/stutter/triplet/tail-rearrange) feel
+      restrained (per the `maxDevices` rule) or still too busy.
+- [ ] `--mode live-slices` against Live's own Slice-to-New-MIDI-Track on
+      the SAME file → confirm the printed slice count either matches
+      Live's detected count (notes land on the right slice) or the
+      mismatch warning was the right call.
+- [ ] Audition `break-pattern-<name>` entries once the parallel seeding
+      agent's amen/think/funky-drummer transcriptions land (`awh breaks
+      place <name> <target>`) — this milestone only smoke-tested the
+      PLACE MECHANISM with a scratch entry, not any seeded entry's
+      transcription accuracy.
+- [ ] Whether the open-detail decisions the design left unstated hold up:
+      the ghost threshold (-18 dB below the file's own loudest slice,
+      12 dB confidence span); the final slice's `end_s` always being the
+      file's own end (byte-exact, lossless) with tail-decay reported only
+      as a separate informational field, never truncating the cut;
+      `--variant` on `pattern` being a bare numeric seed offset (BreakSpec
+      has no named cell/recipe table to draw a variant from, unlike
+      drums/arp/phrase); the low-confidence lockout firing when EVERY
+      slice reads under 0.4 confidence (not an average); and the fill
+      grammar's chunk-per-device split (each selected device gets an equal
+      contiguous slice of the fill's own length) — revisit if a real run's
+      feel doesn't match what any of these imply on paper.
