@@ -138,9 +138,21 @@ import {
   parsePath,
   formatPath,
   sortNotes,
+  ARP_BEATS_PER_BAR,
+  BASIC_UP_SPEC,
+  MELODIC_TECHNO_16THS_SPEC,
+  arpRateBeats,
+  checkArpGate,
+  chordsFromNotes,
+  generateArp,
+  listArpStyles,
+  listArpVariants,
+  parseArpSpec,
   type PhraseSpec,
   type ResponseRecipeName,
   type DrumStyleSpec,
+  type ArpChordSpan,
+  type ArpSpec,
   type ClipDetail,
   type ClipEntry,
   type DeviceDetail,
@@ -4995,6 +5007,205 @@ program
           ...voiced.map(
             (v) => `  ${v.symbol.padEnd(8)} ${v.pitches.map((p) => midiToPitch(p)).join(" ")}`,
           ),
+        ].join("\n"),
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// Arp & rhythm engine (M14): our own MIDI arp generation, so vary/library/
+// phrases/seeds/notation can all touch the output — the stock Arpeggiator
+// stays the JAMMING tool, `awh arp` is the COMMITTING tool. See
+// docs/design/arp-engine.md.
+// ---------------------------------------------------------------------------
+
+const ARP_BUILTIN_SPECS: Record<string, ArpSpec> = {
+  "basic-up": BASIC_UP_SPEC,
+  "melodic-techno-16ths": MELODIC_TECHNO_16THS_SPEC,
+};
+
+/** Resolve --style: built-in first, else an `arp-style-<name>` knowledge
+ *  entry's ```awh-arp-spec``` block — same convention as `drums gen` /
+ *  `drop phrase`. */
+async function resolveArpSpec(style: string): Promise<{ spec: ArpSpec; styleTier?: string }> {
+  const builtin = ARP_BUILTIN_SPECS[style];
+  if (builtin) return { spec: builtin };
+  let entry;
+  try {
+    entry = await knowledgeStore().loadEntry(`arp-style-${style}`);
+  } catch {
+    throw new Error(
+      `unknown arp style "${style}" — built-ins: ${listArpStyles().join(", ")}; ` +
+        `data styles need a knowledge entry with slug arp-style-${style} (see knowledge/README.md)`,
+    );
+  }
+  const specText = extractFencedBlock(entry.body, "awh-arp-spec");
+  if (!specText) {
+    throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-arp-spec block`);
+  }
+  return { spec: parseArpSpec(specText), styleTier: entry.tier };
+}
+
+program
+  .command("arp <clipOrTarget> [maybeTarget]")
+  .description(
+    "Arpeggiate a chord clip, or a --prog progression, into a target clip. " +
+      "Chord clip source: <clipOrTarget> <maybeTarget>. --prog source: " +
+      '<clipOrTarget> alone IS the target, e.g. `awh arp --prog "i-VI-III-VII" track:1/slot:0`.',
+  )
+  .option("--style <style>", `built-in (${listArpStyles().join(", ")}) or a knowledge arp-style-<name>`, "basic-up")
+  .option("--seed <seed>", "random seed (same seed = same pattern)", "1")
+  .option("--variant <variant>", "force the euclid mask's rotation (listable: rotate-0, rotate-1, ...) or its index")
+  .option("--rate <rate>", "override the spec's step rate, e.g. 1/16, 1/8t, 1/4d")
+  .option("--gate <gate>", "override the spec's gate (0.05-1.0)")
+  .option("--bars <bars>", "total bars to generate (default: the chord source's own length)")
+  .option("--prog <progression>", 'roman-numeral progression, e.g. "i-VI-III-VII" (alternative chord source to a clip)')
+  .option("--key <key>", 'e.g. "A minor" (default: the Set scale) — only used with --prog')
+  .option("--voicing <style>", "close | spread — only used with --prog", "close")
+  .option("--center <midi>", "voicing register center — only used with --prog", "60")
+  .option("--name <name>", "clip name (default: <style>-arp)")
+  .option("--at-bar <bar>", "arrangement position for track targets")
+  .option("--dry-run", "print the notation preview without touching Live")
+  .action(
+    async (
+      clipOrTarget: string,
+      maybeTarget: string | undefined,
+      cmdOpts: {
+        style: string;
+        seed: string;
+        variant?: string;
+        rate?: string;
+        gate?: string;
+        bars?: string;
+        prog?: string;
+        key?: string;
+        voicing: "close" | "spread";
+        center: string;
+        name?: string;
+        atBar?: string;
+        dryRun?: boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+
+      let target: string;
+      let chordClipPath: string | undefined;
+      if (cmdOpts.prog !== undefined) {
+        if (maybeTarget !== undefined) {
+          throw new Error(
+            "--prog takes a single <target> argument — pass either a chord clip + target, or --prog + target alone",
+          );
+        }
+        target = clipOrTarget;
+      } else {
+        if (maybeTarget === undefined) {
+          throw new Error("a target is required: `awh arp <chordClip> <target>` (or use --prog for a target-only call)");
+        }
+        chordClipPath = clipOrTarget;
+        target = maybeTarget;
+      }
+
+      const { spec: resolvedSpec, styleTier } = await resolveArpSpec(cmdOpts.style);
+      if (cmdOpts.rate !== undefined) arpRateBeats(cmdOpts.rate); // validate, throws on a bad format
+      const spec: ArpSpec = {
+        ...resolvedSpec,
+        ...(cmdOpts.rate !== undefined ? { rate: cmdOpts.rate } : {}),
+        ...(cmdOpts.gate !== undefined ? { gate: checkArpGate(Number(cmdOpts.gate)) } : {}),
+      };
+
+      let variant: number | undefined;
+      if (cmdOpts.variant !== undefined) {
+        const names = listArpVariants(spec);
+        variant = /^\d+$/.test(cmdOpts.variant) ? Number(cmdOpts.variant) : names.indexOf(cmdOpts.variant);
+        if (variant < 0 || variant >= names.length) {
+          throw new Error(`unknown variant "${cmdOpts.variant}" (available: ${names.join(", ")})`);
+        }
+      }
+
+      let chords: ArpChordSpan[];
+      let bars: number;
+      let sourceLine: string;
+
+      if (chordClipPath !== undefined) {
+        const detail = (await op(opts, "clip.get", { path: chordClipPath })) as ClipDetail;
+        if (detail.kind !== "midi" || !detail.notes) {
+          throw new Error(`${chordClipPath} is not a MIDI clip`);
+        }
+        const result = chordsFromNotes(detail.notes);
+        // NEGATIVE CONTROL: a melody (no simultaneities) is a state, not
+        // garbage 1-note-chord output (docs/lessons-learned.md #5).
+        if (result.kind === "melody") {
+          output(opts, { chordClipPath, created: false }, () =>
+            `${chordClipPath} has no chords (no simultaneous notes) — this looks like a melody, ` +
+              "not something to arpeggiate. Write or transcribe a chord clip first (e.g. `awh chords`).",
+          );
+          return;
+        }
+        chords = result.chords;
+        bars = cmdOpts.bars !== undefined ? Number(cmdOpts.bars) : Math.max(1, Math.round(detail.duration / ARP_BEATS_PER_BAR));
+        sourceLine = `chord clip ${chordClipPath} (${result.chords.length} chords)`;
+      } else {
+        const summary = (await op(opts, "set.summary")) as SetSummary;
+        const keyCtx = resolveKey(summary, cmdOpts.key);
+        const parsedChords = parseProgression(cmdOpts.prog!, keyCtx);
+        const voiced = voiceProgression(parsedChords, {
+          style: cmdOpts.voicing,
+          center: Number(cmdOpts.center),
+        });
+        bars = cmdOpts.bars !== undefined ? Number(cmdOpts.bars) : voiced.length; // one bar per chord default
+        const segmentLen = (bars * ARP_BEATS_PER_BAR) / voiced.length;
+        chords = voiced.map((v, i) => ({
+          pitches: [...v.pitches].sort((a, b) => a - b),
+          startBeat: i * segmentLen,
+          endBeat: (i + 1) * segmentLen,
+        }));
+        sourceLine = `--prog "${cmdOpts.prog}" (${keyCtx.label}, ${cmdOpts.voicing})`;
+      }
+
+      const { notes, meta } = generateArp(chords, spec, {
+        seed: Number(cmdOpts.seed),
+        bars,
+        ...(variant !== undefined ? { variant } : {}),
+      });
+      const lengthBeats = bars * ARP_BEATS_PER_BAR;
+      const specLine =
+        `style ${cmdOpts.style}${styleTier ? ` [${styleTier}]` : ""} — contour ${meta.contour}, ` +
+        `patternLength ${meta.patternLength}, rotate ${meta.rotate}, seed ${meta.seed}`;
+
+      const isSlot = /\/slot:\d+$/.test(target);
+      if (!isSlot && cmdOpts.atBar === undefined) {
+        throw new Error("track targets need --at-bar (or pass a slot path)");
+      }
+
+      if (cmdOpts.dryRun) {
+        output(opts, { notes, lengthBeats, meta }, () =>
+          [
+            `dry run: ${sourceLine} -> ${target} (${bars} bars, ${notes.length} notes; ${specLine}):`,
+            serializeNotation(notes, { beatsPerBar: ARP_BEATS_PER_BAR }),
+          ].join("\n"),
+        );
+        return;
+      }
+
+      const targetSpec = isSlot
+        ? { type: "session", slotPath: target }
+        : {
+            type: "arrangement",
+            trackPath: target,
+            startBeat: (Number(cmdOpts.atBar) - 1) * ARP_BEATS_PER_BAR,
+          };
+      const result = (await op(opts, "clip.create-midi", {
+        target: targetSpec,
+        lengthBeats,
+        notes,
+        name: cmdOpts.name ?? `${cmdOpts.style}-arp`,
+      })) as { path: string };
+
+      output(opts, { path: result.path, notes: notes.length, meta }, () =>
+        [
+          `${sourceLine} -> ${result.path} (${bars} bars, ${notes.length} notes)`,
+          specLine,
+          "this is a generated pattern — audition it, then shape/vary from there.",
         ].join("\n"),
       );
     },

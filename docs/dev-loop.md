@@ -2173,3 +2173,74 @@ owner's:
       `--compare` improved/unchanged epsilon per rule (docs/design/
       mix-advisor.md doesn't pin any of these down) — revisit if a real
       run's judgment calls look miscalibrated by ear.
+
+## M14 (arp engine) owner checklist
+
+Built per `docs/design/arp-engine.md`'s pinned ArpSpec schema and semantics
+(a single global step counter drives contour/pattern-position/walk-rng
+together — see `packages/core/src/arp/engine.ts`'s header comment for why
+that one rule is what makes polymeter wrap correctly AND makes chord
+boundaries re-select the pitch pool without resetting pattern position,
+both for free). Two built-ins (`basic-up`, `melodic-techno-16ths` —
+the latter verbatim from the design doc), the knowledge `arp-style-<name>`
+fallback (tier printed), the `ratchet` transform (vary-compatible), and
+`euclideanMask`/`chordsFromNotes` exported as reusable core utilities.
+`pnpm test` green (core 344 -> 381 incl. 37 new: pitch-pool membership,
+exact-k-onset euclidean masks at every rotation, the patternLength-12
+polymeter wrap with hand-computed accent positions, the chord-boundary
+re-select fixture, ratchet/gate non-overlap, bounded walk, frozen
+determinism for both built-ins across 2 seeds, parseArpSpec typo/euclid-k=0
+rejection, and the melody-only negative control; cli 161 -> 167 incl. 6
+new: `--prog` end-to-end and `--dry-run` against a fake gateway, the
+chord-clip source reading a clip `awh chords` itself wrote, the
+melody-only state, the unknown-style error, and the knowledge-entry style
+fallback with tier printed via an isolated `AWH_LIBRARY`); Python untouched
+(179/179). Smoke-tested against `awh serve-fake`: `--prog` writing a real
+clip, `awh chords` -> `awh arp` chord-clip round trip, an unknown style's
+error, a melody-only clip's state, and `--variant rotate-N` against a
+knowledge-loaded style — see the build session's report for the exact
+`--dry-run` notation excerpt. The owner still needs to validate this
+AUDITIONED IN LIVE — synthetic notes and property tests prove the pinned
+mechanics as coded, not whether either built-in (or a knowledge style)
+actually sounds like the trance/techno/psy-ratchet idiom it names:
+
+- [ ] `awh arp --prog "<a real progression>" --key <realKey> <target>
+      --style melodic-techno-16ths` on the actual project this milestone
+      was built for → confirm the updown contour + off-accent 16ths
+      genuinely read as "melodic techno," not just a mechanically-correct
+      arpeggio. Not run this pass (serve-fake only).
+- [ ] `awh arp <a real chord clip on the project> <target> --style
+      basic-up` → confirm the chord-clip source (grouped simultaneous
+      notes, per-chord spans) tracks the actual harmonic rhythm of a
+      hand-written or `awh chords`-written clip, not just the synthetic
+      fixtures in the test suite.
+- [ ] Audition a knowledge `arp-style-<name>` entry once the parallel
+      seeding agent's trance/melodic-techno/psy-ratchet entries land — this
+      milestone only smoke-tested the fallback MECHANISM (a scratch
+      knowledge entry, tier printed), not any of the seeded entries'
+      actual musical claims.
+- [ ] The jam-vs-commit workflow, for real: find a pattern you like on the
+      stock Live Arpeggiator (jamming), then reproduce its FEEL with `awh
+      arp` (style/rate/gate/contour) so it becomes a real, seed-reproducible
+      clip the rest of the toolchain (vary/library/notation) can touch —
+      confirm that hand-off actually feels natural rather than like
+      re-deriving the pattern from scratch.
+- [ ] `ratchet` transform via `awh vary <clip> --ops "ratchet:steps=..."` on
+      a real (non-arp) clip → confirm the ratcheted hits read as a
+      deliberate roll/stutter, not a glitch, at a real tempo.
+- [ ] Skill check: ask a fresh agent to "arp this chord clip" / "give me a
+      trance-style 16th arp" and confirm it reaches for `awh arp` from the
+      Typical flows entry (chord-clip or `--prog` source, not hand-composed
+      notation), and states plainly when a source clip turns out to be a
+      melody rather than silently producing garbage.
+- [ ] Whether the open-detail decisions the design left unstated hold up:
+      `--variant` forcing the euclid mask's ROTATION (there being no
+      cell/recipe table to draw from, unlike drums/phrase); the single
+      global step counter as the mechanism for both polymeter wrap and
+      chord-boundary continuity; `--bars` beyond a chord source's own span
+      tiling (looping) the harmonic content rather than erroring; the
+      velocity ramp shape scaled off `accentBoost` (±half of it at the
+      pattern's ends) rather than an unstated constant; and swing applied
+      to odd-indexed steps as a fraction of the step (the "drum-engine
+      convention" the design cites without pinning a formula) — revisit if
+      a real run's feel doesn't match what any of these imply on paper.
