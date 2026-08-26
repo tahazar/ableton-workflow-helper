@@ -8,7 +8,7 @@ sources:
   - "https://en.wikipedia.org/wiki/Euclidean_rhythm"
   - "https://www.researchgate.net/figure/a-The-Euclidean-rhythm-E3-8-is-the-Cuban-tresillo-b-The-Euclidean-rhythm-E5-8_fig2_237419500"
   - "https://www.lawtonhall.com/blog/euclidean-rhythms-pt1"
-related: [rhythm/arp-ratchet-craft, rhythm/arp-style-trance-16ths, rhythm/arp-style-melodic-techno, rhythm/drum-style-dusty-garage]
+related: [rhythm/arp-style-ratchet, rhythm/arp-style-trance-16ths, rhythm/arp-style-melodic-techno, rhythm/drum-style-dusty-garage]
 ---
 # Euclidean rhythm craft: E(k,n) as a musicologically real thinning device
 
@@ -93,7 +93,7 @@ arp programming specifically):
   a grid instead of an arbitrary fraction, when the goal is a specific
   named cross-rhythm feel.
 - **Moderate arbitrary thinning** (`k` a few steps below `n`, e.g.
-  `{k:13, n:16}`, as used in `rhythm/arp-ratchet-craft`'s executable block)
+  `{k:13, n:16}`, as used in `rhythm/arp-style-ratchet`'s executable block)
   — not a named traditional rhythm, just "thin enough to leave room for
   ratchets/accents to read," which is this project's own use of the
   mechanism rather than a Toussaint-sourced choice.

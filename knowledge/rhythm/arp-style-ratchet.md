@@ -1,5 +1,5 @@
 ---
-slug: arp-ratchet-craft
+slug: arp-style-ratchet
 topic: rhythm
 tier: draft
 tags: [ratchet, roll, techno, psytrance, berlin-school, sequencer, arp, style-spec]

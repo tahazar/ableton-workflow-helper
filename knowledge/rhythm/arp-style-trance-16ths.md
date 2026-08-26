@@ -9,7 +9,7 @@ sources:
   - "https://www.edmprod.com/arpeggiators/"
   - "https://allanmorrowstudios.com/trance-music/trance-arpeggios-tutorial/"
   - "https://theproducerschool.com/blogs/featured-blogs/5-essential-bass-patterns-that-define-hard-house-and-trance-music"
-related: [rhythm/arp-style-melodic-techno, rhythm/arp-ratchet-craft, rhythm/drum-style-dusty-garage, arrangement/phrase-style-lyny-flavor]
+related: [rhythm/arp-style-melodic-techno, rhythm/arp-style-ratchet, rhythm/drum-style-dusty-garage, arrangement/phrase-style-lyny-flavor]
 ---
 # Arp style: uplifting/classic trance 16ths
 

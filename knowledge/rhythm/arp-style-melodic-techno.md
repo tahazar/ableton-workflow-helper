@@ -9,7 +9,7 @@ sources:
   - "https://www.attackmagazine.com/technique/beat-dissected/deep-melodic-progressive-techno/"
   - "https://www.scribd.com/article/558057713/Arpeggios-For-Melodic-Techno"
   - "https://www.samplesoundmusic.com/blogs/academy/create-a-melodic-techno-arp"
-related: [rhythm/arp-style-trance-16ths, rhythm/arp-ratchet-craft, arrangement/phrase-style-lyny-flavor, rhythm/euclidean-rhythm-craft]
+related: [rhythm/arp-style-trance-16ths, rhythm/arp-style-ratchet, arrangement/phrase-style-lyny-flavor, rhythm/euclidean-rhythm-craft]
 ---
 # Arp style: melodic techno long-cycle, off-accent 16ths
 

@@ -1,6 +1,7 @@
 # Design: Arp & rhythm engine (M14 — `awh arp`)
 
-- Status: in build (2026-08-24). Owner decision (chat): build on our own
+- Status: built (2026-08-26), pending owner validation — see docs/dev-loop.md's
+  "M14 (arp engine) owner checklist". Owner decision (chat): build on our own
   MIDI generation rather than driving stock devices — a MIDI-effect arp
   produces no notes, so nothing downstream (vary, library, phrases,
   endless pools, seeds, notation) can touch it; the stock Arpeggiator

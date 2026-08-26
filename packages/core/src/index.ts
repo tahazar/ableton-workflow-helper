@@ -206,6 +206,31 @@ export {
 } from "./phrase/phrase.js";
 export { parseOperatorRecipe, type OperatorRecipe } from "./operator/recipe.js";
 export {
+  BASIC_UP_SPEC,
+  MELODIC_TECHNO_16THS_SPEC,
+  arpRateBeats,
+  checkArpGate,
+  listArpStyles,
+  listArpVariants,
+  parseArpSpec,
+  type ArpContour,
+  type ArpEuclidSpec,
+  type ArpSpec,
+  type ArpVelocitySpec,
+  type ArpWalkSpec,
+  type VelocityShape,
+} from "./arp/spec.js";
+export {
+  ARP_BEATS_PER_BAR,
+  chordsFromNotes,
+  euclideanMask,
+  generateArp,
+  type ArpChordSpan,
+  type ChordsFromNotesResult,
+  type GenerateArpOptions,
+  type GeneratedArp,
+} from "./arp/engine.js";
+export {
   parseEndlessSpec,
   validateEndlessSpec,
   type EndlessFluctuation,

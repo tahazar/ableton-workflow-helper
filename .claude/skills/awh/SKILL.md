@@ -249,6 +249,59 @@ awh drop phrase <target> [responseTarget] [--bars 8|16] [--style s] [--seed N]
 - Always end with the honest reminder: candidates/skeletons are starting
   points to audition, never a finished part.
 
+## Arp & rhythm engine (`awh arp`) — our own MIDI arpeggiator
+
+```sh
+awh arp <chordClip> <target> [--style s] [--seed N] [--variant v]
+    [--rate 1/16] [--gate 0.8] [--bars N] [--name n] [--at-bar N] [--dry-run]
+    # chord-clip source: reads simultaneous notes from an existing clip
+    # (e.g. one `awh chords` wrote) and arpeggiates each chord over its span.
+awh arp --prog "i-VI-III-VII" --key "A minor" <target> [--voicing close|spread]
+    [--center 60] [same style/seed/variant/rate/gate/bars/dry-run options]
+    # --prog source: runs the harmony engine inline, then arpeggiates the
+    # voiced result. <target> is the ONLY positional in this form.
+```
+
+- This is the COMMITTING tool: it writes real MIDI notes, so `awh vary`,
+  the library, phrases, and notation can all touch the result. The stock
+  Live Arpeggiator stays the JAMMING tool for auditioning ideas in real
+  time — it produces no notes a downstream tool can see, by design not
+  a limitation. When the owner says "I found a good arp pattern on the
+  device, commit it", reproduce the FEEL with `awh arp` (style/rate/gate/
+  contour), don't try to read the device's own state.
+- Two chord sources, both first-class: an existing chord clip (pass its
+  path as the first argument), or `--prog "<roman numerals>"` (runs
+  `parseProgression`/`voiceProgression` inline — same progression grammar
+  as `awh chords`, see that section for the roman-numeral rules). With
+  `--prog`, `<target>` is the ONLY positional — don't also pass a clip path.
+- A clip with only single notes (no simultaneities) is a normal result, not
+  garbage output: it says "this looks like a melody" and writes nothing —
+  don't retry with a different style, point it at an actual chord clip
+  (`awh chords`, or a clip with stacked notes) instead.
+- `contour` (up/down/updown/downup/converge/diverge/walk/as-voiced) orders
+  pitches drawn from the chord voicing extended upward by `octaves`
+  (`as-voiced` ignores the octave extension and just cycles the voicing as
+  given). `patternLength` sets how many steps before accents/rests/ratchets
+  repeat — when it doesn't match the bar length (e.g. 12 at 1/16 in 4/4)
+  that's deliberate POLYMETER, not a bug; it keeps riding through chord
+  changes without resetting. `euclid: {k, n}` thins the step grid to `k`
+  onsets per `n` steps (k=n = no thinning); `ratchets` subdivide a step into
+  fast repeats without ever overlapping.
+- `--style`: the built-ins `basic-up` (plain ascending, full mask) and
+  `melodic-techno-16ths` (updown, 2 octaves, off-accent 16ths), or a
+  knowledge entry with slug `arp-style-<name>` and an ```awh-arp-spec```
+  block — same data-driven convention as drum/phrase styles (adding a style
+  = writing knowledge, not code). Prints the entry's tier when used.
+  `--variant` forces the euclid mask's rotation (listable, like a drum
+  kick-cell variant) — `rotate-0`, `rotate-1`, ... up to `euclid.n - 1`.
+- `--rate`/`--gate` override the resolved style's step rate/gate directly —
+  reach for these before writing a whole new knowledge style for a one-off
+  tempo/density tweak. `--dry-run` shows the bar|beat notation preview
+  before committing anything.
+- The `ratchet` transform (in `awh transforms`, usable with `awh vary`) is
+  the note-level sibling of the engine's own ratchets field — it can
+  subdivide selected notes in ANY clip, not just arp output.
+
 ## Mix analysis (`awh mix`) — measurements, never vibes
 
 ```sh
@@ -909,6 +962,26 @@ call/response skeleton in this key"):
 3. Tell the owner plainly this is a SKELETON to audition and shape, never a
    finished drop — the engine writes notes, not sound design (the growl/
    chop timbre is still theirs to pick).
+
+**Arpeggiate a chord progression / commit an arp pattern** ("arp this chord
+clip", "give me a trance-style 16th arp over i-VI-III-VII", "I like the
+Arpeggiator's feel here, print it as real notes"):
+1. Chord source: an existing chord clip (`awh status --json` to find it, or
+   write one first with `awh chords <target> --progression "..."`), OR skip
+   the clip entirely and pass `--prog "i-VI-III-VII" --key "A minor"` — don't
+   hand-render the progression yourself, `awh arp --prog` runs the same
+   harmony engine `awh chords` uses.
+2. `awh arp <chordClip> <target> --style <s>` (clip source) or
+   `awh arp --prog "..." --key k <target> --style <s>` (progression source,
+   `<target>` is the ONLY positional there). `--dry-run` first to see the
+   bar|beat notation before committing; `--variant` to try a different
+   euclid rotation without a new seed.
+3. A clip with no simultaneous notes (a melody, not a chord clip) is a
+   normal result — it says so and writes nothing; point it at real chord
+   material instead of retrying with a different style/seed.
+4. This writes REAL notes (unlike the stock Arpeggiator device, which the
+   Set can't inspect) — that's the whole point: the result composes with
+   `awh vary`, `awh save`, and every notation-reading tool downstream.
 
 **Mix feedback / "how does my mix measure?"** ("check my low end", "is this
 loud enough for clubs", "did that EQ change help"):
