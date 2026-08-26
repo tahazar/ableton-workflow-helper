@@ -302,6 +302,72 @@ awh arp --prog "i-VI-III-VII" --key "A minor" <target> [--voicing close|spread]
   the note-level sibling of the engine's own ratchets field — it can
   subdivide selected notes in ANY clip, not just arp output.
 
+## Break engine (`awh breaks`) — chop a real break, then re-sequence it
+
+```sh
+awh breaks chop <break.wav> [--save [name]] [--export <dir>] [--bpm N]
+    # onset-slice a break sample: per-slice role guess (kick/snare/hat/ghost
+    # + confidence), BPM (confidence carried), and MEASURED 16th-grid offset
+    # (a sloppy break reports sloppy, never gets silently snapped to 0).
+    # --export cuts <nn>-<role>.wav + a README mapping table — the
+    # zero-friction path: drag the slices into an empty Drum Rack.
+awh breaks pattern <target> --map <name> [--style jungle-classic|halftime]
+    [--seed N] [--variant N] [--bars N] [--mode drum-rack|live-slices]
+    [--at-bar N] [--dry-run]
+    # BreakSpec-driven re-sequencing: a verbatim "statement" (bar 1, by
+    # default), then a "turnaround" that chops/substitutes/displaces
+    # snares/ghost-shuffles per the style. jungle-classic = state then chop
+    # the tail; halftime = sparse placement of the SAME slices.
+awh breaks fill <target> --map <name> [--beats 2] [--seed N] [--count N]
+    [--at-bar N] [--dry-run]
+    # THE turnaround-fill grammar: snare-rush (ratchet), stutter/retrigger,
+    # triplet, and tail-rearrange cells — at most 2 device TYPES per
+    # candidate (restraint rule). N seeded candidates drop into consecutive
+    # session slots (or --at-bar arrangement positions), named
+    # "fill <devices> s<seed>" for quick A/B audition.
+awh breaks place <break-pattern-name> <target> [--at-bar N]
+    # resolve a break-pattern-<name> knowledge entry's canonical amen/
+    # think/funky-drummer notation (GM drum mapping) and write it — kit-
+    # aware via mapPadRoles where the target has a drum rack (same
+    # convention as `drums gen`), GM fallback with a plain note otherwise.
+```
+
+- Two halves, and they don't mix: **Half 1** (`breaks place`) plays a
+  KNOWLEDGE-CARRIED canonical break pattern (sourced transcription) as MIDI
+  on any kit — no audio slicing involved. **Half 2** (`chop`/`pattern`/
+  `fill`) re-sequences a REAL break SAMPLE's own slices via onset analysis
+  — the notes it writes only make sense against that exact chopped file.
+  Don't conflate "give me an amen pattern" (Half 1) with "chop my amen WAV
+  and vary it" (Half 2) — ask which the owner means if it's ambiguous.
+- **The honest Simpler constraint**: the SDK cannot configure Simpler's
+  slice points (not addressable), so `pattern`/`fill` never touch Simpler
+  at all. `--mode drum-rack` (default) assumes the `--export`ed slices are
+  dropped into a Drum Rack's pads in order (00, 01, 02, ...) — capped at 16
+  pads; a chop map with more slices refuses outright rather than silently
+  wrapping two slices onto one pad. `--mode live-slices` targets Live's own
+  Slice-to-New-MIDI-Track chromatic convention instead (no 16-slice cap),
+  but ALWAYS prints a loud warning naming the chop map's own slice count —
+  Live's own transient detector may find a different count at whatever
+  sensitivity the owner used, and a mismatch means these notes trigger the
+  WRONG slice. Relay that warning verbatim; don't reassure the owner past it.
+- `chop --save <name>` writes a chop-map record (`library/measurements/`,
+  `mix records`-listable, kind "chopmap") that `pattern --map <name>`/
+  `fill --map <name>` resolve BY NAME — don't hand-parse the JSON yourself.
+- Role guesses (kick/snare/hat/ghost) are a band-energy PROXY with a
+  confidence, always relay both — never state a role as fact. If a chop
+  map's confidence reads uniformly low, `pattern` WARNS and automatically
+  restricts itself to same-slice tricks (stutter/retrigger only, never a
+  confident role swap) — tell the owner why if they ask for more variation
+  than that and point them at a cleaner chop or a manual `--map` edit.
+- `--style`: built-ins `jungle-classic`/`halftime`, or a knowledge entry
+  with slug `break-style-<name>` and an ```awh-break-spec``` block — same
+  data-driven convention as drum/phrase/arp styles. `fill` has no `--style`
+  (a fixed built-in grammar; the restraint rule is still a real spec field
+  under the hood, just not authorable via knowledge in v1).
+- `--dry-run` on both `pattern` and `fill` shows the bar|beat notation
+  preview (every candidate, for `fill`) before committing anything —
+  default to this first when the owner hasn't heard the result yet.
+
 ## Mix analysis (`awh mix`) — measurements, never vibes
 
 ```sh
@@ -982,6 +1048,34 @@ Arpeggiator's feel here, print it as real notes"):
 4. This writes REAL notes (unlike the stock Arpeggiator device, which the
    Set can't inspect) — that's the whole point: the result composes with
    `awh vary`, `awh save`, and every notation-reading tool downstream.
+
+**Chop a break sample and re-sequence it** ("chop this amen break", "give me
+a jungle pattern from my own break sample", "I need a fill on this break",
+"turn this drum break into a Drum Rack"):
+1. First tell the two halves apart: an unchopped, canonical pattern request
+   ("give me an amen pattern") is `awh breaks place <break-pattern-name>
+   <target>` — no audio file needed, it plays a sourced knowledge-carried
+   MIDI pattern. A REAL sample the owner has ("chop THIS wav") is the flow
+   below.
+2. `awh breaks chop <break.wav> --save <name> --export <dir>` — onset-slices
+   the file into a labeled chop map (role guess + confidence, BPM, measured
+   grid offsets) AND drops `<nn>-<role>.wav` files + a README into `<dir>`.
+   Tell the owner to drag those files into an empty Drum Rack's pads in
+   order — that's the zero-friction path (`--mode drum-rack`, the default,
+   assumes exactly that layout).
+3. `awh breaks pattern <target> --map <name> --style jungle-classic|halftime
+   --at-bar N --dry-run` first — show the notation preview, then drop
+   `--dry-run` to commit. `awh breaks fill <target> --map <name> --dry-run`
+   for turnaround fills (N seeded candidates at once); audition via M12
+   (`awh lib audition`-style transport) and keep favourites.
+4. If the owner plans to use Live's own Slice-to-New-MIDI-Track instead of a
+   Drum Rack, pass `--mode live-slices` and relay its count-match warning
+   VERBATIM (the chop map's own slice count vs. whatever Live's transient
+   detector finds) — never reassure them past a real mismatch risk.
+5. Low role-confidence across a chop map is a normal, reported state (not a
+   bug): `pattern` warns and falls back to same-slice tricks only. Suggest a
+   cleaner source break or a different `--bpm` override rather than
+   insisting the current chop is wrong.
 
 **Mix feedback / "how does my mix measure?"** ("check my low end", "is this
 loud enough for clubs", "did that EQ change help"):

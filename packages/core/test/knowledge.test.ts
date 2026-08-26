@@ -174,6 +174,31 @@ describe("KnowledgeStore", () => {
     expect(index).toContain("| [waivops-tr9-pilot](../library/measurements/waivops-tr9-pilot.json) | 2026-08-19 | waivops-edm-tr9-pilot | 14 | 14 |");
   });
 
+  it("indexes chop-map records (awh breaks chop --save, M15) alongside the other kinds without crashing", async () => {
+    await mkdir(measurements, { recursive: true });
+    await writeFile(
+      join(measurements, "amen.json"),
+      JSON.stringify({
+        schema: 1,
+        kind: "chopmap",
+        saved: "2026-08-26",
+        file: "/x/amen.wav",
+        sha256: "y".repeat(64),
+        chopmap: { n_slices: 7, bpm: 138.5 },
+      }),
+    );
+
+    const chopMapRecords = await store.listChopMapRecords();
+    expect(chopMapRecords).toEqual([{ name: "amen", saved: "2026-08-26", file: "/x/amen.wav", nSlices: 7, bpm: 138.5 }]);
+    // a chopmap record must never show up in the plain measurement-record
+    // listing (same split as drumstats — see listMeasurementRecords).
+    expect((await store.listMeasurementRecords()).map((r) => r.name)).not.toContain("amen");
+
+    const index = await store.buildIndex();
+    expect(index).toContain("## chop maps");
+    expect(index).toContain("| [amen](../library/measurements/amen.json) | 2026-08-26 | 7 | 138.5 | amen.wav |");
+  });
+
   it("flags prose-only entries in the index", async () => {
     await store.saveEntry({
       ...entry,

@@ -156,6 +156,7 @@ export {
 export {
   KnowledgeStore,
   type KnowledgeFilter,
+  type ChopMapRecordSummary,
   type DrumStatsRecordSummary,
   type MeasurementRecordSummary,
   type ReferenceRecordSummary,
@@ -230,6 +231,37 @@ export {
   type GenerateArpOptions,
   type GeneratedArp,
 } from "./arp/engine.js";
+export {
+  HALFTIME_SPEC,
+  JUNGLE_CLASSIC_SPEC,
+  listBreakStyles,
+  parseBreakSpec,
+  type BreakSpec,
+} from "./breaks/spec.js";
+export {
+  DRUM_RACK_PAD_COUNT,
+  SLICE_NOTE_BASE,
+  noteToSliceIndex,
+  parseChopMap,
+  sliceNote,
+  type ChopMap,
+  type ChopMapSlice,
+  type ChopRole,
+  type SliceNoteMode,
+} from "./breaks/chopmap.js";
+export {
+  DEFAULT_FILL_SPEC,
+  LOW_CONFIDENCE_THRESHOLD,
+  generateBreakFill,
+  generateBreakPattern,
+  type BreakFillSpec,
+  type FillDevice,
+  type GenerateBreakFillOptions,
+  type GenerateBreakPatternOptions,
+  type GeneratedBreakFill,
+  type GeneratedBreakFillCandidate,
+  type GeneratedBreakPattern,
+} from "./breaks/engine.js";
 export {
   parseEndlessSpec,
   validateEndlessSpec,

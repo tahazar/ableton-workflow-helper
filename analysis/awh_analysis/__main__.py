@@ -10,7 +10,7 @@ from typing import Any
 
 import soundfile as sf
 
-from . import a2m, ab, advise as advise_mod, bands, clapembed, drumstats, duck, opmatch, pitch, pumpcheck, ref, report, samplepitch, samplescan, targets
+from . import a2m, ab, advise as advise_mod, bands, breakchop, clapembed, drumstats, duck, opmatch, pitch, pumpcheck, ref, report, samplepitch, samplescan, targets
 
 
 def _print_json(obj: Any) -> None:
@@ -702,6 +702,50 @@ def _cmd_advise(args: argparse.Namespace) -> int:
     return 0
 
 
+def _render_breakchop_text(result: dict) -> str:
+    lines = [
+        f"File: {result['file']}  ({result['duration_s']:.2f}s)",
+        f"BPM: {result['bpm']:.2f} ({result['bpm_source']}, confidence "
+        f"{result['bpm_confidence']:.2f})"
+        + (f", runner-up {result['bpm_runner_up']:.2f}" if result.get("bpm_runner_up") else ""),
+        f"{result['n_slices']} slice(s), grid {result['grid_steps_per_bar']}/bar",
+        "",
+    ]
+    if result["n_slices"] == 0:
+        lines.append("(no onsets detected — nothing to slice)")
+        return "\n".join(lines)
+    lines.append(f"{'#':>3s} {'start':>8s} {'end':>8s} {'grid':>10s} {'offset':>8s} {'role':<7s} conf")
+    for s in result["slices"]:
+        grid_label = f"{s['bar'] + 1}|{s['pos'] + 1}"
+        ghost = "*" if s["is_ghost"] else " "
+        lines.append(
+            f"{s['index']:>3d} {s['start_s']:8.3f} {s['end_s']:8.3f} {grid_label:>10s} "
+            f"{s['offset_ms']:+7.1f}ms {s['role']:<6s}{ghost} {s['confidence']:.2f}"
+        )
+    if result.get("tail_decay_s") is not None:
+        lines.append("")
+        lines.append(
+            f"tail decays below floor at {result['tail_decay_s']:.3f}s (informational — "
+            "the final slice's end_s above is still the file's own end, byte-exact)"
+        )
+    return "\n".join(lines)
+
+
+def _cmd_breakchop(args: argparse.Namespace) -> int:
+    result = breakchop.analyze_break(args.file, bpm_override=args.bpm, min_gap_s=args.min_gap_ms / 1000.0)
+    if args.export:
+        result["export"] = breakchop.export_slices(args.file, result, args.export)
+    if args.save_record:
+        breakchop.save_chopmap_record(args.save_record, args.file, result)
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_breakchop_text(result))
+        if args.export:
+            print(f"\nexported {len(result['export']['files'])} slice(s) -> {result['export']['dir']}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -929,6 +973,25 @@ def build_parser() -> argparse.ArgumentParser:
                           help="also write an advice record JSON to this path")
     p_advise.add_argument("--json", action="store_true")
     p_advise.set_defaults(func=_cmd_advise)
+
+    p_breakchop = sub.add_parser(
+        "breakchop",
+        help="Chop a break sample (amen, think, ...) into a labeled slice map (M15)",
+    )
+    p_breakchop.add_argument("file")
+    p_breakchop.add_argument("--bpm", type=float, default=None, help="override the BPM estimate")
+    p_breakchop.add_argument(
+        "--min-gap-ms", type=float, default=breakchop.DEFAULT_MIN_GAP_S * 1000.0,
+        help="minimum gap between detected onsets in ms",
+    )
+    p_breakchop.add_argument(
+        "--export", type=str, default=None,
+        help="cut slices to <nn>-<role>.wav in this directory, plus a README.md mapping table",
+    )
+    p_breakchop.add_argument("--save-record", type=str, default=None,
+                             help="also write a chop-map record (kind chopmap) to this path")
+    p_breakchop.add_argument("--json", action="store_true")
+    p_breakchop.set_defaults(func=_cmd_breakchop)
 
     return parser
 

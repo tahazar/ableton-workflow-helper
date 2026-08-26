@@ -50,6 +50,14 @@ export interface DrumStatsRecordSummary {
   nSources: number;
 }
 
+export interface ChopMapRecordSummary {
+  name: string;
+  saved: string;
+  file: string;
+  nSlices: number;
+  bpm: number;
+}
+
 export class KnowledgeStore {
   /**
    * @param root the knowledge/ directory
@@ -154,7 +162,7 @@ export class KnowledgeStore {
           };
           findings: unknown[];
         };
-        if (raw.kind === "drumstats") continue;
+        if (raw.kind === "drumstats" || raw.kind === "chopmap") continue;
         out.push({
           name: f.replace(/\.json$/, ""),
           saved: raw.saved,
@@ -194,6 +202,35 @@ export class KnowledgeStore {
         });
       } catch (err) {
         throw new Error(`Bad drum-stats record ${f}: ${(err as Error).message}`);
+      }
+    }
+    return out;
+  }
+
+  /** The `awh breaks chop --save` half of library/measurements/ (M15,
+   *  `kind: "chopmap"`) — see `listMeasurementRecords` for why the shared
+   *  directory's kinds are split like this. */
+  async listChopMapRecords(): Promise<ChopMapRecordSummary[]> {
+    if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
+    const out: ChopMapRecordSummary[] = [];
+    for (const f of (await readdir(this.measurementsDir)).filter((x) => x.endsWith(".json")).sort()) {
+      try {
+        const raw = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
+          kind?: string;
+          saved: string;
+          file: string;
+          chopmap: { n_slices: number; bpm: number };
+        };
+        if (raw.kind !== "chopmap") continue;
+        out.push({
+          name: f.replace(/\.json$/, ""),
+          saved: raw.saved,
+          file: raw.file,
+          nSlices: raw.chopmap.n_slices,
+          bpm: raw.chopmap.bpm,
+        });
+      } catch (err) {
+        throw new Error(`Bad chop-map record ${f}: ${(err as Error).message}`);
       }
     }
     return out;
@@ -280,6 +317,22 @@ export class KnowledgeStore {
         lines.push(
           `| [${r.name}](../library/measurements/${r.name}.json) | ${r.saved} | ` +
             `${r.dataset} | ${r.nLoops} | ${r.nSources} |`,
+        );
+      }
+    }
+    const chopMaps = await this.listChopMapRecords();
+    if (chopMaps.length > 0) {
+      lines.push(
+        "",
+        "## chop maps (library/measurements/ — `awh breaks chop --save` records)",
+        "",
+        "| record | saved | slices | bpm | source file |",
+        "|---|---|---|---|---|",
+      );
+      for (const r of chopMaps) {
+        lines.push(
+          `| [${r.name}](../library/measurements/${r.name}.json) | ${r.saved} | ` +
+            `${r.nSlices} | ${r.bpm.toFixed(1)} | ${basename(r.file)} |`,
         );
       }
     }

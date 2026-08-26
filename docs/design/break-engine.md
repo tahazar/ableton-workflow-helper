@@ -1,7 +1,8 @@
 # Design: Break engine (M15 — `awh breaks`: chops, patterns, fills)
 
-- Status: designed (2026-08-24); build queued behind M14 integration —
-  the fill grammar consumes M14's ratchet machinery directly. Owner ask:
+- Status: built (2026-08-26), pending owner validation — see docs/dev-loop.md's
+  "M15 (break engine) owner checklist" for exact test counts, the smoke
+  transcript, and the in-Live validation still outstanding. Owner ask:
   established breaks (amen etc.) as generatable MIDI, plus break CHOPS
   and variations, particularly FILLS.
 - Two halves matching how breaks are actually used: (1) canonical break
