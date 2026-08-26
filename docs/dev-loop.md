@@ -2342,3 +2342,100 @@ drummer break chops the way the design's craft assumptions expect:
       grammar's chunk-per-device split (each selected device gets an equal
       contiguous slice of the fill's own length) — revisit if a real run's
       feel doesn't match what any of these imply on paper.
+
+## M16 (808 bass) owner checklist
+
+Built per `docs/design/bass-808.md`'s pinned Bass808Spec schema and
+semantics — a per-bar weighted cell draw (`packages/core/src/bass/
+engine.ts`'s `generate808`), degree-relative pitches with the root ALONE
+octave-fitted into `register` (degrees deliberately NOT re-folded), and the
+legato-glide contract: `slide: true` steps are extended to overlap the next
+sounding note's start by exactly `slideOverlapBeats` (bar-crossing included;
+a slide with no successor at all falls back to its written length).
+`--slides off` reverts every step to plain gates. Three built-ins —
+`trap-long` (the design doc's own example spec, verbatim), `trap-syncopated`
+(off-beat/"and"-heavy cells, more slides, exercises `turnaroundCells`),
+`triplet-flow` (8th-triplet-grid run cells, denser) — grounded in the
+WaivOps HH-TRP full-n mining record (`library/measurements/
+waivops-hhtrp-full.json`, n=15,000): beat-1 anchoring in real trap low-end
+material reads only 49.4% (`stats.per_band.low.position_prob[0]`), and the
+off-beat "&" positions read 18-27% across all four beats — non-anchor
+placement is common, not exotic, which is what `trap-long`'s octave-answer
+cell and `trap-syncopated`'s off-beat cells are grounded against (comments
+in `packages/core/src/bass/spec.ts` cite the exact figures). The knowledge
+`808-style-<name>` fallback (tier printed) mirrors drums/phrase/arp/breaks
+exactly, and reuses `pickWeighted`/`fitPitchToRegister` from the phrase
+engine (`packages/core/src/phrase/util.ts`) rather than re-deriving them.
+
+`pnpm test` green (core 416 -> 450 incl. 34 new: `parseBass808Spec` typo/
+degree-outside-degrees/empty-cells rejection + the built-in trap-long
+round-trip verbatim from the design doc; a hand-built single-cell fixture
+that pins the EXACT bar-crossing slide overlap, the last-note-no-successor
+fallback, and that nothing else overlaps; the `--slides off` negative
+control across all three built-ins (zero overlaps, no zero-length/
+negative-gap notes); root-fit-without-re-folding (a degree pushing the
+pitch outside a narrow register on purpose); the degree-membership property
+across all three built-ins and 5 seeds; `--variant` pinning a cell and
+being ignored on turnaround bars; turnaround-cell draws landing on exactly
+the `turnaroundBar`-th bars; triplet-flow's triplet-grid exactness; and
+frozen seeded regressions for all three built-ins across 2 seeds plus a
+pinned single-bar note-array anchor; +1 `skill-flows.test.ts` case for the
+new section; cli 182 -> 190 incl. 8 new: an end-to-end write against a fake
+gateway showing the meta line and the glide-contract note, `--dry-run`'s
+notation preview, a `--slides on` vs `off` diff, a malformed `--slides`
+value, the unknown-style error naming the `808-style-<name>` convention,
+the knowledge-entry style fallback with tier printed via an isolated
+`AWH_LIBRARY` (same isolation pattern as `arp.test.ts`/`op.test.ts` — never
+the repo's real `knowledge/`), the Set-has-no-scale error, and the
+missing-`--at-bar` error); Python untouched (no analysis/python files
+touched by this milestone). `skill-flows.test.ts` gate green for `awh bass`.
+
+Smoke-tested against `awh serve-fake`, A minor: all three styles'
+`--dry-run` excerpts (trap-long's first bar shows the slide overlap
+directly — `1|3 A1 1.05` where the written length was 0.75, extended to
+overlap the next note, `1|4 A0 1`, by exactly the spec's 0.05-beat
+`slideOverlapBeats`), a real write to a session slot that round-trips
+byte-identical through `awh clip read`, a `--slides off` diff on the same
+seed (`1|3 A1 1.05` -> `1|3 A1 3/4`, the written length restored), an
+unknown-style error, and the knowledge-style fallback + an unknown-variant
+error THROUGH A TEMP `AWH_LIBRARY` root only (never the repo's real
+`knowledge/`) — see the build session's report for the exact notation
+excerpts. The owner still needs to validate this AUDITIONED IN LIVE —
+synthetic notes and property tests prove the pinned mechanics as coded, not
+whether any of the three built-ins actually reads as its named idiom, or
+whether the glide genuinely sounds right on a real mono synth:
+
+- [ ] `awh bass 808 <a real 808/mono-synth track> --key <realKey> --style
+      trap-long|trap-syncopated|triplet-flow` on the actual project this
+      milestone was built for, THEN `awh op apply glide-bass <devicePath>`
+      (or the owner's own glide-capable patch) → confirm the slides
+      AUDIBLY GLIDE, not just play back-to-back — this is the one claim
+      property tests cannot make (they only prove the notes overlap by the
+      right amount, not that the ear hears a glide).
+- [ ] With the same pattern, toggle `--slides off` and re-audition → confirm
+      the difference is real and the gated version sounds like a normal
+      stepped bassline, not a broken one.
+- [ ] Confirm each built-in genuinely reads as its named idiom: `trap-long`
+      as sparse/held, `trap-syncopated` as busier/off-beat-pushed (including
+      its turnaround-bar resolution every 4th bar), `triplet-flow` as the
+      modern triplet-run flow — not just mechanically-correct MIDI.
+- [ ] Audition a knowledge `808-style-<name>` entry once the parallel
+      seeding agent's entry lands — this milestone only smoke-tested the
+      fallback MECHANISM (a scratch temp-root entry, tier printed), not any
+      seeded entry's actual musical claims.
+- [ ] Skill check: ask a fresh agent to "give me an 808 for this beat" /
+      "add a trap 808 with slides" and confirm it reaches for `awh bass 808`
+      from the Typical flows entry (not hand-composed notation), states the
+      legato-glide contract unprompted, and points at `awh op apply
+      glide-bass` (or asks about the owner's synth) rather than assuming
+      any patch will do.
+- [ ] Whether the open-detail decisions the design left unstated hold up:
+      `--variant` forcing a named CELL (not a rotation/offset, since
+      Bass808Spec has a real cell table, unlike arp/breaks) and being
+      IGNORED on turnaround bars (which always draw from `turnaroundCells`
+      when the style defines them); the bar-local accent (`accentFirst`)
+      applying only to steps at bar-local pos 0, not to every downbeat-ish
+      position; `swing` (all three built-ins ship 0) nudging only the
+      "and" of a beat by a plain beat delay, the one schema field with no
+      semantics pinned beyond its type — revisit if a real run's feel
+      doesn't match what any of these imply on paper.

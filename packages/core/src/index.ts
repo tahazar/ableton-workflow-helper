@@ -273,3 +273,22 @@ export {
   type EndlessSpec,
   type EndlessTransitionEdge,
 } from "./endless/spec.js";
+export {
+  TRAP_LONG_SPEC,
+  TRAP_SYNCOPATED_SPEC,
+  TRIPLET_FLOW_SPEC,
+  bass808BuiltinSpec,
+  listBass808Styles,
+  listBass808Variants,
+  parseBass808Spec,
+  type Bass808Cell,
+  type Bass808Spec,
+  type Bass808Step,
+  type Bass808Velocity,
+} from "./bass/spec.js";
+export {
+  BASS808_BEATS_PER_BAR,
+  generate808,
+  type GenerateBass808Options,
+  type GeneratedBass808,
+} from "./bass/engine.js";

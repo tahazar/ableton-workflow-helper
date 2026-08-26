@@ -1,9 +1,11 @@
 # Design: 808 bass patterns (M16 — `awh bass 808`)
 
-- Status: in build (2026-08-26). Owner ask: "common 808 patterns added."
-  Scope read (per the surrounding conversation): melodic-rhythmic 808
-  BASSLINE patterns — long 808s, syncopated pickups, slides, triplet
-  flows — not TR-808 drum patterns (the trap drum styles cover those).
+- Status: built, pending owner validation (2026-08-26 — see
+  `docs/dev-loop.md`'s "M16 (808 bass) owner checklist"). Owner ask:
+  "common 808 patterns added." Scope read (per the surrounding
+  conversation): melodic-rhythmic 808 BASSLINE patterns — long 808s,
+  syncopated pickups, slides, triplet flows — not TR-808 drum patterns
+  (the trap drum styles cover those).
 - The glide connection is the point: patterns are emitted LEGATO by
   default (each sliding note overlaps the next start by a small overlap
   epsilon) so any mono synth with glide — the `operator-recipe-glide-bass`

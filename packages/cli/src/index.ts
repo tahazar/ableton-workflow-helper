@@ -157,6 +157,15 @@ import {
   listBreakStyles,
   parseBreakSpec,
   parseChopMap,
+  BASS808_BEATS_PER_BAR,
+  TRAP_LONG_SPEC,
+  TRAP_SYNCOPATED_SPEC,
+  TRIPLET_FLOW_SPEC,
+  generate808,
+  listBass808Styles,
+  listBass808Variants,
+  parseBass808Spec,
+  type Bass808Spec,
   type BreakSpec,
   type ChopMap,
   type SliceNoteMode,
@@ -5700,6 +5709,151 @@ breaksCmd
           usedRack
             ? "pad roles mapped from the track's drum rack"
             : `NOTE: no drum rack on ${trackPath} — used General MIDI note numbers`,
+        ].join("\n"),
+      );
+    },
+  );
+
+// ---------------------------------------------------------------------------
+// 808 bass engine (M16): melodic-rhythmic 808 BASSLINE patterns — long holds,
+// syncopated pickups, slides, triplet flows. NOT TR-808 drum patterns (the
+// trap drum styles own those, see `awh drums`). See docs/design/bass-808.md.
+// ---------------------------------------------------------------------------
+
+const BASS808_BUILTIN_SPECS: Record<string, Bass808Spec> = {
+  "trap-long": TRAP_LONG_SPEC,
+  "trap-syncopated": TRAP_SYNCOPATED_SPEC,
+  "triplet-flow": TRIPLET_FLOW_SPEC,
+};
+
+/** Resolve --style: built-in first, else an `808-style-<name>` knowledge
+ *  entry's ```awh-808-spec``` block — same convention as `drums gen`/
+ *  `awh arp`/`drop phrase`/`breaks pattern`. */
+async function resolveBass808Spec(style: string): Promise<{ spec: Bass808Spec; styleTier?: string }> {
+  const builtin = BASS808_BUILTIN_SPECS[style];
+  if (builtin) return { spec: builtin };
+  let entry;
+  try {
+    entry = await knowledgeStore().loadEntry(`808-style-${style}`);
+  } catch {
+    throw new Error(
+      `unknown 808 bass style "${style}" — built-ins: ${listBass808Styles().join(", ")}; ` +
+        `data styles need a knowledge entry with slug 808-style-${style} (see knowledge/README.md)`,
+    );
+  }
+  const specText = extractFencedBlock(entry.body, "awh-808-spec");
+  if (!specText) {
+    throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-808-spec block`);
+  }
+  return { spec: parseBass808Spec(specText), styleTier: entry.tier };
+}
+
+const bassCmd = program
+  .command("bass")
+  .description("808 bass pattern tools (melodic-rhythmic 808 basslines — not drum-808 patterns)");
+
+bassCmd
+  .command("808 <target>")
+  .description(
+    "Generate an 808 bassline into a session slot or --at-bar arrangement position: " +
+      "long holds, syncopated pickups, slides (legato glide contract), triplet flows",
+  )
+  .option("--key <key>", 'e.g. "A minor" (default: the Set scale)')
+  .option("--style <style>", `built-in (${listBass808Styles().join(", ")}) or a knowledge 808-style-<name>`, "trap-long")
+  .option("--seed <seed>", "random seed (same seed = same pattern)", "1")
+  .option("--variant <variant>", "force a named cell (listable) for every non-turnaround bar, or its index")
+  .option("--bars <bars>", "total bars to generate", "4")
+  .option("--slides <on|off>", "legato glide overlaps on slide steps (default on; off = plain gates)", "on")
+  .option("--name <name>", "clip name (default: <style>-808)")
+  .option("--at-bar <bar>", "arrangement position for track targets")
+  .option("--dry-run", "print the notation preview without touching Live")
+  .action(
+    async (
+      target: string,
+      cmdOpts: {
+        key?: string;
+        style: string;
+        seed: string;
+        variant?: string;
+        bars: string;
+        slides: string;
+        name?: string;
+        atBar?: string;
+        dryRun?: boolean;
+      },
+    ) => {
+      const opts = program.opts<GlobalOpts>();
+
+      if (cmdOpts.slides !== "on" && cmdOpts.slides !== "off") {
+        throw new Error(`--slides must be "on" or "off" (got ${JSON.stringify(cmdOpts.slides)})`);
+      }
+
+      const { spec, styleTier } = await resolveBass808Spec(cmdOpts.style);
+
+      let variant: number | undefined;
+      if (cmdOpts.variant !== undefined) {
+        const names = listBass808Variants(spec);
+        variant = /^\d+$/.test(cmdOpts.variant) ? Number(cmdOpts.variant) : names.indexOf(cmdOpts.variant);
+        if (variant < 0 || variant >= names.length) {
+          throw new Error(`unknown variant "${cmdOpts.variant}" (available: ${names.join(", ")})`);
+        }
+      }
+
+      const summary = (await op(opts, "set.summary")) as SetSummary;
+      const keyCtx = resolveKey(summary, cmdOpts.key);
+
+      const bars = Number(cmdOpts.bars);
+      const { notes, meta } = generate808(spec, keyCtx.rootNote, {
+        seed: Number(cmdOpts.seed),
+        bars,
+        slides: cmdOpts.slides === "on",
+        ...(variant !== undefined ? { variant } : {}),
+      });
+      if (styleTier) meta.knowledgeStyle = `808-style-${cmdOpts.style} [${styleTier}]`;
+
+      const lengthBeats = bars * BASS808_BEATS_PER_BAR;
+      const specLine =
+        `style ${cmdOpts.style}${styleTier ? ` [${styleTier}]` : ""} — key ${keyCtx.label}, ` +
+        `cells ${meta.cellDraws}, seed ${meta.seed}, slides ${meta.slides}`;
+      const glideLine =
+        "sliding notes overlap the next note — pair with a mono synth with glide " +
+        "(e.g. `awh op apply glide-bass <devicePath>`) so slides audibly glide.";
+
+      const isSlot = /\/slot:\d+$/.test(target);
+      if (!isSlot && cmdOpts.atBar === undefined) {
+        throw new Error("track targets need --at-bar (or pass a slot path)");
+      }
+
+      if (cmdOpts.dryRun) {
+        output(opts, { notes, lengthBeats, meta }, () =>
+          [
+            `dry run: ${cmdOpts.style} 808 -> ${target} (${bars} bars, ${notes.length} notes; ${specLine}):`,
+            serializeNotation(notes, { beatsPerBar: BASS808_BEATS_PER_BAR }),
+            glideLine,
+          ].join("\n"),
+        );
+        return;
+      }
+
+      const targetSpec = isSlot
+        ? { type: "session", slotPath: target }
+        : {
+            type: "arrangement",
+            trackPath: target,
+            startBeat: (Number(cmdOpts.atBar) - 1) * BASS808_BEATS_PER_BAR,
+          };
+      const result = (await op(opts, "clip.create-midi", {
+        target: targetSpec,
+        lengthBeats,
+        notes,
+        name: cmdOpts.name ?? `${cmdOpts.style}-808`,
+      })) as { path: string };
+
+      output(opts, { path: result.path, notes: notes.length, meta }, () =>
+        [
+          `${cmdOpts.style} 808 -> ${result.path} (${bars} bars, ${notes.length} notes)`,
+          specLine,
+          glideLine,
         ].join("\n"),
       );
     },

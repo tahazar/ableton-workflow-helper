@@ -368,6 +368,42 @@ awh breaks place <break-pattern-name> <target> [--at-bar N]
   preview (every candidate, for `fill`) before committing anything —
   default to this first when the owner hasn't heard the result yet.
 
+## 808 bass patterns (`awh bass`) — melodic-rhythmic 808 basslines
+
+```sh
+awh bass 808 <target> --key "A minor" [--style s] [--seed N] [--variant v]
+    [--bars N] [--slides on|off] [--name n] [--at-bar N] [--dry-run]
+```
+
+- Melodic-rhythmic 808 BASSLINE patterns — long holds, syncopated pickups,
+  slides, triplet flows — NOT TR-808 drum patterns (`awh drums --style trap`
+  owns those). `--key` (or the Set's active scale, same `resolveKey`
+  convention as `awh arp`/`awh chords`) sets the root; every step's pitch is
+  `root + a degree` (a semitone offset, e.g. octave/fifth/minor-seventh —
+  not a scale-degree walk), and the root alone is octave-fitted into the
+  style's register — degrees are deliberately NOT re-folded, so an octave
+  answer can land above the register on purpose.
+- **The glide contract is the point**: `slide: true` steps in a style are
+  emitted LEGATO — extended to overlap the next sounding note's start by a
+  small, exact overlap (crossing bar boundaries when the next note is in
+  the next bar; a slide with no following note at all falls back to its
+  written length). Pair the output with a mono synth that has glide on —
+  `awh op apply glide-bass <devicePath>` is the ready-made recipe — so the
+  slides in the pattern audibly glide, not just play back-to-back.
+  `--slides off` trims every step to plain gates (zero overlaps) instead.
+- `--style`: built-ins `trap-long` (sparse, long anchors, one slide pickup
+  per 1-2 bars), `trap-syncopated` (off-beat doubles, more slides, a
+  turnaround-bar resolution), `triplet-flow` (8th-triplet run cells, denser,
+  the modern flow idiom) — or a knowledge entry with slug `808-style-<name>`
+  and an ```awh-808-spec``` block, same data-driven convention as
+  drum/phrase/arp/break styles. Prints the entry's tier when used.
+  `--variant` forces a named cell for every bar (listable) — a style's
+  turnaround bars (every Nth bar, when the style defines turnaround cells)
+  ignore `--variant` and always draw their own turnaround cell.
+- `--dry-run` shows the bar|beat notation preview (including any slide
+  overlap) before committing anything — default to this first when the
+  owner hasn't heard the result yet.
+
 ## Mix analysis (`awh mix`) — measurements, never vibes
 
 ```sh
@@ -1076,6 +1112,24 @@ a jungle pattern from my own break sample", "I need a fill on this break",
    bug): `pattern` warns and falls back to same-slice tricks only. Suggest a
    cleaner source break or a different `--bpm` override rather than
    insisting the current chop is wrong.
+
+**Write an 808 bassline** ("give me an 808 for this beat", "add a trap 808
+with slides", "I need a triplet-flow 808 bass in this key"):
+1. `awh status --json` → the Set's scale (or plan a `--key`) and an empty
+   target (session slot, or a track + `--at-bar`).
+2. `awh bass 808 <target> --key "<key>" --style trap-long|trap-syncopated|
+   triplet-flow --dry-run` first — show the notation preview (note the
+   overlapping slide pair in the printed notation), then drop `--dry-run`
+   to commit. `--variant <cellName>` to pin a specific cell feel instead of
+   the seeded weighted draw.
+3. Tell the owner the result is written LEGATO on purpose — the slides only
+   audibly glide on a mono synth with glide turned on. Point them at
+   `awh op apply glide-bass <devicePath>` (or their own 808/mono patch) to
+   hear it, not a plain sampler. `--slides off` is the escape hatch for a
+   synth/workflow that can't glide.
+4. This is generated material to audition and shape, same as any other
+   `awh` pattern generator — not a finished, mixed 808 (tone/saturation/
+   sidechain are still the owner's sound-design steps).
 
 **Mix feedback / "how does my mix measure?"** ("check my low end", "is this
 loud enough for clubs", "did that EQ change help"):
