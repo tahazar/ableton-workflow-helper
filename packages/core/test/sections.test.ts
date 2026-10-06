@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  tileNotes,
-  validateSectionsPlan,
-  type SectionsPlan,
-} from "../src/sections/types.js";
+import { tileNotes, validateSectionsPlan, type SectionsPlan } from "../src/sections/types.js";
 import { renderSections, type SourceClip } from "../src/sections/render.js";
 import { listForms, planFromForm, planFromReferenceSections } from "../src/sections/presets.js";
 import { BridgeError, type NoteSpec } from "../src/bridge/types.js";
@@ -15,15 +11,29 @@ const motif: NoteSpec[] = [
 
 const sources = new Map<string, SourceClip>([
   ["track:0/slot:0", { notes: motif, lengthBeats: 4 }],
-  ["track:1/slot:0", { notes: [{ pitch: 36, start: 0, duration: 0.5, velocity: 110 }], lengthBeats: 4 }],
+  [
+    "track:1/slot:0",
+    { notes: [{ pitch: 36, start: 0, duration: 0.5, velocity: 110 }], lengthBeats: 4 },
+  ],
 ]);
 
 const plan: SectionsPlan = {
   name: "test",
   trackMap: { lead: "track:0", drums: "track:1" },
   sections: [
-    { name: "intro", bars: 4, tracks: { lead: "off", drums: { source: "track:1/slot:0", ops: "humanize:timing=0.05,velocity=12" } } },
-    { name: "drop", bars: 8, tracks: { lead: { source: "track:0/slot:0" }, drums: { source: "track:1/slot:0" } } },
+    {
+      name: "intro",
+      bars: 4,
+      tracks: {
+        lead: "off",
+        drums: { source: "track:1/slot:0", ops: "humanize:timing=0.05,velocity=12" },
+      },
+    },
+    {
+      name: "drop",
+      bars: 8,
+      tracks: { lead: { source: "track:0/slot:0" }, drums: { source: "track:1/slot:0" } },
+    },
   ],
 };
 
@@ -47,9 +57,9 @@ describe("validateSectionsPlan", () => {
 
   it("rejects structural mistakes with clear messages", () => {
     expect(() => validateSectionsPlan({})).toThrowError(/trackMap/);
-    expect(() =>
-      validateSectionsPlan({ trackMap: { a: "track:0" }, sections: [] }),
-    ).toThrowError(/non-empty/);
+    expect(() => validateSectionsPlan({ trackMap: { a: "track:0" }, sections: [] })).toThrowError(
+      /non-empty/,
+    );
     expect(() =>
       validateSectionsPlan({
         trackMap: { a: "track:0" },
@@ -107,7 +117,13 @@ describe("presets", () => {
       bass: { trackPath: "track:2", source: "track:2/slot:0" },
     });
     expect(built.sections.map((s) => s.name)).toEqual([
-      "intro", "build1", "drop1", "breakdown", "build2", "drop2", "outro",
+      "intro",
+      "build1",
+      "drop1",
+      "breakdown",
+      "build2",
+      "drop2",
+      "outro",
     ]);
     expect(built.sections.reduce((sum, s) => sum + s.bars, 0)).toBe(128);
     const drop = built.sections.find((s) => s.name === "drop1")!;
@@ -127,7 +143,9 @@ describe("presets", () => {
   });
 
   it("rejects unknown forms and empty roles", () => {
-    expect(() => planFromForm("polka", { a: { trackPath: "t", source: "s" } })).toThrowError(/unknown form/);
+    expect(() => planFromForm("polka", { a: { trackPath: "t", source: "s" } })).toThrowError(
+      /unknown form/,
+    );
     expect(() => planFromForm("house", {})).toThrowError(/at least one role/);
   });
 
@@ -156,9 +174,9 @@ describe("presets", () => {
   });
 
   it("rejects empty sections and empty roles for reference-derived plans", () => {
-    expect(() => planFromReferenceSections([], { a: { trackPath: "t", source: "s" } })).toThrowError(
-      /no sections/,
-    );
+    expect(() =>
+      planFromReferenceSections([], { a: { trackPath: "t", source: "s" } }),
+    ).toThrowError(/no sections/);
     expect(() =>
       planFromReferenceSections([{ name: "intro", start_bar: 1, end_bar: 4 }], {}),
     ).toThrowError(/at least one role/);

@@ -38,10 +38,7 @@ export interface PackItem {
 }
 
 function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 const jsonStr = (s: string) => JSON.stringify(s);
@@ -143,9 +140,7 @@ export async function writePack(
     if (existsSync(marker)) {
       const cfg = await readFile(marker, "utf8");
       if (!cfg.includes(`String PackUniqueID = ${jsonStr(props.uniqueId)};`)) {
-        throw new Error(
-          `${dir} belongs to a different pack — refusing to overwrite`,
-        );
+        throw new Error(`${dir} belongs to a different pack — refusing to overwrite`);
       }
       // Our pack: clear stale content, keep nothing.
       for (const name of await readdir(dir)) {
@@ -160,9 +155,5 @@ export async function writePack(
   }
   await mkdir(join(dir, FOLDER_INFO_DIR), { recursive: true });
   await writeFile(marker, packPropertiesCfg(props), "utf8");
-  await writeFile(
-    join(dir, FOLDER_INFO_DIR, PACK_XMP_FILE),
-    packXmp(props, items),
-    "utf8",
-  );
+  await writeFile(join(dir, FOLDER_INFO_DIR, PACK_XMP_FILE), packXmp(props, items), "utf8");
 }

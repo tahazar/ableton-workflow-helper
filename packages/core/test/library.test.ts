@@ -69,7 +69,7 @@ describe("LibraryStore", () => {
       "trap-hats-1",
       "deep-kick",
     ]);
-    expect((await store.listClips({ category: "hats" }))).toHaveLength(2);
+    expect(await store.listClips({ category: "hats" })).toHaveLength(2);
     expect((await store.listClips({ tag: "house" }))[0]!.slug).toBe("deep-kick");
     const loaded = await store.loadClip("rolling-garage-hats-1");
     expect(loaded.notation).toBe(entry.notation);
@@ -79,9 +79,9 @@ describe("LibraryStore", () => {
   it("refuses overwrites and cross-category slug clashes", async () => {
     await store.saveClip(entry);
     await expect(store.saveClip(entry)).rejects.toThrowError(/already exists/);
-    await expect(
-      store.saveClip({ ...entry, category: "kicks" }),
-    ).rejects.toThrowError(/already used/);
+    await expect(store.saveClip({ ...entry, category: "kicks" })).rejects.toThrowError(
+      /already used/,
+    );
     await store.saveClip({ ...entry, tier: "draft" }, { overwrite: true });
     expect((await store.loadClip(entry.slug)).tier).toBe("draft");
   });

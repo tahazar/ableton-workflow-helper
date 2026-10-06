@@ -21,12 +21,7 @@ export {
   type UpdateClipArgs,
   type UpdateTrackArgs,
 } from "./bridge/types.js";
-export {
-  childPath,
-  formatPath,
-  parsePath,
-  type PathSegment,
-} from "./bridge/paths.js";
+export { childPath, formatPath, parsePath, type PathSegment } from "./bridge/paths.js";
 export {
   buildOpRegistry,
   type OpContext,

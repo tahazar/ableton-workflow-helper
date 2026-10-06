@@ -85,7 +85,9 @@ export function createInitialState(spec, seed) {
   for (const layer of spec.layers) {
     fluctuation[layer.id] = {
       gainOffsetDb: 0,
-      filterHz: layer.fluctuate ? (layer.fluctuate.filterHz[0] + layer.fluctuate.filterHz[1]) / 2 : null,
+      filterHz: layer.fluctuate
+        ? (layer.fluctuate.filterHz[0] + layer.fluctuate.filterHz[1]) / 2
+        : null,
     };
   }
   return {
@@ -193,13 +195,27 @@ export function stepFluctuation(spec, state, dtSeconds) {
   const bound = spec.fluctuation.gainWalkDb;
   for (const layer of spec.layers) {
     const prev = state.fluctuation[layer.id] ?? { gainOffsetDb: 0, filterHz: null };
-    const gainStep = boundedRandomWalkStep(prev.gainOffsetDb, -bound, bound, rngState, dtSeconds, GAIN_WALK_TIME_CONSTANT_S);
+    const gainStep = boundedRandomWalkStep(
+      prev.gainOffsetDb,
+      -bound,
+      bound,
+      rngState,
+      dtSeconds,
+      GAIN_WALK_TIME_CONSTANT_S,
+    );
     rngState = gainStep.state;
     let filterHz = null;
     if (layer.fluctuate) {
       const [lo, hi] = layer.fluctuate.filterHz;
       const start = prev.filterHz ?? (lo + hi) / 2;
-      const filterStep = boundedRandomWalkStep(start, lo, hi, rngState, dtSeconds, FILTER_WALK_TIME_CONSTANT_S);
+      const filterStep = boundedRandomWalkStep(
+        start,
+        lo,
+        hi,
+        rngState,
+        dtSeconds,
+        FILTER_WALK_TIME_CONSTANT_S,
+      );
       rngState = filterStep.state;
       filterHz = filterStep.value;
     }
@@ -243,7 +259,13 @@ export function advanceToNextSection(spec, state) {
   }
   variantHistory[sectionId] = perSection;
 
-  const newState = { ...state, rngState, currentSectionId: sectionId, sectionHistory, variantHistory };
+  const newState = {
+    ...state,
+    rngState,
+    currentSectionId: sectionId,
+    sectionHistory,
+    variantHistory,
+  };
   return {
     state: newState,
     decision: {
@@ -304,8 +326,11 @@ const HORIZON_S = 0.2; // schedule-ahead window
 // function (see above), so split it into inner helpers, not module-level ones.
 // oxlint-disable-next-line max-lines-per-function
 export function createEngine(spec, options = {}) {
-  const AudioContextCtor = options.AudioContextCtor ?? (typeof window !== "undefined" ? window.AudioContext || window.webkitAudioContext : undefined);
-  if (!AudioContextCtor) throw new Error("endless player: no AudioContext available in this environment");
+  const AudioContextCtor =
+    options.AudioContextCtor ??
+    (typeof window !== "undefined" ? window.AudioContext || window.webkitAudioContext : undefined);
+  if (!AudioContextCtor)
+    throw new Error("endless player: no AudioContext available in this environment");
 
   const seed = resolveSeed(spec.seed);
   let state = createInitialState(spec, seed);
@@ -371,11 +396,19 @@ export function createEngine(spec, options = {}) {
     const instanceGain = ctx.createGain();
     const target = muted ? 0 : 1;
     const fadeS = Math.min(spec.crossfadeMs / 1000, durationSeconds / 2);
-    instanceGain.gain.setValueCurveAtTime(equalPowerFadeInCurve().map((v) => v * target), atTime, fadeS);
+    instanceGain.gain.setValueCurveAtTime(
+      equalPowerFadeInCurve().map((v) => v * target),
+      atTime,
+      fadeS,
+    );
     instanceGain.gain.setValueAtTime(target, atTime + fadeS);
     const fadeOutStart = atTime + durationSeconds - fadeS;
     instanceGain.gain.setValueAtTime(target, fadeOutStart);
-    instanceGain.gain.setValueCurveAtTime(equalPowerFadeOutCurve().map((v) => v * target), fadeOutStart, fadeS);
+    instanceGain.gain.setValueCurveAtTime(
+      equalPowerFadeOutCurve().map((v) => v * target),
+      fadeOutStart,
+      fadeS,
+    );
     source.connect(instanceGain);
     instanceGain.connect(nodes.gain);
     source.start(atTime);
@@ -387,7 +420,13 @@ export function createEngine(spec, options = {}) {
     state = newState;
     const mutedSet = new Set(decision.muted);
     for (const [layerId, v] of Object.entries(decision.variants)) {
-      scheduleLayerSource(layerId, v.file, nextBoundaryTime, decision.durationSeconds, mutedSet.has(layerId));
+      scheduleLayerSource(
+        layerId,
+        v.file,
+        nextBoundaryTime,
+        decision.durationSeconds,
+        mutedSet.has(layerId),
+      );
     }
     lastDecision = { ...decision, startedAtCtxTime: nextBoundaryTime };
     nextBoundaryTime += decision.durationSeconds;
@@ -446,7 +485,14 @@ export function createEngine(spec, options = {}) {
     }
   }
 
-  return { start, stop, getDebugState, get spec() { return spec; } };
+  return {
+    start,
+    stop,
+    getDebugState,
+    get spec() {
+      return spec;
+    },
+  };
 }
 
 // ---- Bootstrap: only runs in a browser page that embeds ENDLESS_SPEC ----
@@ -469,7 +515,8 @@ if (typeof window !== "undefined" && window.ENDLESS_SPEC) {
     const elapsedEl = el("endless-elapsed");
     if (perfEl) perfEl.textContent = `performance #${debugState.performanceNumber}`;
     if (debugState.currentSection) {
-      if (sectionEl) sectionEl.textContent = `${debugState.currentSection.sectionId} (${debugState.currentSection.bars} bars)`;
+      if (sectionEl)
+        sectionEl.textContent = `${debugState.currentSection.sectionId} (${debugState.currentSection.bars} bars)`;
       if (variantsEl) {
         variantsEl.textContent = Object.entries(debugState.currentSection.variants)
           .map(([layerId, v]) => `${layerId}: ${v.file}`)

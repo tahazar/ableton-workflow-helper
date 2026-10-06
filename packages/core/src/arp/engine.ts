@@ -58,9 +58,7 @@ export interface ArpChordSpan {
   endBeat: number;
 }
 
-export type ChordsFromNotesResult =
-  | { kind: "chords"; chords: ArpChordSpan[] }
-  | { kind: "melody" };
+export type ChordsFromNotesResult = { kind: "chords"; chords: ArpChordSpan[] } | { kind: "melody" };
 
 const SIMULTANEOUS_EPS = 1e-6;
 
@@ -105,7 +103,10 @@ export function chordsFromNotes(notes: NoteSpec[]): ChordsFromNotesResult {
 // ---------------------------------------------------------------------------
 
 /** One full cycle of pool indices for a non-walk, non-as-voiced contour. */
-function contourCycle(contour: Exclude<ArpContour, "walk" | "as-voiced">, poolLen: number): number[] {
+function contourCycle(
+  contour: Exclude<ArpContour, "walk" | "as-voiced">,
+  poolLen: number,
+): number[] {
   if (poolLen <= 1) return [0];
   switch (contour) {
     case "up":
@@ -195,7 +196,11 @@ function poolWithOctaves(pitches: number[], octaves: number): number[] {
  * harmonic content) per `spec`, for `opts.bars` bars total (4 beats/bar).
  * Deterministic: same chords + spec + opts => byte-identical notes.
  */
-export function generateArp(chords: ArpChordSpan[], spec: ArpSpec, opts: GenerateArpOptions): GeneratedArp {
+export function generateArp(
+  chords: ArpChordSpan[],
+  spec: ArpSpec,
+  opts: GenerateArpOptions,
+): GeneratedArp {
   if (chords.length === 0) throw new Error("generateArp: chords must be non-empty");
   const cycleLen = chords[chords.length - 1]!.endBeat;
   if (cycleLen <= 0) throw new Error("generateArp: chords must have a positive total span");
@@ -220,7 +225,9 @@ export function generateArp(chords: ArpChordSpan[], spec: ArpSpec, opts: Generat
     const tLocal = ((t % cycleLen) + cycleLen) % cycleLen;
     const chord = findChordAt(chords, tLocal);
     const pool =
-      spec.contour === "as-voiced" ? [...chord.pitches].toSorted((a, b) => a - b) : poolWithOctaves(chord.pitches, spec.octaves);
+      spec.contour === "as-voiced"
+        ? [...chord.pitches].toSorted((a, b) => a - b)
+        : poolWithOctaves(chord.pitches, spec.octaves);
     const poolLen = pool.length;
 
     let pitchIndex: number;

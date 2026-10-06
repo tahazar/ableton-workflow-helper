@@ -12,9 +12,7 @@ import { describe, expect, it } from "vitest";
  * header that names `awh <cmd>` commands must have each of those commands
  * referenced in the Typical flows region.
  */
-const SKILL_PATH = fileURLToPath(
-  new URL("../../../.claude/skills/awh/SKILL.md", import.meta.url),
-);
+const SKILL_PATH = fileURLToPath(new URL("../../../.claude/skills/awh/SKILL.md", import.meta.url));
 
 describe("SKILL.md typical-flows coverage", () => {
   const skill = readFileSync(SKILL_PATH, "utf8");

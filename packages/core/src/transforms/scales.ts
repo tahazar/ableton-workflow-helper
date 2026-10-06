@@ -16,15 +16,33 @@ export const SCALES: Record<string, number[]> = {
 };
 
 const ROOTS: Record<string, number> = {
-  C: 0, "C#": 1, DB: 1, D: 2, "D#": 3, EB: 3, E: 4, F: 5, "F#": 6, GB: 6,
-  G: 7, "G#": 8, AB: 8, A: 9, "A#": 10, BB: 10, B: 11,
+  C: 0,
+  "C#": 1,
+  DB: 1,
+  D: 2,
+  "D#": 3,
+  EB: 3,
+  E: 4,
+  F: 5,
+  "F#": 6,
+  GB: 6,
+  G: 7,
+  "G#": 8,
+  AB: 8,
+  A: 9,
+  "A#": 10,
+  BB: 10,
+  B: 11,
 };
 
 /** Parse e.g. "C minor", "F# dorian" into a ScaleContext. */
 export function parseScale(text: string): ScaleContext {
   const m = text.trim().match(/^([A-Ga-g](?:#|b)?)\s+([\w-]+)$/);
   if (!m) {
-    throw new BridgeError("bad_request", `invalid scale "${text}" (expected e.g. "C minor", "F# dorian")`);
+    throw new BridgeError(
+      "bad_request",
+      `invalid scale "${text}" (expected e.g. "C minor", "F# dorian")`,
+    );
   }
   const rootNote = ROOTS[m[1]!.toUpperCase()];
   const intervals = SCALES[m[2]!.toLowerCase()];
@@ -43,7 +61,7 @@ export function snapToScale(pitch: number, scale: ScaleContext): number {
   for (let distance = 0; distance <= 6; distance++) {
     for (const candidate of [pitch - distance, pitch + distance]) {
       if (candidate < 0 || candidate > 127) continue;
-      const degree = ((candidate - scale.rootNote) % 12 + 12) % 12;
+      const degree = (((candidate - scale.rootNote) % 12) + 12) % 12;
       if (scale.intervals.includes(degree)) return candidate;
     }
   }
@@ -56,7 +74,7 @@ export function snapToScale(pitch: number, scale: ScaleContext): number {
  */
 export function shiftDegrees(pitch: number, degrees: number, scale: ScaleContext): number {
   const snapped = snapToScale(pitch, scale);
-  const chroma = ((snapped - scale.rootNote) % 12 + 12) % 12;
+  const chroma = (((snapped - scale.rootNote) % 12) + 12) % 12;
   const index = scale.intervals.indexOf(chroma);
   const octave = Math.floor((snapped - scale.rootNote) / 12);
   const size = scale.intervals.length;

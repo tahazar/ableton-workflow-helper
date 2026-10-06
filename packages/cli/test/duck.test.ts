@@ -6,7 +6,11 @@ import { pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from 
 /** A fake AWH Ducker device: binds `port`, records every decoded message it
  * receives, and replies to /awh/duck/ping with /awh/duck/pong <version> on
  * `replyPort`. Enough to drive the real push flow end to end without Max. */
-function fakeDucker(port: number, replyPort: number, version = "1"): { received: { address: string; args: (string | number)[] }[]; close: () => Promise<void> } {
+function fakeDucker(
+  port: number,
+  replyPort: number,
+  version = "1",
+): { received: { address: string; args: (string | number)[] }[]; close: () => Promise<void> } {
   const socket = createSocket("udp4");
   const received: { address: string; args: (string | number)[] }[] = [];
   socket.on("message", (msg) => {
@@ -19,8 +23,7 @@ function fakeDucker(port: number, replyPort: number, version = "1"): { received:
   socket.bind(port, "127.0.0.1");
   return {
     received,
-    close: () =>
-      new Promise<void>((resolve) => socket.close(() => resolve())),
+    close: () => new Promise<void>((resolve) => socket.close(() => resolve())),
   };
 }
 
@@ -105,9 +108,9 @@ describe("pushDuck — integration against a fake UDP Ducker", () => {
   it("NEGATIVE CONTROL: no listener on the port -> rejects within the timeout with a clear error", async () => {
     const port = 39728; // nothing bound here
     const replyPort = 39729;
-    await expect(
-      pushDuck({ port, replyPort, shape, triggers, timeoutMs: 150 }),
-    ).rejects.toThrow(/AWH Ducker device|not loaded|no reply/i);
+    await expect(pushDuck({ port, replyPort, shape, triggers, timeoutMs: 150 })).rejects.toThrow(
+      /AWH Ducker device|not loaded|no reply/i,
+    );
   });
 });
 

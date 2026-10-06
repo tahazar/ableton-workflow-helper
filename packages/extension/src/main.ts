@@ -8,9 +8,7 @@ import { LIVE_API_VERSION, SdkLiveBridge } from "./sdkLiveBridge.js";
  *
  * Logs go to ExtensionHost.txt in Live's Preferences folder.
  */
-export async function activate(
-  activationContext: ActivationContext,
-): Promise<void> {
+export async function activate(activationContext: ActivationContext): Promise<void> {
   const ctx = initialize(activationContext, LIVE_API_VERSION);
 
   const bridge = new SdkLiveBridge(ctx);

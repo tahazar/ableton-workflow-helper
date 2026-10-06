@@ -15,7 +15,12 @@ import { sortNotes } from "../transforms/types.js";
 import { makeRng, variantSeed } from "../transforms/rng.js";
 import type { EvolutionAction, EvolutionStep, PhraseSpec, ResponseRecipeName } from "./spec.js";
 import { applyResponseRecipe, fitResponseToWindow } from "./recipes.js";
-import { PHRASE_BEATS_PER_BAR, callCellToNotes, generateCallPitches, pickWeighted } from "./util.js";
+import {
+  PHRASE_BEATS_PER_BAR,
+  callCellToNotes,
+  generateCallPitches,
+  pickWeighted,
+} from "./util.js";
 
 // ---------------------------------------------------------------------------
 // drop respond
@@ -57,7 +62,13 @@ export function generateResponses(
     const seed = variantSeed(opts.seed, i);
     const rng = makeRng(seed);
     const result = applyResponseRecipe(recipe, callNotes, scale, spec, rng);
-    candidates.push({ recipe, seed, notes: result.notes, lengthBeats: result.lengthBeats, warnings: result.warnings });
+    candidates.push({
+      recipe,
+      seed,
+      notes: result.notes,
+      lengthBeats: result.lengthBeats,
+      warnings: result.warnings,
+    });
   }
   return candidates;
 }
@@ -106,12 +117,18 @@ function evolutionActionAt(evolution: EvolutionStep[], bar: number): EvolutionAc
  * response-only adjustment applied on the last bar of each phraseBars unit;
  * it never touches the call.
  */
-export function generatePhrase(spec: PhraseSpec, scale: ScaleContext, opts: GeneratePhraseOptions): GeneratedPhrase {
+export function generatePhrase(
+  spec: PhraseSpec,
+  scale: ScaleContext,
+  opts: GeneratePhraseOptions,
+): GeneratedPhrase {
   const beatsPerBar = PHRASE_BEATS_PER_BAR;
   const cellBeats = spec.cellBars * beatsPerBar;
   const totalBeats = opts.bars * beatsPerBar;
   if (totalBeats % cellBeats !== 0) {
-    throw new Error(`--bars ${opts.bars} is not a whole multiple of the spec's cellBars (${spec.cellBars})`);
+    throw new Error(
+      `--bars ${opts.bars} is not a whole multiple of the spec's cellBars (${spec.cellBars})`,
+    );
   }
   const numCells = totalBeats / cellBeats;
   const rng = makeRng(opts.seed);
@@ -119,7 +136,9 @@ export function generatePhrase(spec: PhraseSpec, scale: ScaleContext, opts: Gene
 
   const cell =
     opts.variant !== undefined
-      ? spec.callCells[((opts.variant % spec.callCells.length) + spec.callCells.length) % spec.callCells.length]!
+      ? spec.callCells[
+          ((opts.variant % spec.callCells.length) + spec.callCells.length) % spec.callCells.length
+        ]!
       : pickWeighted(spec.callCells, rng);
   const basePitches = generateCallPitches(cell, spec.callRegister, scale, rng);
   const baseCallNotes = callCellToNotes(cell, basePitches);
@@ -140,7 +159,9 @@ export function generatePhrase(spec: PhraseSpec, scale: ScaleContext, opts: Gene
     const isTurnaroundCell = ((c + 1) * spec.cellBars) % spec.phraseBars === 0;
 
     const callNotesThisCell =
-      action === "vary-call" ? callCellToNotes(cell, generateCallPitches(cell, spec.callRegister, scale, rng)) : baseCallNotes;
+      action === "vary-call"
+        ? callCellToNotes(cell, generateCallPitches(cell, spec.callRegister, scale, rng))
+        : baseCallNotes;
     for (const n of callNotesThisCell) allCall.push({ ...n, start: n.start + cellOffset });
 
     let responseNotesThisCell = baseResponse.notes;

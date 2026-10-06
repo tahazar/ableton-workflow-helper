@@ -22,7 +22,7 @@ export const ratchet: TransformDef = {
   description:
     'Subdivide selected notes into equal repeats (gate divided, no overlap). Params: steps ("all", default, ' +
     'or a "+"-separated list of grid-step positions, e.g. "0+4+8"), count (2/3/4, default 3), gate (0-1, default 0.5), ' +
-    "grid (beats, default 0.25 — used to map note starts to positions when steps isn't \"all\").",
+    'grid (beats, default 0.25 — used to map note starts to positions when steps isn\'t "all").',
   make(params) {
     const stepsRaw = strParam(params, "steps", "all");
     const count = numParam(params, "count", 3, { min: 2, max: 4 });
@@ -42,7 +42,9 @@ export const ratchet: TransformDef = {
             .map((s) => {
               const n = Number(s);
               if (!Number.isInteger(n) || n < 0) {
-                throw new Error(`ratchet: "steps" entries must be non-negative integers (got "${s}")`);
+                throw new Error(
+                  `ratchet: "steps" entries must be non-negative integers (got "${s}")`,
+                );
               }
               return n;
             }),

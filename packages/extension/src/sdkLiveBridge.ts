@@ -323,7 +323,11 @@ export class SdkLiveBridge implements LiveBridge {
     return { path: `track:${this.song.tracks.indexOf(copy)}` };
   }
 
-  async clearArrangementRange(trackPath: string, startBeat: number, endBeat: number): Promise<void> {
+  async clearArrangementRange(
+    trackPath: string,
+    startBeat: number,
+    endBeat: number,
+  ): Promise<void> {
     const track = this.trackAt(parsePath(trackPath), trackPath);
     await this.ctx.withinTransaction(() => track.clearClipsInRange(startBeat, endBeat));
   }
@@ -371,12 +375,12 @@ export class SdkLiveBridge implements LiveBridge {
    * by the context-menu command in main.ts. Uses the same verified
    * NoteDescription conversion as every other note read.
    */
-  async captureClipToOutbox(handle: Parameters<ExtensionContext["getObjectFromHandle"]>[0]): Promise<string> {
+  async captureClipToOutbox(
+    handle: Parameters<ExtensionContext["getObjectFromHandle"]>[0],
+  ): Promise<string> {
     const clip = this.ctx.getObjectFromHandle(handle, MidiClip);
     const lengthBeats =
-      clip.endMarker - clip.startMarker > 0
-        ? clip.endMarker - clip.startMarker
-        : clip.duration;
+      clip.endMarker - clip.startMarker > 0 ? clip.endMarker - clip.startMarker : clip.duration;
     await this.appendOutboxEntry({
       name: clip.name,
       notes: clip.notes.map(fromNoteDescription),
@@ -413,9 +417,7 @@ export class SdkLiveBridge implements LiveBridge {
   // -- scenes ---------------------------------------------------------------
 
   async createScene(index?: number): Promise<{ path: string }> {
-    const scene = await this.ctx.withinTransaction(() =>
-      this.song.createScene(index ?? -1),
-    );
+    const scene = await this.ctx.withinTransaction(() => this.song.createScene(index ?? -1));
     return { path: `scene:${this.song.scenes.indexOf(scene)}` };
   }
 
@@ -433,7 +435,8 @@ export class SdkLiveBridge implements LiveBridge {
   private sceneAt(path: string) {
     const segments = parsePath(path);
     const root = segments[0];
-    if (root?.kind !== "scene") throw new BridgeError("bad_request", `expected a scene path: ${path}`);
+    if (root?.kind !== "scene")
+      throw new BridgeError("bad_request", `expected a scene path: ${path}`);
     const scene = this.song.scenes[root.index];
     if (!scene) throw new BridgeError("not_found", `no scene ${root.index}`);
     return scene;
@@ -453,7 +456,8 @@ export class SdkLiveBridge implements LiveBridge {
         throw new BridgeError("bad_request", `not a MIDI track: ${slotPath}`);
       }
       const sub = segments[1];
-      if (sub?.kind !== "slot") throw new BridgeError("bad_request", `expected a slot path: ${slotPath}`);
+      if (sub?.kind !== "slot")
+        throw new BridgeError("bad_request", `expected a slot path: ${slotPath}`);
       const slot = track.clipSlots[sub.index];
       if (!slot) throw new BridgeError("not_found", `no slot ${sub.index} (${slotPath})`);
       clip = await this.ctx.withinTransaction(() => slot.createMidiClip(args.lengthBeats));
@@ -473,7 +477,8 @@ export class SdkLiveBridge implements LiveBridge {
       const segments = parsePath(lanePath);
       const track = this.trackAt(segments, lanePath);
       const sub = segments[1];
-      if (sub?.kind !== "lane") throw new BridgeError("bad_request", `expected a lane path: ${lanePath}`);
+      if (sub?.kind !== "lane")
+        throw new BridgeError("bad_request", `expected a lane path: ${lanePath}`);
       const lane = track.takeLanes[sub.index];
       if (!lane) throw new BridgeError("not_found", `no take lane ${sub.index} (${lanePath})`);
       clip = await this.ctx.withinTransaction(() =>
@@ -554,7 +559,11 @@ export class SdkLiveBridge implements LiveBridge {
 
   // -- devices --------------------------------------------------------------
 
-  async insertDevice(ownerPath: string, deviceName: string, index?: number): Promise<{ path: string }> {
+  async insertDevice(
+    ownerPath: string,
+    deviceName: string,
+    index?: number,
+  ): Promise<{ path: string }> {
     const segments = parsePath(ownerPath);
     const last = segments[segments.length - 1];
     if (last?.kind === "chain") {

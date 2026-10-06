@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createGatewayServer, FakeLiveBridge, type ClipDetail, type GatewayServer } from "@awh/core";
+import {
+  createGatewayServer,
+  FakeLiveBridge,
+  type ClipDetail,
+  type GatewayServer,
+} from "@awh/core";
 
 /**
  * Arp engine CLI-level tests (docs/design/arp-engine.md's verification
@@ -80,7 +85,22 @@ describe.skipIf(!hasBuiltCli)("awh arp — full CLI integration", () => {
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
       const result = await runCli(
-        ["-p", String(port), "arp", "--prog", "i-VI-III-VII", "--key", "A minor", "--style", "basic-up", "--bars", "4", "track:0", "--at-bar", "1"],
+        [
+          "-p",
+          String(port),
+          "arp",
+          "--prog",
+          "i-VI-III-VII",
+          "--key",
+          "A minor",
+          "--style",
+          "basic-up",
+          "--bars",
+          "4",
+          "track:0",
+          "--at-bar",
+          "1",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -101,7 +121,19 @@ describe.skipIf(!hasBuiltCli)("awh arp — full CLI integration", () => {
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
       const result = await runCli(
-        ["-p", String(port), "arp", "--prog", "i-VI", "--key", "A minor", "track:0", "--at-bar", "1", "--dry-run"],
+        [
+          "-p",
+          String(port),
+          "arp",
+          "--prog",
+          "i-VI",
+          "--key",
+          "A minor",
+          "track:0",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -109,7 +141,9 @@ describe.skipIf(!hasBuiltCli)("awh arp — full CLI integration", () => {
       // bar|beat notation preview reached real output
       expect(result.stdout).toMatch(/1\|1 /);
 
-      const summary = (await opCall(base, "set.summary")) as { tracks: { arrangementClips: unknown[] }[] };
+      const summary = (await opCall(base, "set.summary")) as {
+        tracks: { arrangementClips: unknown[] }[];
+      };
       expect(summary.tracks[0]!.arrangementClips).toEqual([]);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -121,13 +155,34 @@ describe.skipIf(!hasBuiltCli)("awh arp — full CLI integration", () => {
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
       const chordsResult = await runCli(
-        ["-p", String(port), "chords", "track:0", "--progression", "i-VI-III-VII", "--key", "A minor", "--at-bar", "1"],
+        [
+          "-p",
+          String(port),
+          "chords",
+          "track:0",
+          "--progression",
+          "i-VI-III-VII",
+          "--key",
+          "A minor",
+          "--at-bar",
+          "1",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(chordsResult.status, chordsResult.stderr).toBe(0);
 
       const arpResult = await runCli(
-        ["-p", String(port), "arp", "track:0/arr:0", "track:2", "--style", "melodic-techno-16ths", "--at-bar", "1"],
+        [
+          "-p",
+          String(port),
+          "arp",
+          "track:0/arr:0",
+          "track:2",
+          "--style",
+          "melodic-techno-16ths",
+          "--at-bar",
+          "1",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(arpResult.status, arpResult.stderr).toBe(0);
@@ -155,13 +210,18 @@ describe.skipIf(!hasBuiltCli)("awh arp — full CLI integration", () => {
         name: "melody",
       });
 
-      const result = await runCli(["-p", String(port), "arp", "track:0/slot:0", "track:2", "--at-bar", "1"], {
-        AWH_LIBRARY: libraryRoot,
-      });
+      const result = await runCli(
+        ["-p", String(port), "arp", "track:0/slot:0", "track:2", "--at-bar", "1"],
+        {
+          AWH_LIBRARY: libraryRoot,
+        },
+      );
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toMatch(/looks like a melody/);
 
-      const summary = (await opCall(base, "set.summary")) as { tracks: { arrangementClips: unknown[] }[] };
+      const summary = (await opCall(base, "set.summary")) as {
+        tracks: { arrangementClips: unknown[] }[];
+      };
       expect(summary.tracks[2]!.arrangementClips).toEqual([]);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -174,7 +234,20 @@ describe.skipIf(!hasBuiltCli)("awh arp — full CLI integration", () => {
       // style resolution fails before any gateway call is made, so no fake
       // gateway is needed for this one; the port is never dialed.
       const result = await runCli(
-        ["-p", "9", "arp", "--prog", "i-VI", "--key", "A minor", "--style", "does-not-exist", "track:0", "--at-bar", "1"],
+        [
+          "-p",
+          "9",
+          "arp",
+          "--prog",
+          "i-VI",
+          "--key",
+          "A minor",
+          "--style",
+          "does-not-exist",
+          "track:0",
+          "--at-bar",
+          "1",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status).not.toBe(0);
@@ -221,7 +294,21 @@ describe.skipIf(!hasBuiltCli)("awh arp — full CLI integration", () => {
       );
 
       const result = await runCli(
-        ["-p", String(port), "arp", "--prog", "i-VI", "--key", "A minor", "--style", "cli-test", "track:0", "--at-bar", "1", "--dry-run"],
+        [
+          "-p",
+          String(port),
+          "arp",
+          "--prog",
+          "i-VI",
+          "--key",
+          "A minor",
+          "--style",
+          "cli-test",
+          "track:0",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);

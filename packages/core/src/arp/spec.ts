@@ -107,7 +107,9 @@ function fail(message: string): never {
 export function arpRateBeats(rate: string): number {
   const m = RATE_RE.exec(rate);
   if (!m) {
-    fail(`"rate" must be 1/4|1/8|1/16|1/32 with an optional t (triplet) / d (dotted) suffix (got ${JSON.stringify(rate)})`);
+    fail(
+      `"rate" must be 1/4|1/8|1/16|1/32 with an optional t (triplet) / d (dotted) suffix (got ${JSON.stringify(rate)})`,
+    );
   }
   const base = 4 / Number(m[1]);
   const suffix = m[2];
@@ -217,7 +219,9 @@ function parseVelocity(raw: unknown, patternLength: number): ArpVelocitySpec {
     if (!Array.isArray(v.accentSteps)) fail(`"velocity.accentSteps" must be an array`);
     accentSteps = (v.accentSteps as unknown[]).map((s, i) => {
       if (typeof s !== "number" || !Number.isInteger(s) || s < 0 || s >= patternLength) {
-        fail(`velocity.accentSteps[${i}]: must be an integer in [0, ${patternLength}) (got ${JSON.stringify(s)})`);
+        fail(
+          `velocity.accentSteps[${i}]: must be an integer in [0, ${patternLength}) (got ${JSON.stringify(s)})`,
+        );
       }
       return s;
     });
@@ -232,7 +236,9 @@ function parseVelocity(raw: unknown, patternLength: number): ArpVelocitySpec {
   let shape: VelocityShape = "none";
   if (v.shape !== undefined) {
     if (typeof v.shape !== "string" || !VALID_SHAPES.includes(v.shape as VelocityShape)) {
-      fail(`"velocity.shape" must be one of ${VALID_SHAPES.join(", ")} (got ${JSON.stringify(v.shape)})`);
+      fail(
+        `"velocity.shape" must be one of ${VALID_SHAPES.join(", ")} (got ${JSON.stringify(v.shape)})`,
+      );
     }
     shape = v.shape as VelocityShape;
   }
@@ -248,7 +254,8 @@ function parseWalk(raw: unknown): ArpWalkSpec {
   for (const key of Object.keys(w)) {
     if (!WALK_KEYS.has(key)) fail(`walk: unknown field "${key}" (expected "maxInterval")`);
   }
-  const maxInterval = w.maxInterval === undefined ? 2 : checkPositiveInt(w.maxInterval, "walk.maxInterval");
+  const maxInterval =
+    w.maxInterval === undefined ? 2 : checkPositiveInt(w.maxInterval, "walk.maxInterval");
   return { maxInterval };
 }
 
@@ -278,14 +285,21 @@ export function parseArpSpec(yamlText: string): ArpSpec {
   let contour: ArpContour = "up";
   if (raw.contour !== undefined) {
     if (typeof raw.contour !== "string" || !VALID_CONTOURS.includes(raw.contour as ArpContour)) {
-      fail(`"contour" must be one of ${VALID_CONTOURS.join(", ")} (got ${JSON.stringify(raw.contour)})`);
+      fail(
+        `"contour" must be one of ${VALID_CONTOURS.join(", ")} (got ${JSON.stringify(raw.contour)})`,
+      );
     }
     contour = raw.contour as ArpContour;
   }
 
   let octaves = 1;
   if (raw.octaves !== undefined) {
-    if (typeof raw.octaves !== "number" || !Number.isInteger(raw.octaves) || raw.octaves < 1 || raw.octaves > 4) {
+    if (
+      typeof raw.octaves !== "number" ||
+      !Number.isInteger(raw.octaves) ||
+      raw.octaves < 1 ||
+      raw.octaves > 4
+    ) {
       fail(`"octaves" must be an integer in [1, 4] (got ${JSON.stringify(raw.octaves)})`);
     }
     octaves = raw.octaves;
@@ -307,7 +321,12 @@ export function parseArpSpec(yamlText: string): ArpSpec {
 
   let swing = 0;
   if (raw.swing !== undefined) {
-    if (typeof raw.swing !== "number" || Number.isNaN(raw.swing) || raw.swing < 0 || raw.swing > 0.5) {
+    if (
+      typeof raw.swing !== "number" ||
+      Number.isNaN(raw.swing) ||
+      raw.swing < 0 ||
+      raw.swing > 0.5
+    ) {
       fail(`"swing" must be a number in [0, 0.5] (got ${JSON.stringify(raw.swing)})`);
     }
     swing = raw.swing;

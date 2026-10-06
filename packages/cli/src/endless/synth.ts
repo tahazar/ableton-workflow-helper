@@ -67,7 +67,10 @@ function addKick(buf: Float32Array, startSample: number, rng: () => number): voi
  * exponential decay envelope. `open` makes the burst longer (open hat). */
 function addHat(buf: Float32Array, startSample: number, rng: () => number, open: boolean): void {
   const decay = open ? 10 : 45;
-  const durationSamples = Math.min(buf.length - startSample, Math.round(SAMPLE_RATE * (open ? 0.25 : 0.06)));
+  const durationSamples = Math.min(
+    buf.length - startSample,
+    Math.round(SAMPLE_RATE * (open ? 0.25 : 0.06)),
+  );
   let prev = 0;
   const alpha = 0.85; // one-pole coefficient: y[n] = x[n] - alpha*x[n-1], a crude highpass shaper
   let prevRaw = 0;

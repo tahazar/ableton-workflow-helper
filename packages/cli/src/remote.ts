@@ -34,7 +34,11 @@ export interface RemoteOscOpts {
   timeoutMs?: number;
 }
 
-function resolveOscOpts(opts: RemoteOscOpts): { port: number; replyPort: number; timeoutMs: number } {
+function resolveOscOpts(opts: RemoteOscOpts): {
+  port: number;
+  replyPort: number;
+  timeoutMs: number;
+} {
   return {
     port: opts.port ?? REMOTE_PORT,
     replyPort: opts.replyPort ?? REMOTE_REPLY_PORT,
@@ -261,19 +265,23 @@ export async function auditionSlug(params: {
     : undefined;
 
   const summary = (await params.caller("set.summary")) as SetSummary;
-  const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === params.trackPath);
-  if (!track) throw new Error(`track not found: ${params.trackPath}`);
-  const occupied = new Set(
-    track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+  const track = [...summary.tracks, ...summary.returnTracks].find(
+    (t) => t.path === params.trackPath,
   );
-  const slotIdx = Array.from({ length: track.slotCount }, (_, i) => i).find((i) => !occupied.has(i));
+  if (!track) throw new Error(`track not found: ${params.trackPath}`);
+  const occupied = new Set(track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])));
+  const slotIdx = Array.from({ length: track.slotCount }, (_, i) => i).find(
+    (i) => !occupied.has(i),
+  );
   if (slotIdx === undefined) {
     throw new Error(
       `no empty session slot on ${params.trackPath} — free one up (or \`awh sweep\`) before auditioning`,
     );
   }
 
-  const { notes } = parseNotation(params.source.notation, { beatsPerBar: params.source.beatsPerBar });
+  const { notes } = parseNotation(params.source.notation, {
+    beatsPerBar: params.source.beatsPerBar,
+  });
   const name = `audition: ${params.source.slug}`;
   const path = `${params.trackPath}/slot:${slotIdx}`;
   await params.caller("clip.create-midi", {
@@ -287,7 +295,10 @@ export async function auditionSlug(params: {
   try {
     fireArgs = await remoteFire({ trackIdx, slotIdx, ...params.osc });
   } catch (err) {
-    throw new Error(`placed ${params.source.slug} -> ${path} but could not fire it: ${(err as Error).message}`, { cause: err });
+    throw new Error(
+      `placed ${params.source.slug} -> ${path} but could not fire it: ${(err as Error).message}`,
+      { cause: err },
+    );
   }
 
   return {
@@ -297,7 +308,9 @@ export async function auditionSlug(params: {
     slotIdx,
     fireArgs,
     swept,
-    nextPending: params.keep ? undefined : { trackPath: params.trackPath, name, slug: params.source.slug },
+    nextPending: params.keep
+      ? undefined
+      : { trackPath: params.trackPath, name, slug: params.source.slug },
   };
 }
 

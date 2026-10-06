@@ -41,7 +41,13 @@ export function drumFill(
   const fillStart = ctx.density >= 0.7 ? lastBarStart : lastBarStart + ctx.beatsPerBar / 2;
 
   const fillRole: DrumRole | undefined =
-    kit.snare !== undefined ? "snare" : kit.clap !== undefined ? "clap" : kit.tom !== undefined ? "tom" : undefined;
+    kit.snare !== undefined
+      ? "snare"
+      : kit.clap !== undefined
+        ? "clap"
+        : kit.tom !== undefined
+          ? "tom"
+          : undefined;
   const hasHat = kit["hat-closed"] !== undefined || kit["hat-open"] !== undefined;
 
   if (fillRole === undefined && !(style === "trap" && hasHat)) {
@@ -167,13 +173,23 @@ function isOnEighth(value: number): boolean {
 }
 
 /** Generic fallback for roles with no bespoke rule: drop or nudge slightly. */
-function dropOrNudge(n: NoteSpec, rng: () => number, chance: number, clipEnd: number): NoteSpec | undefined {
+function dropOrNudge(
+  n: NoteSpec,
+  rng: () => number,
+  chance: number,
+  clipEnd: number,
+): NoteSpec | undefined {
   if (rng() >= chance) return n;
   if (rng() < 0.5) return undefined; // drop
   return { ...n, start: clampBeat(n.start + (rng() * 2 - 1) * 0.05, clipEnd) };
 }
 
-function varyKick(roleNotes: NoteSpec[], amount: number, rng: () => number, clipEnd: number): NoteSpec[] {
+function varyKick(
+  roleNotes: NoteSpec[],
+  amount: number,
+  rng: () => number,
+  clipEnd: number,
+): NoteSpec[] {
   const out: NoteSpec[] = [];
   for (const n of roleNotes) {
     if (isOnBeat(n.start)) {
@@ -212,7 +228,13 @@ function varyBackbeat(
       const key = Math.round(pos * 1000);
       if (occupied.has(key)) continue;
       if (rng() < 0.15 * amount) {
-        out.push({ pitch, start: pos, duration: HIT_DURATION, velocity: randVelocity(rng, GHOST), probability: 0.5 });
+        out.push({
+          pitch,
+          start: pos,
+          duration: HIT_DURATION,
+          velocity: randVelocity(rng, GHOST),
+          probability: 0.5,
+        });
         occupied.add(key);
       }
     }
@@ -221,7 +243,13 @@ function varyBackbeat(
   return out;
 }
 
-function varyHats(roleNotes: NoteSpec[], pitch: number, amount: number, rng: () => number, clipEnd: number): NoteSpec[] {
+function varyHats(
+  roleNotes: NoteSpec[],
+  pitch: number,
+  amount: number,
+  rng: () => number,
+  clipEnd: number,
+): NoteSpec[] {
   const out: NoteSpec[] = [];
   for (const n of roleNotes) {
     const onEighth = isOnEighth(n.start);

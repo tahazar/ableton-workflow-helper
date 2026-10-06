@@ -23,22 +23,79 @@ interface PresetSection {
 const V = ""; // verbatim marker for readability
 
 const HOUSE: PresetSection[] = [
-  { name: "intro", bars: 16, layers: { drums: "thin:keep=0.35", bass: "off", lead: "off", perc: "thin:keep=0.5" } },
-  { name: "build1", bars: 16, layers: { drums: "thin:keep=0.7 velocity-shape:mode=ramp-up,amount=0.4", bass: "thin:keep=0.5", lead: "off", perc: V } },
+  {
+    name: "intro",
+    bars: 16,
+    layers: { drums: "thin:keep=0.35", bass: "off", lead: "off", perc: "thin:keep=0.5" },
+  },
+  {
+    name: "build1",
+    bars: 16,
+    layers: {
+      drums: "thin:keep=0.7 velocity-shape:mode=ramp-up,amount=0.4",
+      bass: "thin:keep=0.5",
+      lead: "off",
+      perc: V,
+    },
+  },
   { name: "drop1", bars: 32, layers: { drums: V, bass: V, lead: V, perc: V } },
-  { name: "breakdown", bars: 16, layers: { drums: "thin:keep=0.25", bass: "off", lead: "legato velocity-shape:mode=ramp-down,amount=0.3", perc: "off" } },
-  { name: "build2", bars: 8, layers: { drums: "velocity-shape:mode=ramp-up,amount=0.6", bass: "thin:keep=0.6", lead: "thin:keep=0.7", perc: V } },
+  {
+    name: "breakdown",
+    bars: 16,
+    layers: {
+      drums: "thin:keep=0.25",
+      bass: "off",
+      lead: "legato velocity-shape:mode=ramp-down,amount=0.3",
+      perc: "off",
+    },
+  },
+  {
+    name: "build2",
+    bars: 8,
+    layers: {
+      drums: "velocity-shape:mode=ramp-up,amount=0.6",
+      bass: "thin:keep=0.6",
+      lead: "thin:keep=0.7",
+      perc: V,
+    },
+  },
   { name: "drop2", bars: 32, layers: { drums: V, bass: V, lead: "densify:amount=0.25", perc: V } },
-  { name: "outro", bars: 8, layers: { drums: "thin:keep=0.4", bass: "thin:keep=0.5", lead: "off", perc: "off" } },
+  {
+    name: "outro",
+    bars: 8,
+    layers: { drums: "thin:keep=0.4", bass: "thin:keep=0.5", lead: "off", perc: "off" },
+  },
 ];
 
 const TRAP: PresetSection[] = [
   { name: "intro", bars: 8, layers: { drums: "off", bass: "off", lead: "legato", perc: "off" } },
-  { name: "verse1", bars: 16, layers: { drums: "thin:keep=0.75", bass: V, lead: "thin:keep=0.5", perc: "off" } },
+  {
+    name: "verse1",
+    bars: 16,
+    layers: { drums: "thin:keep=0.75", bass: V, lead: "thin:keep=0.5", perc: "off" },
+  },
   { name: "hook1", bars: 16, layers: { drums: V, bass: V, lead: V, perc: V } },
-  { name: "verse2", bars: 16, layers: { drums: "syncopate:probability=0.3", bass: V, lead: "thin:keep=0.5 octave:shift=1", perc: "thin:keep=0.6" } },
+  {
+    name: "verse2",
+    bars: 16,
+    layers: {
+      drums: "syncopate:probability=0.3",
+      bass: V,
+      lead: "thin:keep=0.5 octave:shift=1",
+      perc: "thin:keep=0.6",
+    },
+  },
   { name: "hook2", bars: 16, layers: { drums: V, bass: "densify:amount=0.2", lead: V, perc: V } },
-  { name: "outro", bars: 8, layers: { drums: "thin:keep=0.4", bass: "off", lead: "legato velocity-shape:mode=ramp-down,amount=0.4", perc: "off" } },
+  {
+    name: "outro",
+    bars: 8,
+    layers: {
+      drums: "thin:keep=0.4",
+      bass: "off",
+      lead: "legato velocity-shape:mode=ramp-down,amount=0.4",
+      perc: "off",
+    },
+  },
 ];
 
 const PRESETS: Record<string, PresetSection[]> = { house: HOUSE, trap: TRAP };
@@ -63,7 +120,10 @@ export function planFromReferenceSections(
     throw new BridgeError("bad_request", "reference has no sections to build a plan from");
   }
   if (Object.keys(roles).length === 0) {
-    throw new BridgeError("bad_request", "at least one role (e.g. drums=track:0/slot:0) is required");
+    throw new BridgeError(
+      "bad_request",
+      "at least one role (e.g. drums=track:0/slot:0) is required",
+    );
   }
   const trackMap: Record<string, string> = {};
   for (const [role, { trackPath }] of Object.entries(roles)) trackMap[role] = trackPath;
@@ -91,10 +151,16 @@ export function planFromForm(
 ): SectionsPlan {
   const preset = PRESETS[form];
   if (!preset) {
-    throw new BridgeError("bad_request", `unknown form "${form}" (known: ${listForms().join(", ")})`);
+    throw new BridgeError(
+      "bad_request",
+      `unknown form "${form}" (known: ${listForms().join(", ")})`,
+    );
   }
   if (Object.keys(roles).length === 0) {
-    throw new BridgeError("bad_request", "at least one role (e.g. drums=track:0/slot:0) is required");
+    throw new BridgeError(
+      "bad_request",
+      "at least one role (e.g. drums=track:0/slot:0) is required",
+    );
   }
   const trackMap: Record<string, string> = {};
   for (const [role, { trackPath }] of Object.entries(roles)) trackMap[role] = trackPath;

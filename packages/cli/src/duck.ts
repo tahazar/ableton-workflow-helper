@@ -43,7 +43,7 @@ export function shapeFromFitJson(fit: unknown): DuckShape {
   const rec = (fit as { recommendation?: Record<string, number> } | undefined)?.recommendation;
   if (!rec || typeof rec.depth_db !== "number") {
     throw new Error(
-      "not a duck-fit JSON file — expected a top-level \"recommendation\" object " +
+      'not a duck-fit JSON file — expected a top-level "recommendation" object ' +
         "(the shape `awh mix duck fit --json` prints)",
     );
   }
@@ -109,7 +109,12 @@ export async function pushDuck(params: {
   );
   await sendToTap(
     "/awh/duck/shape",
-    [oscFloat(shape.attackMs), oscFloat(shape.holdMs), oscFloat(shape.releaseMs), oscFloat(shape.depthDb)],
+    [
+      oscFloat(shape.attackMs),
+      oscFloat(shape.holdMs),
+      oscFloat(shape.releaseMs),
+      oscFloat(shape.depthDb),
+    ],
     port,
   );
   await sendToTap("/awh/duck/on", [1], port);

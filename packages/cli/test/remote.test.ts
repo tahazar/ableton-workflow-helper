@@ -46,7 +46,10 @@ function padTo4(buf: Buffer): Buffer {
 function refString(s: string): Buffer {
   return padTo4(Buffer.concat([Buffer.from(s, "ascii"), Buffer.alloc(1)]));
 }
-type TaggedArg = { tag: "i"; value: number } | { tag: "f"; value: number } | { tag: "s"; value: string };
+type TaggedArg =
+  | { tag: "i"; value: number }
+  | { tag: "f"; value: number }
+  | { tag: "s"; value: string };
 function refEncode(address: string, args: TaggedArg[]): Buffer {
   const parts: Buffer[] = [refString(address), refString(`,${args.map((a) => a.tag).join("")}`)];
   for (const a of args) {
@@ -183,7 +186,12 @@ describe("remote.ts — integration against a fake UDP AWH Remote device", () =>
     const result = await remotePlay({ port, replyPort, timeoutMs: 800, fromBeats: 32 });
     expect(result.jumped).toEqual(["jump", 32]);
     await new Promise((r) => setTimeout(r, 50));
-    expect(fake.received.map((m) => m.address)).toEqual(["/awh/ping", "/awh/ping", "/awh/jump", "/awh/play"]);
+    expect(fake.received.map((m) => m.address)).toEqual([
+      "/awh/ping",
+      "/awh/ping",
+      "/awh/jump",
+      "/awh/play",
+    ]);
     expect(fake.received[3]!.args).toEqual([1]);
   });
 
@@ -347,10 +355,17 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
     expect(result.path).toBe("track:0/slot:0");
     expect(result.name).toBe("audition: kick-verified");
     expect(result.swept).toBeUndefined();
-    expect(result.nextPending).toEqual({ trackPath: "track:0", name: "audition: kick-verified", slug: "kick-verified" });
+    expect(result.nextPending).toEqual({
+      trackPath: "track:0",
+      name: "audition: kick-verified",
+      slug: "kick-verified",
+    });
 
     // The clip was created: read it back via the same gateway.
-    const clip = (await caller("clip.get", { path: "track:0/slot:0" })) as { name: string; notes: unknown[] };
+    const clip = (await caller("clip.get", { path: "track:0/slot:0" })) as {
+      name: string;
+      notes: unknown[];
+    };
     expect(clip.name).toBe("audition: kick-verified");
     expect(clip.notes).toHaveLength(1);
 
@@ -516,7 +531,9 @@ describe("UNKNOWN-SLUG state: LibraryStore.loadClip on a nonexistent slug", () =
       await store.saveClip(entry);
       await expect(store.loadClip("no-such-slug")).rejects.toThrow(/No library clip with slug/);
       // the real slug still resolves fine (sanity check the fixture is valid).
-      await expect(store.loadClip("kick-verified")).resolves.toMatchObject({ slug: "kick-verified" });
+      await expect(store.loadClip("kick-verified")).resolves.toMatchObject({
+        slug: "kick-verified",
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

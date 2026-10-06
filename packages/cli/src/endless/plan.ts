@@ -38,7 +38,9 @@ export function parseSectionsArg(arg: string): PlanSection[] {
     .map((p) => p.trim())
     .filter((p) => p !== "");
   if (parts.length === 0) {
-    throw new Error(`--sections must list at least one "id:bars" pair (got ${JSON.stringify(arg)})`);
+    throw new Error(
+      `--sections must list at least one "id:bars" pair (got ${JSON.stringify(arg)})`,
+    );
   }
   const seen = new Set<string>();
   return parts.map((part) => {
@@ -104,9 +106,16 @@ export function buildEndlessPlanYaml(opts: PlanOptions): string {
   const { name, bpm, sections } = opts;
   const sectionsYaml = sections
     .map((s, i) => {
-      const lines = [`  - id: ${s.id}`, `    bars: ${s.bars}`, `    pools:`, emptyPoolsBlock(STARTER_LAYERS, "      ")];
+      const lines = [
+        `  - id: ${s.id}`,
+        `    bars: ${s.bars}`,
+        `    pools:`,
+        emptyPoolsBlock(STARTER_LAYERS, "      "),
+      ];
       if (i === sections.length - 1) {
-        lines.push(`    # layerMuteProbability: 0.15   # occasional one-layer thin-out, uncomment to use`);
+        lines.push(
+          `    # layerMuteProbability: 0.15   # occasional one-layer thin-out, uncomment to use`,
+        );
       }
       return lines.join("\n");
     })

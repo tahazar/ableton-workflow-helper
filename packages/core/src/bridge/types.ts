@@ -219,11 +219,7 @@ export interface LiveBridge {
   updateTrack(args: UpdateTrackArgs): Promise<void>;
   deleteTrack(path: string): Promise<void>;
   duplicateTrack(path: string): Promise<{ path: string }>;
-  clearArrangementRange(
-    trackPath: string,
-    startBeat: number,
-    endBeat: number,
-  ): Promise<void>;
+  clearArrangementRange(trackPath: string, startBeat: number, endBeat: number): Promise<void>;
   /** Render an audio track's pre-FX signal between two beat positions to a
    *  WAV in the extension temp dir. SDK constraint: audio tracks only, pre-FX
    *  only; the SDK has no post-FX capture. */
@@ -249,17 +245,9 @@ export interface LiveBridge {
   deleteClip(path: string): Promise<void>;
 
   // devices
-  insertDevice(
-    ownerPath: string,
-    deviceName: string,
-    index?: number,
-  ): Promise<{ path: string }>;
+  insertDevice(ownerPath: string, deviceName: string, index?: number): Promise<{ path: string }>;
   deleteDevice(path: string): Promise<void>;
-  setDeviceParam(
-    devicePath: string,
-    paramName: string,
-    value: number,
-  ): Promise<void>;
+  setDeviceParam(devicePath: string, paramName: string, value: number): Promise<void>;
   setMixer(args: MixerArgs): Promise<void>;
 
   // drum racks & simpler
@@ -270,11 +258,7 @@ export interface LiveBridge {
 /** Typed gateway error the server maps to HTTP status codes. */
 export class BridgeError extends Error {
   constructor(
-    public readonly code:
-      | "not_found"
-      | "bad_request"
-      | "unavailable"
-      | "internal",
+    public readonly code: "not_found" | "bad_request" | "unavailable" | "internal",
     message: string,
   ) {
     super(message);

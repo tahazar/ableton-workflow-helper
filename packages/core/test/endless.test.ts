@@ -73,8 +73,9 @@ sections:
   });
 
   it("rejects an unknown top-level field (typo)", () => {
-    expect(() => parseEndlessSpec(MINIMAL_YAML.replace("crossfadeMs", "crossfadeMs") + "\nbmp: 1"))
-      .toThrow(/unknown field "bmp"/);
+    expect(() =>
+      parseEndlessSpec(MINIMAL_YAML.replace("crossfadeMs", "crossfadeMs") + "\nbmp: 1"),
+    ).toThrow(/unknown field "bmp"/);
   });
 
   it("rejects an unknown field inside a layer", () => {
@@ -217,9 +218,11 @@ sections:
     pools: { drums: [audio/intro.wav], pads: [] }
 `);
     const problems = validateEndlessSpec(spec);
-    expect(problems.some((p) => p.includes('section "intro"') && p.includes('layer "pads"') && p.includes("empty"))).toBe(
-      true,
-    );
+    expect(
+      problems.some(
+        (p) => p.includes('section "intro"') && p.includes('layer "pads"') && p.includes("empty"),
+      ),
+    ).toBe(true);
   });
 
   it("reports multiple problems in one pass (not fail-fast)", () => {

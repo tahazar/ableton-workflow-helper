@@ -168,12 +168,18 @@ describe("velocity-shape", () => {
   ];
 
   it("ramp-up reduces early notes more than late ones", () => {
-    const out = velocityShape.make({ mode: "ramp-up", amount: 0.5 })(notes, ctx({ lengthBeats: 4 }));
+    const out = velocityShape.make({ mode: "ramp-up", amount: 0.5 })(
+      notes,
+      ctx({ lengthBeats: 4 }),
+    );
     expect(out.map((n) => n.velocity)).toEqual([70, 85]);
   });
 
   it("ramp-down mirrors ramp-up", () => {
-    const out = velocityShape.make({ mode: "ramp-down", amount: 0.5 })(notes, ctx({ lengthBeats: 4 }));
+    const out = velocityShape.make({ mode: "ramp-down", amount: 0.5 })(
+      notes,
+      ctx({ lengthBeats: 4 }),
+    );
     expect(out.map((n) => n.velocity)).toEqual([100, 85]);
   });
 

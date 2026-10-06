@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeRng, variantSeed } from "../src/transforms/rng.js";
 import { parseScale, shiftDegrees, snapToScale } from "../src/transforms/scales.js";
-import {
-  applyPipeline,
-  listTransforms,
-  parsePipeline,
-} from "../src/transforms/registry.js";
+import { applyPipeline, listTransforms, parsePipeline } from "../src/transforms/registry.js";
 import type { TransformContext } from "../src/transforms/types.js";
 import { BridgeError, type NoteSpec } from "../src/bridge/types.js";
 

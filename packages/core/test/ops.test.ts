@@ -178,12 +178,12 @@ describe("devices", () => {
     const after = (await call("device.get", { path })) as typeof device;
     expect(after.params.find((p) => p.name === "Freq")!.value).toBe(0.25);
 
-    await expect(
-      call("device.param", { path, param: "Freq", value: 99 }),
-    ).rejects.toThrowError(/outside/);
-    await expect(
-      call("device.param", { path, param: "Nope", value: 0.5 }),
-    ).rejects.toThrowError(/no param/);
+    await expect(call("device.param", { path, param: "Freq", value: 99 })).rejects.toThrowError(
+      /outside/,
+    );
+    await expect(call("device.param", { path, param: "Nope", value: 0.5 })).rejects.toThrowError(
+      /no param/,
+    );
   });
 
   it("supports drum racks: chains, pad notes, nested devices", async () => {

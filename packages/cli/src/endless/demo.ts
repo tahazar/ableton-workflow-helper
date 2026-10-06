@@ -43,7 +43,8 @@ function demoSpecYaml(poolFiles: Record<string, Record<string, string[]>>): stri
       const files = poolFiles[s.id]![layerId]!;
       return `      ${layerId}: [${files.map((f) => `"${f}"`).join(", ")}]`;
     }).join("\n");
-    const muteLine = s.layerMuteProbability > 0 ? `\n    layerMuteProbability: ${s.layerMuteProbability}` : "";
+    const muteLine =
+      s.layerMuteProbability > 0 ? `\n    layerMuteProbability: ${s.layerMuteProbability}` : "";
     return `  - id: ${s.id}\n    bars: ${s.bars}\n    pools:\n${poolLines}${muteLine}`;
   }).join("\n");
 

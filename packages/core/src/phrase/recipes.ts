@@ -53,7 +53,11 @@ interface ResponseWindow {
  * still gets a legal, non-overlapping response: this only warns, it never
  * blocks generation.
  */
-function deriveResponseWindow(callNotes: NoteSpec[], spec: PhraseSpec, rng: () => number): ResponseWindow {
+function deriveResponseWindow(
+  callNotes: NoteSpec[],
+  spec: PhraseSpec,
+  rng: () => number,
+): ResponseWindow {
   const warnings: string[] = [];
   const end = callEndBeat(callNotes);
   const barEnd = ceilToBar(Math.max(end, 1e-9));
@@ -71,14 +75,26 @@ function deriveResponseWindow(callNotes: NoteSpec[], spec: PhraseSpec, rng: () =
 
 /** Force the last note (by start) onto an allowed resolve-degree pitch and
  *  compute the bar-rounded container length. Shared tail for every recipe. */
-function finalizeResponse(notes: NoteSpec[], scale: ScaleContext, spec: PhraseSpec, warnings: string[]): RecipeResult {
+function finalizeResponse(
+  notes: NoteSpec[],
+  scale: ScaleContext,
+  spec: PhraseSpec,
+  warnings: string[],
+): RecipeResult {
   if (notes.length === 0) {
     return { notes: [], lengthBeats: ceilToBar(spec.restMinBeats), warnings };
   }
   const sorted = sortNotes(notes);
   const last = sorted[sorted.length - 1]!;
-  const candidates = resolveDegreePitches(spec.responseRegister, scale.rootNote, spec.resolveDegrees);
-  const resolved: NoteSpec[] = [...sorted.slice(0, -1), { ...last, pitch: nearestPitch(last.pitch, candidates) }];
+  const candidates = resolveDegreePitches(
+    spec.responseRegister,
+    scale.rootNote,
+    spec.resolveDegrees,
+  );
+  const resolved: NoteSpec[] = [
+    ...sorted.slice(0, -1),
+    { ...last, pitch: nearestPitch(last.pitch, candidates) },
+  ];
   const lengthBeats = ceilToBar(last.start + last.duration + spec.restMinBeats);
   return { notes: resolved, lengthBeats, warnings };
 }
@@ -185,7 +201,9 @@ export function applyResponseRecipe(
 ): RecipeResult {
   const recipe = RECIPES[name];
   if (!recipe) {
-    throw new Error(`unknown response recipe "${name}" (known: ${Object.keys(RECIPES).join(", ")})`);
+    throw new Error(
+      `unknown response recipe "${name}" (known: ${Object.keys(RECIPES).join(", ")})`,
+    );
   }
   return recipe(callNotes, scale, spec, rng);
 }
@@ -217,11 +235,17 @@ export function fitResponseToWindow(
         "consider a shorter call cell or a smaller responseDelayBeats range",
     );
   }
-  notes = notes.map((n) => (n.start + n.duration > limit ? { ...n, duration: Math.max(0.05, limit - n.start) } : n));
+  notes = notes.map((n) =>
+    n.start + n.duration > limit ? { ...n, duration: Math.max(0.05, limit - n.start) } : n,
+  );
   const sorted = sortNotes(notes);
   if (sorted.length > 0) {
     const last = sorted[sorted.length - 1]!;
-    const candidates = resolveDegreePitches(spec.responseRegister, scale.rootNote, spec.resolveDegrees);
+    const candidates = resolveDegreePitches(
+      spec.responseRegister,
+      scale.rootNote,
+      spec.resolveDegrees,
+    );
     sorted[sorted.length - 1] = { ...last, pitch: nearestPitch(last.pitch, candidates) };
   }
   return { notes: sorted, lengthBeats: windowEndBeats, warnings };

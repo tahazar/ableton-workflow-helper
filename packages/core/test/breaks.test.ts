@@ -127,7 +127,17 @@ describe("parseChopMap", () => {
     expect(() =>
       parseChopMap({
         bpm: 120,
-        slices: [{ index: 0, start_s: 0, end_s: 1, grid_step: 0, offset_ms: 0, role: "cowbell", confidence: 1 }],
+        slices: [
+          {
+            index: 0,
+            start_s: 0,
+            end_s: 1,
+            grid_step: 0,
+            offset_ms: 0,
+            role: "cowbell",
+            confidence: 1,
+          },
+        ],
       }),
     ).toThrow(/role/);
   });
@@ -227,7 +237,11 @@ describe("generateBreakPattern — statement phase (verbatim, deterministic)", (
 describe("generateBreakPattern — every note maps to a real slice", () => {
   for (const style of [JUNGLE_CLASSIC_SPEC, HALFTIME_SPEC]) {
     it(`${style.name}: 4 bars, seed 7 — all pitches resolve to a valid slice index`, () => {
-      const { notes } = generateBreakPattern(amenMap(), style, { seed: 7, bars: 4, mode: "drum-rack" });
+      const { notes } = generateBreakPattern(amenMap(), style, {
+        seed: 7,
+        bars: 4,
+        mode: "drum-rack",
+      });
       expect(notes.length).toBeGreaterThan(0);
       for (const n of notes) {
         const idx = noteToIndex(n.pitch);
@@ -277,7 +291,11 @@ describe("generateBreakPattern — negative control: all-low-confidence roles", 
     const map = amenMap(0.3); // every slice below LOW_CONFIDENCE_THRESHOLD (0.4)
     expect(map.slices.every((s) => s.confidence < LOW_CONFIDENCE_THRESHOLD)).toBe(true);
 
-    const { notes, warnings, meta } = generateBreakPattern(map, spec, { seed: 5, bars: 3, mode: "drum-rack" });
+    const { notes, warnings, meta } = generateBreakPattern(map, spec, {
+      seed: 5,
+      bars: 3,
+      mode: "drum-rack",
+    });
     expect(warnings.length).toBeGreaterThan(0);
     expect(warnings[0]).toMatch(/confidence/);
     expect(meta.substitutionAllowed).toBe("false");
@@ -416,7 +434,14 @@ describe("generateBreakFill", () => {
   });
 
   it("zero-slices map is a state, not an error", () => {
-    const map: ChopMap = { file: "empty.wav", bpm: 120, bpmConfidence: 0, gridStepsPerBar: 16, beatsPerBar: 4, slices: [] };
+    const map: ChopMap = {
+      file: "empty.wav",
+      bpm: 120,
+      bpmConfidence: 0,
+      gridStepsPerBar: 16,
+      beatsPerBar: 4,
+      slices: [],
+    };
     const { candidates, warnings } = generateBreakFill(map, { seed: 1, beats: 2, count: 3 });
     expect(candidates).toEqual([]);
     expect(warnings.length).toBeGreaterThan(0);

@@ -61,7 +61,9 @@ cells:
   });
 
   it("rejects an unknown top-level key (typo protection)", () => {
-    expect(() => parseBass808Spec(`name: x\ndegres: [0]\ncells: []`)).toThrowError(/unknown field "degres"/);
+    expect(() => parseBass808Spec(`name: x\ndegres: [0]\ncells: []`)).toThrowError(
+      /unknown field "degres"/,
+    );
   });
 
   it("rejects an unknown nested cell key", () => {
@@ -74,7 +76,9 @@ cells:
 
   it("rejects an unknown nested step key", () => {
     expect(() =>
-      parseBass808Spec(`name: x\ndegrees: [0]\ncells:\n  - name: c\n    steps: [{pos: 0, len: 1, degre: 0}]`),
+      parseBass808Spec(
+        `name: x\ndegrees: [0]\ncells:\n  - name: c\n    steps: [{pos: 0, len: 1, degre: 0}]`,
+      ),
     ).toThrowError(/unknown field "degre"/);
   });
 
@@ -88,7 +92,9 @@ cells:
 
   it("LOUDLY rejects a step degree outside the declared degrees set", () => {
     expect(() =>
-      parseBass808Spec(`name: x\ndegrees: [0, 7]\ncells:\n  - name: c\n    steps: [{pos: 0, len: 1, degree: 12}]`),
+      parseBass808Spec(
+        `name: x\ndegrees: [0, 7]\ncells:\n  - name: c\n    steps: [{pos: 0, len: 1, degree: 12}]`,
+      ),
     ).toThrowError(/degree 12 is not in "degrees"/);
   });
 
@@ -108,9 +114,9 @@ cells:
   });
 
   it("LOUDLY rejects a cell with an empty steps array", () => {
-    expect(() => parseBass808Spec(`name: x\ndegrees: [0]\ncells:\n  - name: c\n    steps: []`)).toThrowError(
-      /"steps" must be a non-empty array/,
-    );
+    expect(() =>
+      parseBass808Spec(`name: x\ndegrees: [0]\ncells:\n  - name: c\n    steps: []`),
+    ).toThrowError(/"steps" must be a non-empty array/);
   });
 
   it("an explicitly empty turnaroundCells array is fine (the documented default, not an error)", () => {
@@ -227,7 +233,9 @@ describe("generate808 — negative control across all three built-ins", () => {
         const { notes } = generate808(built, 4, { seed, bars: 8, slides: false });
         for (const n of notes) expect(n.duration).toBeGreaterThan(0);
         for (let i = 0; i + 1 < notes.length; i++) {
-          expect(notes[i + 1]!.start - (notes[i]!.start + notes[i]!.duration)).toBeGreaterThanOrEqual(-1e-9);
+          expect(
+            notes[i + 1]!.start - (notes[i]!.start + notes[i]!.duration),
+          ).toBeGreaterThanOrEqual(-1e-9);
         }
       }
     }
@@ -304,7 +312,8 @@ describe("generate808 — triplet grid exactness", () => {
     const { notes } = generate808(TRIPLET_FLOW_SPEC, 0, { seed: 1, bars: 4, slides: false });
     expect(notes.length).toBeGreaterThan(0);
     for (const n of notes) {
-      const local = ((n.start % BASS808_BEATS_PER_BAR) + BASS808_BEATS_PER_BAR) % BASS808_BEATS_PER_BAR;
+      const local =
+        ((n.start % BASS808_BEATS_PER_BAR) + BASS808_BEATS_PER_BAR) % BASS808_BEATS_PER_BAR;
       const thirds = local * 3;
       expect(Math.abs(thirds - Math.round(thirds))).toBeLessThan(1e-6);
     }
@@ -339,7 +348,11 @@ describe("generate808 — determinism (frozen regressions)", () => {
   });
 
   it("bars beyond a whole number, or < 1, is a clear error (not a silent truncation)", () => {
-    expect(() => generate808(TRAP_LONG_SPEC, 0, { seed: 1, bars: 0 })).toThrow(/bars must be a positive integer/);
-    expect(() => generate808(TRAP_LONG_SPEC, 0, { seed: 1, bars: 2.5 })).toThrow(/bars must be a positive integer/);
+    expect(() => generate808(TRAP_LONG_SPEC, 0, { seed: 1, bars: 0 })).toThrow(
+      /bars must be a positive integer/,
+    );
+    expect(() => generate808(TRAP_LONG_SPEC, 0, { seed: 1, bars: 2.5 })).toThrow(
+      /bars must be a positive integer/,
+    );
   });
 });

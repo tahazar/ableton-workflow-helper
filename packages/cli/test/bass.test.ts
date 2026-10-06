@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createGatewayServer, FakeLiveBridge, type ClipDetail, type GatewayServer } from "@awh/core";
+import {
+  createGatewayServer,
+  FakeLiveBridge,
+  type ClipDetail,
+  type GatewayServer,
+} from "@awh/core";
 
 /**
  * 808 bass engine CLI-level tests (docs/design/bass-808.md's verification
@@ -79,7 +84,21 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
       const result = await runCli(
-        ["-p", String(port), "bass", "808", "track:0", "--key", "A minor", "--style", "trap-long", "--bars", "4", "--at-bar", "1"],
+        [
+          "-p",
+          String(port),
+          "bass",
+          "808",
+          "track:0",
+          "--key",
+          "A minor",
+          "--style",
+          "trap-long",
+          "--bars",
+          "4",
+          "--at-bar",
+          "1",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -102,14 +121,31 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
       const result = await runCli(
-        ["-p", String(port), "bass", "808", "track:0", "--key", "A minor", "--style", "trap-long", "--bars", "1", "--at-bar", "1", "--dry-run"],
+        [
+          "-p",
+          String(port),
+          "bass",
+          "808",
+          "track:0",
+          "--key",
+          "A minor",
+          "--style",
+          "trap-long",
+          "--bars",
+          "1",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toMatch(/dry run: trap-long 808 ->/);
       expect(result.stdout).toMatch(/1\|1 /); // bar|beat notation preview reached real output
 
-      const summary = (await opCall(base, "set.summary")) as { tracks: { arrangementClips: unknown[] }[] };
+      const summary = (await opCall(base, "set.summary")) as {
+        tracks: { arrangementClips: unknown[] }[];
+      };
       expect(summary.tracks[0]!.arrangementClips).toEqual([]);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -122,15 +158,45 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
     try {
       const on = await runCli(
         [
-          "-p", String(port), "bass", "808", "track:0",
-          "--key", "A minor", "--style", "trap-long", "--bars", "4", "--seed", "1", "--at-bar", "1", "--dry-run",
+          "-p",
+          String(port),
+          "bass",
+          "808",
+          "track:0",
+          "--key",
+          "A minor",
+          "--style",
+          "trap-long",
+          "--bars",
+          "4",
+          "--seed",
+          "1",
+          "--at-bar",
+          "1",
+          "--dry-run",
         ],
         { AWH_LIBRARY: libraryRoot },
       );
       const off = await runCli(
         [
-          "-p", String(port), "bass", "808", "track:0",
-          "--key", "A minor", "--style", "trap-long", "--bars", "4", "--seed", "1", "--slides", "off", "--at-bar", "1", "--dry-run",
+          "-p",
+          String(port),
+          "bass",
+          "808",
+          "track:0",
+          "--key",
+          "A minor",
+          "--style",
+          "trap-long",
+          "--bars",
+          "4",
+          "--seed",
+          "1",
+          "--slides",
+          "off",
+          "--at-bar",
+          "1",
+          "--dry-run",
         ],
         { AWH_LIBRARY: libraryRoot },
       );
@@ -152,7 +218,19 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
       const result = await runCli(
-        ["-p", "9", "bass", "808", "track:0", "--key", "A minor", "--slides", "maybe", "--at-bar", "1"],
+        [
+          "-p",
+          "9",
+          "bass",
+          "808",
+          "track:0",
+          "--key",
+          "A minor",
+          "--slides",
+          "maybe",
+          "--at-bar",
+          "1",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status).not.toBe(0);
@@ -168,7 +246,19 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
       // style resolution fails before any gateway call is made, so no fake
       // gateway is needed; the port is never dialed.
       const result = await runCli(
-        ["-p", "9", "bass", "808", "track:0", "--key", "A minor", "--style", "does-not-exist", "--at-bar", "1"],
+        [
+          "-p",
+          "9",
+          "bass",
+          "808",
+          "track:0",
+          "--key",
+          "A minor",
+          "--style",
+          "does-not-exist",
+          "--at-bar",
+          "1",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status).not.toBe(0);
@@ -215,7 +305,22 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
       );
 
       const result = await runCli(
-        ["-p", String(port), "bass", "808", "track:0", "--key", "A minor", "--style", "cli-test", "--bars", "1", "--at-bar", "1", "--dry-run"],
+        [
+          "-p",
+          String(port),
+          "bass",
+          "808",
+          "track:0",
+          "--key",
+          "A minor",
+          "--style",
+          "cli-test",
+          "--bars",
+          "1",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -226,8 +331,22 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
       // names them (same listable convention as drums/phrase/arp).
       const badVariant = await runCli(
         [
-          "-p", String(port), "bass", "808", "track:0",
-          "--key", "A minor", "--style", "cli-test", "--bars", "1", "--at-bar", "1", "--variant", "nope", "--dry-run",
+          "-p",
+          String(port),
+          "bass",
+          "808",
+          "track:0",
+          "--key",
+          "A minor",
+          "--style",
+          "cli-test",
+          "--bars",
+          "1",
+          "--at-bar",
+          "1",
+          "--variant",
+          "nope",
+          "--dry-run",
         ],
         { AWH_LIBRARY: libraryRoot },
       );
@@ -242,10 +361,9 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
     await startFakeGateway();
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
-      const result = await runCli(
-        ["-p", String(port), "bass", "808", "track:0", "--at-bar", "1"],
-        { AWH_LIBRARY: libraryRoot },
-      );
+      const result = await runCli(["-p", String(port), "bass", "808", "track:0", "--at-bar", "1"], {
+        AWH_LIBRARY: libraryRoot,
+      });
       expect(result.status).not.toBe(0);
       expect(result.stderr).toMatch(/no active scale|--key/);
     } finally {

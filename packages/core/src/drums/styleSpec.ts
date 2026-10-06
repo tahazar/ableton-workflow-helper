@@ -190,7 +190,9 @@ function parseTrapFamilySpec(raw: Record<string, unknown>): TrapFamilyStyleSpec 
       return o;
     });
     if (!offsets.includes(0)) {
-      fail(`kickCells[${i}] ("${cell.name}"): offsets must include 0 (the cell must anchor beat 1)`);
+      fail(
+        `kickCells[${i}] ("${cell.name}"): offsets must include 0 (the cell must anchor beat 1)`,
+      );
     }
     return { name: cell.name, offsets };
   });
@@ -228,7 +230,9 @@ function parseTrapFamilySpec(raw: Record<string, unknown>): TrapFamilyStyleSpec 
   let swingDelay: number | undefined;
   if (raw.swingDelay !== undefined) {
     if (typeof raw.swingDelay !== "number" || Number.isNaN(raw.swingDelay) || raw.swingDelay < 0) {
-      fail(`"swingDelay" must be a non-negative number of beats (got ${JSON.stringify(raw.swingDelay)})`);
+      fail(
+        `"swingDelay" must be a non-negative number of beats (got ${JSON.stringify(raw.swingDelay)})`,
+      );
     }
     swingDelay = raw.swingDelay;
   }
@@ -274,7 +278,10 @@ function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpe
       fail(`"backbeat" must be an array (got ${JSON.stringify(raw.backbeat)})`);
     }
     backbeat = (raw.backbeat as unknown[]).map((r, i) => {
-      if (typeof r !== "string" || !VALID_BACKBEAT_ROLES.includes(r as (typeof VALID_BACKBEAT_ROLES)[number])) {
+      if (
+        typeof r !== "string" ||
+        !VALID_BACKBEAT_ROLES.includes(r as (typeof VALID_BACKBEAT_ROLES)[number])
+      ) {
         fail(
           `backbeat[${i}]: unknown value ${JSON.stringify(r)} (expected one of ${VALID_BACKBEAT_ROLES.join(", ")})`,
         );
@@ -315,9 +322,14 @@ function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpe
       }
     }
     if (typeof hg.low !== "string" || !VALID_HAT_LOW_MODES.includes(hg.low as HouseHatLowMode)) {
-      fail(`hatGrid.low: unknown value ${JSON.stringify(hg.low)} (expected one of ${VALID_HAT_LOW_MODES.join(", ")})`);
+      fail(
+        `hatGrid.low: unknown value ${JSON.stringify(hg.low)} (expected one of ${VALID_HAT_LOW_MODES.join(", ")})`,
+      );
     }
-    if (typeof hg.high !== "string" || !VALID_HAT_HIGH_MODES.includes(hg.high as HouseHatHighMode)) {
+    if (
+      typeof hg.high !== "string" ||
+      !VALID_HAT_HIGH_MODES.includes(hg.high as HouseHatHighMode)
+    ) {
       fail(
         `hatGrid.high: unknown value ${JSON.stringify(hg.high)} (expected one of ${VALID_HAT_HIGH_MODES.join(", ")})`,
       );
@@ -353,7 +365,10 @@ function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpe
       fail(`"ghostRoles" must be an array (got ${JSON.stringify(raw.ghostRoles)})`);
     }
     ghostRoles = (raw.ghostRoles as unknown[]).map((r, i) => {
-      if (typeof r !== "string" || !VALID_GHOST_ROLES.includes(r as (typeof VALID_GHOST_ROLES)[number])) {
+      if (
+        typeof r !== "string" ||
+        !VALID_GHOST_ROLES.includes(r as (typeof VALID_GHOST_ROLES)[number])
+      ) {
         fail(
           `ghostRoles[${i}]: unknown value ${JSON.stringify(r)} (expected one of ${VALID_GHOST_ROLES.join(", ")})`,
         );
@@ -388,7 +403,9 @@ function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpe
   let swingDelay: number | undefined;
   if (raw.swingDelay !== undefined) {
     if (typeof raw.swingDelay !== "number" || Number.isNaN(raw.swingDelay) || raw.swingDelay < 0) {
-      fail(`"swingDelay" must be a non-negative number of beats (got ${JSON.stringify(raw.swingDelay)})`);
+      fail(
+        `"swingDelay" must be a non-negative number of beats (got ${JSON.stringify(raw.swingDelay)})`,
+      );
     }
     swingDelay = raw.swingDelay;
   }

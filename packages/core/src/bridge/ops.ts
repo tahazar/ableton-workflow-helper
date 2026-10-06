@@ -143,13 +143,15 @@ export function buildOpRegistry(): Map<string, OpDefinition> {
   add({
     name: "set.tempo",
     description: "Set the Set tempo. Args: {bpm}",
-    handler: async (args, ctx) => ctx.bridge.setTempo(num(obj(args, "set.tempo"), "bpm", "set.tempo")),
+    handler: async (args, ctx) =>
+      ctx.bridge.setTempo(num(obj(args, "set.tempo"), "bpm", "set.tempo")),
   });
 
   add({
     name: "clip.get",
     description: "Read one clip incl. MIDI notes. Args: {path}",
-    handler: async (args, ctx) => ctx.bridge.getClip(str(obj(args, "clip.get"), "path", "clip.get")),
+    handler: async (args, ctx) =>
+      ctx.bridge.getClip(str(obj(args, "clip.get"), "path", "clip.get")),
   });
 
   add({

@@ -42,7 +42,8 @@ const OFFSET_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#"
 /** "C3" -> 60 (Ableton convention: middle C = C3 = MIDI 60). */
 export function pitchToMidi(name: string): number {
   const m = name.match(/^([A-Ga-g])(#|b)?(-?\d+)$/);
-  if (!m) throw new BridgeError("bad_request", `invalid pitch "${name}" (expected e.g. C3, F#2, Eb4)`);
+  if (!m)
+    throw new BridgeError("bad_request", `invalid pitch "${name}" (expected e.g. C3, F#2, Eb4)`);
   const letter = m[1]!.toUpperCase();
   const accidental = m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0;
   const octave = Number(m[3]);
@@ -65,7 +66,8 @@ function parseBeats(token: string, context: string): number {
   const frac = token.match(/^(\d+)\/(\d+)$/);
   if (frac) {
     const den = Number(frac[2]);
-    if (den === 0) throw new BridgeError("bad_request", `${context}: division by zero in "${token}"`);
+    if (den === 0)
+      throw new BridgeError("bad_request", `${context}: division by zero in "${token}"`);
     return Number(frac[1]) / den;
   }
   const n = Number(token);
@@ -129,7 +131,10 @@ export function parseNotation(text: string, options: NotationOptions = {}): Pars
 
     const pos = tokens[0]!.match(/^(\d+)\|(\d+(?:\.\d+)?)$/);
     if (!pos) {
-      throw new BridgeError("bad_request", `${where}: invalid position "${tokens[0]}" (expected bar|beat, e.g. 2|1.5)`);
+      throw new BridgeError(
+        "bad_request",
+        `${where}: invalid position "${tokens[0]}" (expected bar|beat, e.g. 2|1.5)`,
+      );
     }
     const bar = Number(pos[1]);
     const beat = Number(pos[2]);
@@ -165,7 +170,10 @@ export function parseNotation(text: string, options: NotationOptions = {}): Pars
       } else if (/^m$/i.test(opt)) {
         muted = true;
       } else {
-        throw new BridgeError("bad_request", `${where}: unknown option "${opt}" (expected vN, pN, or m)`);
+        throw new BridgeError(
+          "bad_request",
+          `${where}: unknown option "${opt}" (expected vN, pN, or m)`,
+        );
       }
     }
 

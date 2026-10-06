@@ -5,7 +5,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { createGatewayServer, FakeLiveBridge, type ClipDetail, type GatewayServer } from "@awh/core";
+import {
+  createGatewayServer,
+  FakeLiveBridge,
+  type ClipDetail,
+  type GatewayServer,
+} from "@awh/core";
 
 // `analysisPython()` (src/analysis-python.ts) derives its python `cwd` as
 // `dirname(AWH_LIBRARY)/analysis`. Same isolation approach as advise.test.ts:
@@ -121,7 +126,13 @@ function chopMapRecordJson(overrides: { confidence?: number } = {}) {
       min_gap_s: 0.025,
       ghost_threshold_db: -18,
       n_slices: 5,
-      slices: [slice(0, 0, "kick"), slice(1, 4, "snare"), slice(2, 8, "hat"), slice(3, 12, "snare"), slice(4, 15, "ghost")],
+      slices: [
+        slice(0, 0, "kick"),
+        slice(1, 4, "snare"),
+        slice(2, 8, "hat"),
+        slice(3, 12, "snare"),
+        slice(4, 15, "ghost"),
+      ],
       tail_decay_s: null,
       downbeat_check: {},
       assumptions: [],
@@ -129,10 +140,18 @@ function chopMapRecordJson(overrides: { confidence?: number } = {}) {
   };
 }
 
-async function writeChopMapRecord(libraryRoot: string, name: string, overrides: { confidence?: number } = {}): Promise<void> {
+async function writeChopMapRecord(
+  libraryRoot: string,
+  name: string,
+  overrides: { confidence?: number } = {},
+): Promise<void> {
   const dir = join(libraryRoot, "measurements");
   await mkdir(dir, { recursive: true });
-  await writeFile(join(dir, `${name}.json`), JSON.stringify(chopMapRecordJson(overrides), null, 2), "utf8");
+  await writeFile(
+    join(dir, `${name}.json`),
+    JSON.stringify(chopMapRecordJson(overrides), null, 2),
+    "utf8",
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -196,7 +215,12 @@ function synthBreakWav(path: string): void {
   for (const [step, kind] of events) {
     const t0 = leadS + step * stepDurS;
     const start = Math.round(t0 * sr);
-    const b = kind === "kick" ? burst(sr, 55.0, 0.9, 0.04, false) : kind === "snare" ? burst(sr, 220.0, 0.6, 0.03, false) : burst(sr, 9000.0, 0.3, 0.012, true);
+    const b =
+      kind === "kick"
+        ? burst(sr, 55.0, 0.9, 0.04, false)
+        : kind === "snare"
+          ? burst(sr, 220.0, 0.6, 0.03, false)
+          : burst(sr, 9000.0, 0.3, 0.012, true);
     for (let i = 0; i < b.length && start + i < n; i++) sig[start + i]! += b[i]!;
   }
   writeWavMono16(path, sig, sr);
@@ -211,10 +235,13 @@ describe.skipIf(!hasBuiltCli || !hasRealPython)("awh breaks chop — real Python
       const wav = join(dir, "break.wav");
       synthBreakWav(wav);
 
-      const chopResult = await runCli(["breaks", "chop", wav, "--bpm", "90", "--save", "amen-test", "--json"], {
-        AWH_LIBRARY: libraryRoot,
-        AWH_PYTHON: MAIN_VENV_PYTHON,
-      });
+      const chopResult = await runCli(
+        ["breaks", "chop", wav, "--bpm", "90", "--save", "amen-test", "--json"],
+        {
+          AWH_LIBRARY: libraryRoot,
+          AWH_PYTHON: MAIN_VENV_PYTHON,
+        },
+      );
       expect(chopResult.status, chopResult.stderr).toBe(0);
       const obj = JSON.parse(chopResult.stdout) as { n_slices: number };
       expect(obj.n_slices).toBe(4);
@@ -265,14 +292,31 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
-        ["-p", String(port), "breaks", "pattern", "track:0", "--map", "amen", "--style", "jungle-classic", "--bars", "1", "--at-bar", "1", "--dry-run"],
+        [
+          "-p",
+          String(port),
+          "breaks",
+          "pattern",
+          "track:0",
+          "--map",
+          "amen",
+          "--style",
+          "jungle-classic",
+          "--bars",
+          "1",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toMatch(/dry run: chop map amen/);
       expect(result.stdout).toMatch(/1\|1 /); // bar|beat notation preview
 
-      const summary = (await opCall(base, "set.summary")) as { tracks: { arrangementClips: unknown[] }[] };
+      const summary = (await opCall(base, "set.summary")) as {
+        tracks: { arrangementClips: unknown[] }[];
+      };
       expect(summary.tracks[0]!.arrangementClips).toEqual([]);
     } finally {
       await rm(dir, { recursive: true, force: true });
@@ -285,7 +329,21 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
-        ["-p", String(port), "breaks", "pattern", "track:0", "--map", "amen", "--style", "halftime", "--bars", "1", "--at-bar", "1"],
+        [
+          "-p",
+          String(port),
+          "breaks",
+          "pattern",
+          "track:0",
+          "--map",
+          "amen",
+          "--style",
+          "halftime",
+          "--bars",
+          "1",
+          "--at-bar",
+          "1",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -307,7 +365,20 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
-        ["breaks", "pattern", "track:0", "--map", "amen", "--mode", "live-slices", "--bars", "1", "--at-bar", "1", "--dry-run"],
+        [
+          "breaks",
+          "pattern",
+          "track:0",
+          "--map",
+          "amen",
+          "--mode",
+          "live-slices",
+          "--bars",
+          "1",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -334,7 +405,18 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
       await writeFile(join(dirPath, "big.json"), JSON.stringify(many), "utf8");
 
       const result = await runCli(
-        ["breaks", "pattern", "track:0", "--map", "big", "--bars", "1", "--at-bar", "1", "--dry-run"],
+        [
+          "breaks",
+          "pattern",
+          "track:0",
+          "--map",
+          "big",
+          "--bars",
+          "1",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status).not.toBe(0);
@@ -349,7 +431,20 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
     try {
       await writeChopMapRecord(libraryRoot, "shaky", { confidence: 0.2 });
       const result = await runCli(
-        ["breaks", "pattern", "track:0", "--map", "shaky", "--style", "jungle-classic", "--bars", "2", "--at-bar", "1", "--dry-run"],
+        [
+          "breaks",
+          "pattern",
+          "track:0",
+          "--map",
+          "shaky",
+          "--style",
+          "jungle-classic",
+          "--bars",
+          "2",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -371,7 +466,18 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
       await writeFile(join(dirPath, "empty.json"), JSON.stringify(empty), "utf8");
 
       const result = await runCli(
-        ["breaks", "pattern", "track:0", "--map", "empty", "--bars", "1", "--at-bar", "1", "--dry-run"],
+        [
+          "breaks",
+          "pattern",
+          "track:0",
+          "--map",
+          "empty",
+          "--bars",
+          "1",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -386,7 +492,20 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
-        ["breaks", "pattern", "track:0", "--map", "amen", "--style", "does-not-exist", "--bars", "1", "--at-bar", "1", "--dry-run"],
+        [
+          "breaks",
+          "pattern",
+          "track:0",
+          "--map",
+          "amen",
+          "--style",
+          "does-not-exist",
+          "--bars",
+          "1",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status).not.toBe(0);
@@ -429,7 +548,20 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
       );
 
       const result = await runCli(
-        ["breaks", "pattern", "track:0", "--map", "amen", "--style", "cli-test", "--bars", "1", "--at-bar", "1", "--dry-run"],
+        [
+          "breaks",
+          "pattern",
+          "track:0",
+          "--map",
+          "amen",
+          "--style",
+          "cli-test",
+          "--bars",
+          "1",
+          "--at-bar",
+          "1",
+          "--dry-run",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -463,7 +595,21 @@ describe.skipIf(!hasBuiltCli)("awh breaks fill — full CLI integration", () => 
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
-        ["-p", String(port), "breaks", "fill", "track:0", "--map", "amen", "--beats", "2", "--count", "3", "--seed", "5"],
+        [
+          "-p",
+          String(port),
+          "breaks",
+          "fill",
+          "track:0",
+          "--map",
+          "amen",
+          "--beats",
+          "2",
+          "--count",
+          "3",
+          "--seed",
+          "5",
+        ],
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -532,9 +678,12 @@ describe.skipIf(!hasBuiltCli)("awh breaks place — full CLI integration", () =>
         ].join("\n"),
       );
 
-      const result = await runCli(["-p", String(port), "breaks", "place", "cli-test", "track:0", "--at-bar", "1"], {
-        AWH_LIBRARY: libraryRoot,
-      });
+      const result = await runCli(
+        ["-p", String(port), "breaks", "place", "cli-test", "track:0", "--at-bar", "1"],
+        {
+          AWH_LIBRARY: libraryRoot,
+        },
+      );
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).toMatch(/placed cli-test \[sourced\]/);
       expect(result.stdout).toMatch(/no drum rack on track:0/);
@@ -552,9 +701,12 @@ describe.skipIf(!hasBuiltCli)("awh breaks place — full CLI integration", () =>
   it("missing entry: a helpful error naming the break-pattern-<name> slug convention", async () => {
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
-      const result = await runCli(["breaks", "place", "does-not-exist", "track:0", "--at-bar", "1"], {
-        AWH_LIBRARY: libraryRoot,
-      });
+      const result = await runCli(
+        ["breaks", "place", "does-not-exist", "track:0", "--at-bar", "1"],
+        {
+          AWH_LIBRARY: libraryRoot,
+        },
+      );
       expect(result.status).not.toBe(0);
       expect(result.stderr).toMatch(/unknown break pattern "does-not-exist"/);
       expect(result.stderr).toMatch(/break-pattern-does-not-exist/);

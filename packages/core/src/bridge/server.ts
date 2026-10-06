@@ -40,10 +40,7 @@ export function createGatewayServer(
   let server: http.Server | undefined;
   let boundPort: number | undefined;
 
-  const handler = async (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-  ): Promise<void> => {
+  const handler = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     const origin = req.headers.origin;
     if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
       return sendJson(res, 403, { error: "forbidden_origin" });
@@ -112,8 +109,7 @@ export function createGatewayServer(
         server.once("error", reject);
         server.listen(port, host, () => {
           const address = server!.address();
-          const actual =
-            typeof address === "object" && address ? address.port : port;
+          const actual = typeof address === "object" && address ? address.port : port;
           boundPort = actual;
           resolve(actual);
         });
@@ -129,11 +125,7 @@ export function createGatewayServer(
   };
 }
 
-function sendJson(
-  res: http.ServerResponse,
-  status: number,
-  body: unknown,
-): void {
+function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     "content-type": "application/json",

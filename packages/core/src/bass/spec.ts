@@ -82,7 +82,12 @@ function fail(message: string): never {
   throw new Error(`bass808 spec: ${message}`);
 }
 
-function parseCells(raw: unknown, field: string, degreesSet: Set<number>, requireNonEmpty: boolean): Bass808Cell[] {
+function parseCells(
+  raw: unknown,
+  field: string,
+  degreesSet: Set<number>,
+  requireNonEmpty: boolean,
+): Bass808Cell[] {
   if (raw === undefined) return [];
   if (!Array.isArray(raw) || (requireNonEmpty && raw.length === 0)) {
     fail(`"${field}" must be a non-empty array`);
@@ -94,7 +99,9 @@ function parseCells(raw: unknown, field: string, degreesSet: Set<number>, requir
     const cell = rawCell as Record<string, unknown>;
     for (const key of Object.keys(cell)) {
       if (!CELL_KEYS.has(key)) {
-        fail(`${field}[${i}]: unknown field "${key}" (expected one of ${[...CELL_KEYS].join(", ")})`);
+        fail(
+          `${field}[${i}]: unknown field "${key}" (expected one of ${[...CELL_KEYS].join(", ")})`,
+        );
       }
     }
     if (typeof cell.name !== "string" || cell.name.trim() === "") {
@@ -117,7 +124,9 @@ function parseCells(raw: unknown, field: string, degreesSet: Set<number>, requir
       const step = rawStep as Record<string, unknown>;
       for (const key of Object.keys(step)) {
         if (!STEP_KEYS.has(key)) {
-          fail(`${field}[${i}] ("${cell.name}"): steps[${j}]: unknown field "${key}" (expected one of ${[...STEP_KEYS].join(", ")})`);
+          fail(
+            `${field}[${i}] ("${cell.name}"): steps[${j}]: unknown field "${key}" (expected one of ${[...STEP_KEYS].join(", ")})`,
+          );
         }
       }
       if (typeof step.pos !== "number" || Number.isNaN(step.pos) || step.pos < 0) {
@@ -236,8 +245,14 @@ export function parseBass808Spec(yamlText: string): Bass808Spec {
 
   let slideOverlapBeats = DEFAULT_SLIDE_OVERLAP_BEATS;
   if (raw.slideOverlapBeats !== undefined) {
-    if (typeof raw.slideOverlapBeats !== "number" || Number.isNaN(raw.slideOverlapBeats) || raw.slideOverlapBeats < 0) {
-      fail(`"slideOverlapBeats" must be a non-negative number (got ${JSON.stringify(raw.slideOverlapBeats)})`);
+    if (
+      typeof raw.slideOverlapBeats !== "number" ||
+      Number.isNaN(raw.slideOverlapBeats) ||
+      raw.slideOverlapBeats < 0
+    ) {
+      fail(
+        `"slideOverlapBeats" must be a non-negative number (got ${JSON.stringify(raw.slideOverlapBeats)})`,
+      );
     }
     slideOverlapBeats = raw.slideOverlapBeats;
   }
@@ -246,7 +261,11 @@ export function parseBass808Spec(yamlText: string): Bass808Spec {
 
   let turnaroundBar = DEFAULT_TURNAROUND_BAR;
   if (raw.turnaroundBar !== undefined) {
-    if (typeof raw.turnaroundBar !== "number" || !Number.isInteger(raw.turnaroundBar) || raw.turnaroundBar < 1) {
+    if (
+      typeof raw.turnaroundBar !== "number" ||
+      !Number.isInteger(raw.turnaroundBar) ||
+      raw.turnaroundBar < 1
+    ) {
       fail(`"turnaroundBar" must be a positive integer (got ${JSON.stringify(raw.turnaroundBar)})`);
     }
     turnaroundBar = raw.turnaroundBar;
@@ -256,7 +275,12 @@ export function parseBass808Spec(yamlText: string): Bass808Spec {
 
   let swing = 0;
   if (raw.swing !== undefined) {
-    if (typeof raw.swing !== "number" || Number.isNaN(raw.swing) || raw.swing < 0 || raw.swing > 0.5) {
+    if (
+      typeof raw.swing !== "number" ||
+      Number.isNaN(raw.swing) ||
+      raw.swing < 0 ||
+      raw.swing > 0.5
+    ) {
       fail(`"swing" must be a number in [0, 0.5] (got ${JSON.stringify(raw.swing)})`);
     }
     swing = raw.swing;

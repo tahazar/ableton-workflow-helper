@@ -79,7 +79,11 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
 
     const results = await applyRecipePlan(caller, plan);
     expect(results.every((r) => r.matched)).toBe(true);
-    expect(results.map((r) => r.param).toSorted()).toEqual(["Ae Attack", "Algorithm", "Osc-A Coarse"]);
+    expect(results.map((r) => r.param).toSorted()).toEqual([
+      "Ae Attack",
+      "Algorithm",
+      "Osc-A Coarse",
+    ]);
 
     const after = (await caller("device.get", { path: devicePath })) as DeviceDetail;
     const byName = new Map(after.params.map((p) => [p.name, p.value]));
@@ -145,7 +149,11 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
     const caller = await startFakeGateway();
     const devicePath = await insertOperator(caller);
     const before = (await caller("device.get", { path: devicePath })) as DeviceDetail;
-    const recipe: OperatorRecipe = { name: "out-of-range", device: "Operator", params: { Volume: 5.0 } };
+    const recipe: OperatorRecipe = {
+      name: "out-of-range",
+      device: "Operator",
+      params: { Volume: 5.0 },
+    };
     const plan = planRecipeApply(before, recipe, devicePath);
     await expect(applyRecipePlan(caller, plan)).rejects.toThrow(/outside \[/);
   });
@@ -195,7 +203,13 @@ describe("op recipes listing (summarizeRecipeEntries)", () => {
 
     const entries = await store.listEntries();
     expect(summarizeRecipeEntries(entries)).toEqual([
-      { slug: "operator-recipe-growl-bass", title: "Growl bass", tier: "draft", paramCount: 2, hasPlayNotes: true },
+      {
+        slug: "operator-recipe-growl-bass",
+        title: "Growl bass",
+        tier: "draft",
+        paramCount: 2,
+        hasPlayNotes: true,
+      },
     ]);
   });
 

@@ -62,7 +62,11 @@ export function fitPitchToRegister(pitch: number, register: readonly [number, nu
 }
 
 /** Octave-fold into `register`, then snap to `scale`, re-folding if the snap nudged it out. */
-export function repitchLow(pitch: number, scale: ScaleContext, register: readonly [number, number]): number {
+export function repitchLow(
+  pitch: number,
+  scale: ScaleContext,
+  register: readonly [number, number],
+): number {
   const folded = fitPitchToRegister(pitch, register);
   const snapped = snapToScale(folded, scale);
   return fitPitchToRegister(snapped, register);
@@ -77,7 +81,7 @@ export function resolveDegreePitches(
   const chromas = new Set(resolveDegrees.map((d) => ((Math.round(d) % 12) + 12) % 12));
   const pitches: number[] = [];
   for (let p = register[0]; p <= register[1]; p++) {
-    const chroma = ((p - rootNote) % 12 + 12) % 12;
+    const chroma = (((p - rootNote) % 12) + 12) % 12;
     if (chromas.has(chroma)) pitches.push(p);
   }
   return pitches;
@@ -119,6 +123,11 @@ export function generateCallPitches(
 
 export function callCellToNotes(cell: CallCell, pitches: number[], velocity = 100): NoteSpec[] {
   return sortNotes(
-    cell.beats.map((b, i) => ({ pitch: pitches[i]!, start: b, duration: cell.lengths[i]!, velocity })),
+    cell.beats.map((b, i) => ({
+      pitch: pitches[i]!,
+      start: b,
+      duration: cell.lengths[i]!,
+      velocity,
+    })),
   );
 }

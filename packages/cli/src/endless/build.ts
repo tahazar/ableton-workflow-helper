@@ -219,7 +219,10 @@ export async function buildEndlessPlayer(
     const html = templateHtml
       .replaceAll("__ENDLESS_TITLE__", spec.name)
       .replaceAll("__ENDLESS_SPEC_JSON__", escapeForInlineScript(JSON.stringify(specForEmbed)))
-      .replaceAll("<!--ENDLESS_PLAYER_SCRIPT_TAG-->", `<script type="module">\n${playerJs}\n</script>`);
+      .replaceAll(
+        "<!--ENDLESS_PLAYER_SCRIPT_TAG-->",
+        `<script type="module">\n${playerJs}\n</script>`,
+      );
     const htmlPath = join(outDir, "index.html");
     await writeFile(htmlPath, html, "utf8");
     written.push(htmlPath);
@@ -232,7 +235,10 @@ export async function buildEndlessPlayer(
   const html = templateHtml
     .replaceAll("__ENDLESS_TITLE__", spec.name)
     .replaceAll("__ENDLESS_SPEC_JSON__", escapeForInlineScript(JSON.stringify(spec)))
-    .replaceAll("<!--ENDLESS_PLAYER_SCRIPT_TAG-->", `<script type="module" src="./player.js"></script>`);
+    .replaceAll(
+      "<!--ENDLESS_PLAYER_SCRIPT_TAG-->",
+      `<script type="module" src="./player.js"></script>`,
+    );
   await writeFile(join(outDir, "index.html"), html, "utf8");
   written.push(join(outDir, "index.html"));
   await writeFile(join(outDir, "player.js"), playerJs, "utf8");

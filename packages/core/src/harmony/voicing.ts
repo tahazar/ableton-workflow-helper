@@ -133,7 +133,9 @@ export function voiceProgression(chords: ChordSpec[], opts: VoicingOptions = {})
 
   for (const chord of chords) {
     const closeVoiced =
-      voiceLeading && prevPitches ? bestVoiceLed(chord, prevPitches, center) : rootPositionClose(chord, center);
+      voiceLeading && prevPitches
+        ? bestVoiceLed(chord, prevPitches, center)
+        : rootPositionClose(chord, center);
     const pitches = style === "spread" ? spreadPitches(closeVoiced) : [...closeVoiced];
     pitches.sort((a, b) => a - b);
     out.push({ symbol: chord.symbol, pitches });
@@ -174,7 +176,11 @@ interface Hit {
 /** Rhythm grid is segment-local (relative to each chord's own segStart), so
  *  it stays well-defined even when segments don't land on whole beats (e.g.
  *  a progression that doesn't evenly divide the bar count). */
-function segmentHits(segStart: number, segEnd: number, rhythm: NonNullable<RenderChordsOptions["rhythm"]>): Hit[] {
+function segmentHits(
+  segStart: number,
+  segEnd: number,
+  rhythm: NonNullable<RenderChordsOptions["rhythm"]>,
+): Hit[] {
   const segDur = segEnd - segStart;
   const EPS = 1e-9;
   switch (rhythm) {
@@ -216,7 +222,8 @@ export function renderChords(voiced: VoicedChord[], opts: RenderChordsOptions = 
   const velocity = opts.velocity ?? 90;
   const bassOctaves = Math.max(0, Math.floor(opts.bassOctaves ?? 0));
 
-  if (beatsPerBar <= 0) throw new BridgeError("bad_request", "renderChords: beatsPerBar must be > 0");
+  if (beatsPerBar <= 0)
+    throw new BridgeError("bad_request", "renderChords: beatsPerBar must be > 0");
   if (bars <= 0) throw new BridgeError("bad_request", "renderChords: bars must be > 0");
   if (voiced.length === 0) return [];
 

@@ -42,9 +42,9 @@ describe("knowledge entry format", () => {
   });
 
   it("enforces tier rules and structure", () => {
-    expect(() =>
-      serializeKnowledgeEntry({ ...entry, tier: "sourced", sources: [] }),
-    ).toThrowError(/citation/);
+    expect(() => serializeKnowledgeEntry({ ...entry, tier: "sourced", sources: [] })).toThrowError(
+      /citation/,
+    );
     expect(() => serializeKnowledgeEntry({ ...entry, topic: "Bad Topic" })).toThrowError(/topic/);
     expect(() => parseKnowledgeEntry("no frontmatter")).toThrowError(/frontmatter/);
   });
@@ -91,7 +91,9 @@ describe("KnowledgeStore", () => {
 
   it("rejects topic/directory mismatches and duplicate slugs across topics", async () => {
     await store.saveEntry(entry);
-    await expect(store.saveEntry({ ...entry, topic: "workflow" })).rejects.toThrowError(/already used/);
+    await expect(store.saveEntry({ ...entry, topic: "workflow" })).rejects.toThrowError(
+      /already used/,
+    );
     // hand-planted mismatch
     await mkdir(join(root, "mixing"), { recursive: true });
     await writeFile(
@@ -121,7 +123,9 @@ describe("KnowledgeStore", () => {
     expect(index).toContain("## rhythm/garage");
     expect(index).toContain("[garage-hat-shuffle](rhythm/garage/garage-hat-shuffle.md)");
     expect(index).toContain("## measurements");
-    expect(index).toContain("| [my-ref](../library/measurements/my-ref.json) | 2026-08-17 | -9.2 | -5.3 | 98 | 2 |");
+    expect(index).toContain(
+      "| [my-ref](../library/measurements/my-ref.json) | 2026-08-17 | -9.2 | -5.3 | 98 | 2 |",
+    );
     const onDisk = await readFile(join(root, "INDEX.md"), "utf8");
     expect(onDisk).toBe(index);
     // INDEX.md itself is not an entry
@@ -164,14 +168,22 @@ describe("KnowledgeStore", () => {
 
     const drumStatsRecords = await store.listDrumStatsRecords();
     expect(drumStatsRecords).toEqual([
-      { name: "waivops-tr9-pilot", saved: "2026-08-19", dataset: "waivops-edm-tr9-pilot", nLoops: 14, nSources: 14 },
+      {
+        name: "waivops-tr9-pilot",
+        saved: "2026-08-19",
+        dataset: "waivops-edm-tr9-pilot",
+        nLoops: 14,
+        nSources: 14,
+      },
     ]);
 
     const index = await store.buildIndex();
     expect(index).toContain("## measurements");
     expect(index).toContain("| [my-ref](../library/measurements/my-ref.json)");
     expect(index).toContain("## drum-stats records");
-    expect(index).toContain("| [waivops-tr9-pilot](../library/measurements/waivops-tr9-pilot.json) | 2026-08-19 | waivops-edm-tr9-pilot | 14 | 14 |");
+    expect(index).toContain(
+      "| [waivops-tr9-pilot](../library/measurements/waivops-tr9-pilot.json) | 2026-08-19 | waivops-edm-tr9-pilot | 14 | 14 |",
+    );
   });
 
   it("indexes chop-map records (awh breaks chop --save, M15) alongside the other kinds without crashing", async () => {
@@ -189,14 +201,18 @@ describe("KnowledgeStore", () => {
     );
 
     const chopMapRecords = await store.listChopMapRecords();
-    expect(chopMapRecords).toEqual([{ name: "amen", saved: "2026-08-26", file: "/x/amen.wav", nSlices: 7, bpm: 138.5 }]);
+    expect(chopMapRecords).toEqual([
+      { name: "amen", saved: "2026-08-26", file: "/x/amen.wav", nSlices: 7, bpm: 138.5 },
+    ]);
     // a chopmap record must never show up in the plain measurement-record
     // listing (same split as drumstats; see listMeasurementRecords).
     expect((await store.listMeasurementRecords()).map((r) => r.name)).not.toContain("amen");
 
     const index = await store.buildIndex();
     expect(index).toContain("## chop maps");
-    expect(index).toContain("| [amen](../library/measurements/amen.json) | 2026-08-26 | 7 | 138.5 | amen.wav |");
+    expect(index).toContain(
+      "| [amen](../library/measurements/amen.json) | 2026-08-26 | 7 | 138.5 | amen.wav |",
+    );
   });
 
   it("flags prose-only entries in the index", async () => {
@@ -233,7 +249,9 @@ describe("reference records in the index", () => {
       );
       const index = await store.buildIndex();
       expect(index).toContain("## references");
-      expect(index).toContain("| [my-ref-track](../library/references/my-ref-track.json) | 2026-08-17 | 128.0 | 5 |");
+      expect(index).toContain(
+        "| [my-ref-track](../library/references/my-ref-track.json) | 2026-08-17 | 128.0 | 5 |",
+      );
     } finally {
       await rm(base, { recursive: true, force: true });
     }

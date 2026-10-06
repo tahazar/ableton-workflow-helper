@@ -149,7 +149,10 @@ function parseChord(symbol: string, scale: ScaleContextLike): ChordSpec {
  * whitespace (or both).
  */
 export function parseProgression(text: string, scale: ScaleContextLike): ChordSpec[] {
-  const tokens = text.trim().split(/[\s-]+/).filter((t) => t.length > 0);
+  const tokens = text
+    .trim()
+    .split(/[\s-]+/)
+    .filter((t) => t.length > 0);
   if (tokens.length === 0) {
     throw new BridgeError("bad_request", `empty progression`);
   }

@@ -75,15 +75,21 @@ walk:
   });
 
   it("rejects an unknown nested euclid key", () => {
-    expect(() => parseArpSpec(`name: x\neuclid: {k: 4, n: 8, rotat: 1}`)).toThrowError(/unknown field "rotat"/);
+    expect(() => parseArpSpec(`name: x\neuclid: {k: 4, n: 8, rotat: 1}`)).toThrowError(
+      /unknown field "rotat"/,
+    );
   });
 
   it("rejects an unknown nested velocity key", () => {
-    expect(() => parseArpSpec(`name: x\nvelocity: {base: 90, accent: [0]}`)).toThrowError(/unknown field "accent"/);
+    expect(() => parseArpSpec(`name: x\nvelocity: {base: 90, accent: [0]}`)).toThrowError(
+      /unknown field "accent"/,
+    );
   });
 
   it("rejects an invalid contour", () => {
-    expect(() => parseArpSpec(`name: x\ncontour: sideways`)).toThrowError(/"contour" must be one of/);
+    expect(() => parseArpSpec(`name: x\ncontour: sideways`)).toThrowError(
+      /"contour" must be one of/,
+    );
   });
 
   it("rejects a malformed rate", () => {
@@ -135,9 +141,7 @@ walk:
 
 describe("euclideanMask", () => {
   it("matches the classic E(3,8) rhythm (x..x..x.)", () => {
-    expect(euclideanMask(3, 8, 0)).toEqual([
-      true, false, false, true, false, false, true, false,
-    ]);
+    expect(euclideanMask(3, 8, 0)).toEqual([true, false, false, true, false, false, true, false]);
   });
 
   it("produces exactly k onsets at every rotation, for a spread of (k,n) pairs", () => {
@@ -312,11 +316,13 @@ describe("generateArp — gate and ratchets", () => {
     const ratcheted = notes.filter((n) => n.start >= 0.75 - 1e-9 && n.start < 1.0 - 1e-9);
     expect(ratcheted).toHaveLength(3);
     for (let i = 1; i < ratcheted.length; i++) {
-      expect(ratcheted[i]!.start).toBeGreaterThanOrEqual(ratcheted[i - 1]!.start + ratcheted[i - 1]!.duration - 1e-9);
+      expect(ratcheted[i]!.start).toBeGreaterThanOrEqual(
+        ratcheted[i - 1]!.start + ratcheted[i - 1]!.duration - 1e-9,
+      );
     }
-    expect(ratcheted[ratcheted.length - 1]!.start + ratcheted[ratcheted.length - 1]!.duration).toBeLessThanOrEqual(
-      1.0 + 1e-9,
-    );
+    expect(
+      ratcheted[ratcheted.length - 1]!.start + ratcheted[ratcheted.length - 1]!.duration,
+    ).toBeLessThanOrEqual(1.0 + 1e-9);
   });
 });
 

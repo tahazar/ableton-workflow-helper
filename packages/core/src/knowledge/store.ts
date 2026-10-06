@@ -7,11 +7,7 @@
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
-import {
-  parseKnowledgeEntry,
-  serializeKnowledgeEntry,
-  type KnowledgeEntry,
-} from "./entry.js";
+import { parseKnowledgeEntry, serializeKnowledgeEntry, type KnowledgeEntry } from "./entry.js";
 
 export interface StoredKnowledgeEntry extends KnowledgeEntry {
   /** Path relative to the knowledge root. */
@@ -110,9 +106,7 @@ export class KnowledgeStore {
     const matches = (await this.listEntries()).filter((e) => e.slug === slug);
     if (matches.length === 0) throw new Error(`No knowledge entry with slug "${slug}"`);
     if (matches.length > 1) {
-      throw new Error(
-        `Slug "${slug}" is ambiguous: ${matches.map((m) => m.relPath).join(", ")}`,
-      );
+      throw new Error(`Slug "${slug}" is ambiguous: ${matches.map((m) => m.relPath).join(", ")}`);
     }
     return matches[0]!;
   }
@@ -150,7 +144,9 @@ export class KnowledgeStore {
   async listMeasurementRecords(): Promise<MeasurementRecordSummary[]> {
     if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
     const out: MeasurementRecordSummary[] = [];
-    for (const f of (await readdir(this.measurementsDir)).filter((x) => x.endsWith(".json")).toSorted()) {
+    for (const f of (await readdir(this.measurementsDir))
+      .filter((x) => x.endsWith(".json"))
+      .toSorted()) {
       try {
         const raw = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
           kind?: string;
@@ -185,7 +181,9 @@ export class KnowledgeStore {
   async listDrumStatsRecords(): Promise<DrumStatsRecordSummary[]> {
     if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
     const out: DrumStatsRecordSummary[] = [];
-    for (const f of (await readdir(this.measurementsDir)).filter((x) => x.endsWith(".json")).toSorted()) {
+    for (const f of (await readdir(this.measurementsDir))
+      .filter((x) => x.endsWith(".json"))
+      .toSorted()) {
       try {
         const raw = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
           kind?: string;
@@ -214,7 +212,9 @@ export class KnowledgeStore {
   async listChopMapRecords(): Promise<ChopMapRecordSummary[]> {
     if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
     const out: ChopMapRecordSummary[] = [];
-    for (const f of (await readdir(this.measurementsDir)).filter((x) => x.endsWith(".json")).toSorted()) {
+    for (const f of (await readdir(this.measurementsDir))
+      .filter((x) => x.endsWith(".json"))
+      .toSorted()) {
       try {
         const raw = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
           kind?: string;
@@ -240,7 +240,9 @@ export class KnowledgeStore {
   async listReferenceRecords(): Promise<ReferenceRecordSummary[]> {
     if (!this.referencesDir || !existsSync(this.referencesDir)) return [];
     const out: ReferenceRecordSummary[] = [];
-    for (const f of (await readdir(this.referencesDir)).filter((x) => x.endsWith(".json")).toSorted()) {
+    for (const f of (await readdir(this.referencesDir))
+      .filter((x) => x.endsWith(".json"))
+      .toSorted()) {
       try {
         const raw = JSON.parse(await readFile(join(this.referencesDir, f), "utf8")) as {
           saved?: string;
@@ -280,7 +282,13 @@ export class KnowledgeStore {
       "Cite slug + tier when applying an entry. Executable sections are the contract.",
     ];
     for (const topic of [...byTopic.keys()].toSorted()) {
-      lines.push("", `## ${topic}`, "", "| slug | tier | tags | executable | sources |", "|---|---|---|---|---|");
+      lines.push(
+        "",
+        `## ${topic}`,
+        "",
+        "| slug | tier | tags | executable | sources |",
+        "|---|---|---|---|---|",
+      );
       for (const e of byTopic.get(topic)!) {
         lines.push(
           `| [${e.slug}](${e.relPath.split(sep).join("/")}) | ${e.tier} | ${e.tags.join(", ")} | ` +

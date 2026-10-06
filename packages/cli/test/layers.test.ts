@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createGatewayServer, FakeLiveBridge, type GatewayServer, type SetSummary } from "@awh/core";
+import {
+  createGatewayServer,
+  FakeLiveBridge,
+  type GatewayServer,
+  type SetSummary,
+} from "@awh/core";
 import type { OpCaller } from "../src/op.js";
 import { layerFileName, runLayers, type LayerCaptureFn } from "../src/layers.js";
 
@@ -76,7 +81,13 @@ describe("runLayers — happy path", () => {
       return 1.5;
     };
 
-    const results = await runLayers(caller, ["track:0", "track:2"], "/tmp/awh-layers-test", capture, FAST);
+    const results = await runLayers(
+      caller,
+      ["track:0", "track:2"],
+      "/tmp/awh-layers-test",
+      capture,
+      FAST,
+    );
 
     expect(results).toHaveLength(2);
     expect(results.map((r) => r.trackPath)).toEqual(["track:0", "track:2"]);
@@ -116,7 +127,9 @@ describe("runLayers — happy path", () => {
     const caller = await startFakeGateway();
     const before = await soloMap(caller);
     const capture: LayerCaptureFn = async () => 1.0;
-    await expect(runLayers(caller, ["track:99"], "/tmp/x", capture, FAST)).rejects.toThrow(/track not found: track:99/);
+    await expect(runLayers(caller, ["track:99"], "/tmp/x", capture, FAST)).rejects.toThrow(
+      /track not found: track:99/,
+    );
     expect(await soloMap(caller)).toEqual(before);
   });
 });
@@ -138,9 +151,12 @@ describe("runLayers — negative control: a mid-run capture failure must still r
       return 1.0;
     };
 
-    await expect(runLayers(caller, ["track:0", "track:1", "track:2"], "/tmp/x", capture, { ...FAST, retries: 0 })).rejects.toThrow(
-      /AWH Capture Tap/,
-    );
+    await expect(
+      runLayers(caller, ["track:0", "track:1", "track:2"], "/tmp/x", capture, {
+        ...FAST,
+        retries: 0,
+      }),
+    ).rejects.toThrow(/AWH Capture Tap/);
 
     // track:2 must never have been reached: the run aborts instead of
     // continuing past a failed step.
@@ -169,7 +185,9 @@ describe("runLayers — negative control: a mid-run capture failure must still r
       if (trackPath === "track:0") throw new Error("boom");
       return 1.0;
     };
-    await expect(runLayers(caller, ["track:0", "track:1"], "/tmp/x", capture, { ...FAST, retries: 0 })).rejects.toThrow("boom");
+    await expect(
+      runLayers(caller, ["track:0", "track:1"], "/tmp/x", capture, { ...FAST, retries: 0 }),
+    ).rejects.toThrow("boom");
     expect(seen).toEqual(["track:0"]);
     expect(await soloMap(caller)).toEqual(before);
   });

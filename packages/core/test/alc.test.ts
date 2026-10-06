@@ -56,7 +56,9 @@ describe("alc template engine", () => {
     expect(xml.indexOf('<MidiKey Value="60"')).toBeGreaterThan(-1);
     expect(xml.indexOf('<MidiKey Value="60"')).toBeLessThan(xml.indexOf('<MidiKey Value="63"'));
     // attribute schema mirrored from the template's sample note
-    expect(xml).toContain('Time="2" Duration="0.5" Velocity="90" VelocityDeviation="0" OffVelocity="64" Probability="0.85" IsEnabled="true"');
+    expect(xml).toContain(
+      'Time="2" Duration="0.5" Velocity="90" VelocityDeviation="0" OffVelocity="64" Probability="0.85" IsEnabled="true"',
+    );
     expect(xml).toContain('IsEnabled="false"'); // the muted note
     // name escaped
     expect(xml).toContain('<Name Value="Hats &amp; &quot;loop&quot; &lt;1&gt;"');
@@ -92,7 +94,9 @@ describe("alc template engine", () => {
   });
 
   it("refuses empty clips", () => {
-    expect(() => renderAlcClip(templateXml, { name: "x", notes: [], lengthBeats: 4 })).toThrowError(/empty/);
+    expect(() => renderAlcClip(templateXml, { name: "x", notes: [], lengthBeats: 4 })).toThrowError(
+      /empty/,
+    );
   });
 });
 
@@ -111,7 +115,10 @@ describe("pack writer", () => {
     {
       relPath: "hats/rolling.alc",
       content: Buffer.from("fake"),
-      keywords: [["AWH", "hats"], ["AWH Tags", "garage & 2step"]],
+      keywords: [
+        ["AWH", "hats"],
+        ["AWH Tags", "garage & 2step"],
+      ],
     },
   ];
 
@@ -132,7 +139,9 @@ describe("pack writer", () => {
     expect(xmp).toContain("<ablFR:filePath>hats/rolling.alc</ablFR:filePath>");
     expect(xmp).toContain("<rdf:li>AWH|hats</rdf:li>");
     expect(xmp).toContain("<rdf:li>AWH Tags|garage &amp; 2step</rdf:li>");
-    expect(() => packXmp(props, [{ ...items[0]!, keywords: [["", "x"]] }])).toThrowError(/Empty tag/);
+    expect(() => packXmp(props, [{ ...items[0]!, keywords: [["", "x"]] }])).toThrowError(
+      /Empty tag/,
+    );
   });
 
   it("creates, regenerates, and protects foreign directories", async () => {
@@ -146,14 +155,14 @@ describe("pack writer", () => {
     ]);
     expect(existsSync(join(dir, "hats", "rolling.alc"))).toBe(false);
     expect(existsSync(join(dir, "kicks", "deep.alc"))).toBe(true);
-    expect(
-      await readFile(join(dir, "Ableton Folder Info", "Properties.cfg"), "utf8"),
-    ).toContain("Int PackRevision = 4;");
+    expect(await readFile(join(dir, "Ableton Folder Info", "Properties.cfg"), "utf8")).toContain(
+      "Int PackRevision = 4;",
+    );
 
     // a different pack id in the same dir is refused
-    await expect(
-      writePack(dir, { ...props, uniqueId: "other.pack" }, items),
-    ).rejects.toThrowError(/different pack/);
+    await expect(writePack(dir, { ...props, uniqueId: "other.pack" }, items)).rejects.toThrowError(
+      /different pack/,
+    );
 
     // a non-empty non-pack directory is refused
     const foreign = await mkdtemp(join(tmpdir(), "awh-foreign-"));

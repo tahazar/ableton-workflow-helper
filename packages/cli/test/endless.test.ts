@@ -18,9 +18,18 @@ import {
   // eslint-disable-next-line
 } from "../assets/endless/player.js";
 import { parseWavHeader, writeWavPcm16, expectedLoopDurationSeconds } from "../src/endless/wav.js";
-import { buildEndlessPlayer, checkEndlessSpecFile, endlessAssetsDir, SINGLE_FILE_WARN_BYTES } from "../src/endless/build.js";
+import {
+  buildEndlessPlayer,
+  checkEndlessSpecFile,
+  endlessAssetsDir,
+  SINGLE_FILE_WARN_BYTES,
+} from "../src/endless/build.js";
 import { buildEndlessDemo } from "../src/endless/demo.js";
-import { parseSectionsArg, sectionsFromReference, buildEndlessPlanYaml } from "../src/endless/plan.js";
+import {
+  parseSectionsArg,
+  sectionsFromReference,
+  buildEndlessPlanYaml,
+} from "../src/endless/plan.js";
 
 /**
  * Endless player tests (docs/design/endless-player.md "Verification bar").
@@ -47,7 +56,11 @@ function makeSpec(overrides: Record<string, unknown> = {}) {
       {
         id: "intro",
         bars: 2,
-        pools: { drums: ["d1.wav", "d2.wav"], bass: ["b1.wav"], pads: ["p1.wav", "p2.wav", "p3.wav"] },
+        pools: {
+          drums: ["d1.wav", "d2.wav"],
+          bass: ["b1.wav"],
+          pads: ["p1.wav", "p2.wav", "p3.wav"],
+        },
         layerMuteProbability: 0,
       },
       {
@@ -59,7 +72,10 @@ function makeSpec(overrides: Record<string, unknown> = {}) {
     ],
     transitions: {
       intro: [{ to: "drop", weight: 3 }],
-      drop: [{ to: "drop", weight: 1 }, { to: "intro", weight: 3 }],
+      drop: [
+        { to: "drop", weight: 1 },
+        { to: "intro", weight: 3 },
+      ],
     },
     rules: { noRepeatVariant: 2, maxConsecutive: 2, protectedLayers: ["bass"] },
     fluctuation: { gainWalkDb: 1.5 },
@@ -88,13 +104,24 @@ describe("player.js PRNG", () => {
 describe("player.js pickNextSection — weight distribution", () => {
   it("a 3:1 weighted edge pair lands close to 75%/25% over 10k draws", () => {
     const spec = makeSpec({
-      transitions: { hub: [{ to: "a", weight: 3 }, { to: "b", weight: 1 }] },
+      transitions: {
+        hub: [
+          { to: "a", weight: 3 },
+          { to: "b", weight: 1 },
+        ],
+      },
       rules: { noRepeatVariant: 2, maxConsecutive: 1000, protectedLayers: [] },
     });
     let rngState = seedToRngState(42);
     const counts: Record<string, number> = { a: 0, b: 0 };
     for (let i = 0; i < 10000; i++) {
-      const state = { rngState, currentSectionId: "hub", sectionHistory: ["hub"], variantHistory: {}, fluctuation: {} };
+      const state = {
+        rngState,
+        currentSectionId: "hub",
+        sectionHistory: ["hub"],
+        variantHistory: {},
+        fluctuation: {},
+      };
       const picked = pickNextSection(spec, state);
       counts[picked.sectionId] = (counts[picked.sectionId] ?? 0) + 1;
       rngState = picked.rngState;
@@ -107,7 +134,13 @@ describe("player.js pickNextSection — weight distribution", () => {
   it("the entry pick (currentSectionId null) always chooses spec.sections[0], no randomness consumed", () => {
     const spec = makeSpec();
     const rngState = seedToRngState(999);
-    const state = { rngState, currentSectionId: null, sectionHistory: [], variantHistory: {}, fluctuation: {} };
+    const state = {
+      rngState,
+      currentSectionId: null,
+      sectionHistory: [],
+      variantHistory: {},
+      fluctuation: {},
+    };
     const picked = pickNextSection(spec, state);
     expect(picked.sectionId).toBe("intro");
     expect(picked.rngState).toBe(rngState);
@@ -117,7 +150,13 @@ describe("player.js pickNextSection — weight distribution", () => {
 describe("player.js pickNextSection — maxConsecutive", () => {
   it("never lets a section repeat more than rules.maxConsecutive times in a row", () => {
     const spec = makeSpec({
-      transitions: { drop: [{ to: "drop", weight: 100 }, { to: "intro", weight: 1 }], intro: [{ to: "drop", weight: 1 }] },
+      transitions: {
+        drop: [
+          { to: "drop", weight: 100 },
+          { to: "intro", weight: 1 },
+        ],
+        intro: [{ to: "drop", weight: 1 }],
+      },
       rules: { noRepeatVariant: 2, maxConsecutive: 2, protectedLayers: [] },
     });
     let state = {
@@ -146,7 +185,10 @@ describe("player.js pickNextSection — maxConsecutive", () => {
   });
 
   it("a dead-end section (no outgoing edges) self-loops instead of throwing", () => {
-    const spec = makeSpec({ transitions: {}, rules: { noRepeatVariant: 2, maxConsecutive: 1, protectedLayers: [] } });
+    const spec = makeSpec({
+      transitions: {},
+      rules: { noRepeatVariant: 2, maxConsecutive: 1, protectedLayers: [] },
+    });
     const state = {
       rngState: seedToRngState(1),
       currentSectionId: "intro",
@@ -202,7 +244,13 @@ describe("player.js rollMutes — protectedLayers", () => {
     spec.rules.protectedLayers = ["bass"];
     let rngState = seedToRngState(11);
     for (let i = 0; i < 3000; i++) {
-      const state = { rngState, currentSectionId: null, sectionHistory: [], variantHistory: {}, fluctuation: {} };
+      const state = {
+        rngState,
+        currentSectionId: null,
+        sectionHistory: [],
+        variantHistory: {},
+        fluctuation: {},
+      };
       const r = rollMutes(spec, state, "drop");
       expect(r.muted).not.toContain("bass");
       rngState = r.rngState;
@@ -213,7 +261,13 @@ describe("player.js rollMutes — protectedLayers", () => {
     const spec = makeSpec();
     (spec.sections[1] as any).layerMuteProbability = 1;
     spec.rules.protectedLayers = ["bass"];
-    const state = { rngState: seedToRngState(4), currentSectionId: null, sectionHistory: [], variantHistory: {}, fluctuation: {} };
+    const state = {
+      rngState: seedToRngState(4),
+      currentSectionId: null,
+      sectionHistory: [],
+      variantHistory: {},
+      fluctuation: {},
+    };
     const r = rollMutes(spec, state, "drop");
     expect(r.muted).toContain("drums");
     expect(r.muted).toContain("pads");
@@ -343,7 +397,14 @@ describe("plan.ts", () => {
   });
 
   it("buildEndlessPlanYaml emits a scaffold with empty pools and a reachable transition loop", () => {
-    const text = buildEndlessPlanYaml({ name: "my-song", bpm: 140, sections: [{ id: "intro", bars: 8 }, { id: "drop", bars: 16 }] });
+    const text = buildEndlessPlanYaml({
+      name: "my-song",
+      bpm: 140,
+      sections: [
+        { id: "intro", bars: 8 },
+        { id: "drop", bars: 16 },
+      ],
+    });
     expect(text).toContain("drums: []");
     expect(text).toContain("bpm: 140");
     expect(text).toContain("intro: [{to: drop, weight: 1}]");
@@ -360,7 +421,10 @@ function wavBytesFor(durationSeconds: number, sampleRate = 44100): Buffer {
   return writeWavPcm16(samples, sampleRate, 1);
 }
 
-async function writeTinySpecProject(dir: string, opts: { badDuration?: boolean; skipFile?: string } = {}) {
+async function writeTinySpecProject(
+  dir: string,
+  opts: { badDuration?: boolean; skipFile?: string } = {},
+) {
   await mkdir(join(dir, "audio"), { recursive: true });
   const bpm = 120;
   const bars = 1; // 1 bar @ 120bpm = 2s
@@ -495,7 +559,9 @@ transitions:
     const dir = await tmp("awh-endless-nopartial-");
     const specPath = await writeTinySpecProject(dir, { skipFile: "audio/drop-drums-a.wav" });
     const outDir = join(dir, "out");
-    await expect(buildEndlessPlayer(specPath, outDir)).rejects.toThrow(/missing audio file "audio\/drop-drums-a\.wav"/);
+    await expect(buildEndlessPlayer(specPath, outDir)).rejects.toThrow(
+      /missing audio file "audio\/drop-drums-a\.wav"/,
+    );
     const { existsSync } = await import("node:fs");
     expect(existsSync(outDir)).toBe(false);
   });
@@ -630,7 +696,9 @@ describe("browser smoke (Playwright, stretch goal)", () => {
     try {
       browser = await chromium.launch();
     } catch {
-      console.warn("SKIPPED: no Chromium install found for playwright-core (npx playwright install chromium)");
+      console.warn(
+        "SKIPPED: no Chromium install found for playwright-core (npx playwright install chromium)",
+      );
       server.close();
       return;
     }
@@ -638,9 +706,12 @@ describe("browser smoke (Playwright, stretch goal)", () => {
       const page = await browser.newPage();
       await page.goto(`http://127.0.0.1:${port}/`);
       await page.click("#endless-play");
-      await page.waitForFunction(() => (window as any).__endlessEngine?.getDebugState().playing === true, {
-        timeout: 10000,
-      });
+      await page.waitForFunction(
+        () => (window as any).__endlessEngine?.getDebugState().playing === true,
+        {
+          timeout: 10000,
+        },
+      );
       const state1 = await page.evaluate(() => (window as any).__endlessEngine.getDebugState());
       await page.waitForTimeout(3000);
       const state2 = await page.evaluate(() => (window as any).__endlessEngine.getDebugState());

@@ -154,7 +154,9 @@ function parseCallCells(raw: unknown): CallCell[] {
     const cell = rawCell as Record<string, unknown>;
     for (const key of Object.keys(cell)) {
       if (!CELL_KEYS.has(key)) {
-        fail(`callCells[${i}]: unknown field "${key}" (expected one of ${[...CELL_KEYS].join(", ")})`);
+        fail(
+          `callCells[${i}]: unknown field "${key}" (expected one of ${[...CELL_KEYS].join(", ")})`,
+        );
       }
     }
     if (typeof cell.name !== "string" || cell.name.trim() === "") {
@@ -224,7 +226,11 @@ function parseResolveDegrees(raw: unknown): number[] {
 }
 
 function parseEvolution(raw: unknown): EvolutionStep[] {
-  if (raw === undefined) return DEFAULT_EVOLUTION.map((s) => ({ bars: [...s.bars] as [number, number], action: s.action }));
+  if (raw === undefined)
+    return DEFAULT_EVOLUTION.map((s) => ({
+      bars: [...s.bars] as [number, number],
+      action: s.action,
+    }));
   if (!Array.isArray(raw) || raw.length === 0) {
     fail(`"evolution" must be a non-empty array`);
   }
@@ -248,12 +254,22 @@ function parseEvolution(raw: unknown): EvolutionStep[] {
       step.bars[0] < 1 ||
       step.bars[1] < step.bars[0]
     ) {
-      fail(`evolution[${i}]: "bars" must be [a, b] with integers 1 <= a <= b (got ${JSON.stringify(step.bars)})`);
+      fail(
+        `evolution[${i}]: "bars" must be [a, b] with integers 1 <= a <= b (got ${JSON.stringify(step.bars)})`,
+      );
     }
-    if (typeof step.action !== "string" || !VALID_ACTIONS.includes(step.action as EvolutionAction)) {
-      fail(`evolution[${i}]: unknown action ${JSON.stringify(step.action)} (expected ${VALID_ACTIONS.join(" or ")})`);
+    if (
+      typeof step.action !== "string" ||
+      !VALID_ACTIONS.includes(step.action as EvolutionAction)
+    ) {
+      fail(
+        `evolution[${i}]: unknown action ${JSON.stringify(step.action)} (expected ${VALID_ACTIONS.join(" or ")})`,
+      );
     }
-    return { bars: [step.bars[0], step.bars[1]] as [number, number], action: step.action as EvolutionAction };
+    return {
+      bars: [step.bars[0], step.bars[1]] as [number, number],
+      action: step.action as EvolutionAction,
+    };
   });
 }
 
@@ -290,9 +306,11 @@ export function parsePhraseSpec(yamlText: string): PhraseSpec {
   }
 
   const callRegister = checkMidiRange(raw.callRegister, "callRegister") ?? DEFAULT_CALL_REGISTER;
-  const responseRegister = checkMidiRange(raw.responseRegister, "responseRegister") ?? DEFAULT_RESPONSE_REGISTER;
+  const responseRegister =
+    checkMidiRange(raw.responseRegister, "responseRegister") ?? DEFAULT_RESPONSE_REGISTER;
   const callCells = parseCallCells(raw.callCells);
-  const restMinBeats = checkNonNegNumber(raw.restMinBeats, "restMinBeats") ?? DEFAULT_REST_MIN_BEATS;
+  const restMinBeats =
+    checkNonNegNumber(raw.restMinBeats, "restMinBeats") ?? DEFAULT_REST_MIN_BEATS;
 
   let responseDelayBeats: [number, number] = DEFAULT_RESPONSE_DELAY;
   if (raw.responseDelayBeats !== undefined) {
@@ -307,7 +325,9 @@ export function parsePhraseSpec(yamlText: string): PhraseSpec {
       v[0] < 0 ||
       v[1] < v[0]
     ) {
-      fail(`"responseDelayBeats" must be [min, max] with 0 <= min <= max (got ${JSON.stringify(v)})`);
+      fail(
+        `"responseDelayBeats" must be [min, max] with 0 <= min <= max (got ${JSON.stringify(v)})`,
+      );
     }
     responseDelayBeats = [v[0], v[1]];
   }
@@ -323,8 +343,13 @@ export function parsePhraseSpec(yamlText: string): PhraseSpec {
 
   let turnaround: TurnaroundKind = DEFAULT_TURNAROUND;
   if (raw.turnaround !== undefined) {
-    if (typeof raw.turnaround !== "string" || !VALID_TURNAROUNDS.includes(raw.turnaround as TurnaroundKind)) {
-      fail(`"turnaround" must be one of ${VALID_TURNAROUNDS.join(", ")} (got ${JSON.stringify(raw.turnaround)})`);
+    if (
+      typeof raw.turnaround !== "string" ||
+      !VALID_TURNAROUNDS.includes(raw.turnaround as TurnaroundKind)
+    ) {
+      fail(
+        `"turnaround" must be one of ${VALID_TURNAROUNDS.join(", ")} (got ${JSON.stringify(raw.turnaround)})`,
+      );
     }
     turnaround = raw.turnaround as TurnaroundKind;
   }

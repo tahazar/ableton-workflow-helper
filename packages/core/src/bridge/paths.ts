@@ -64,9 +64,7 @@ export function parsePath(path: string): PathSegment[] {
 }
 
 export function formatPath(segments: PathSegment[]): string {
-  return segments
-    .map((s) => (s.kind === "main" ? "main" : `${s.kind}:${s.index}`))
-    .join("/");
+  return segments.map((s) => (s.kind === "main" ? "main" : `${s.kind}:${s.index}`)).join("/");
 }
 
 /** Convenience for building child paths. */

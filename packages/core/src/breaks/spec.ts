@@ -72,7 +72,9 @@ function parseSnareDisplacement(raw: unknown): number[] {
   if (!Array.isArray(raw)) fail(`"snareDisplacement" must be an array of integer step offsets`);
   return (raw as unknown[]).map((v, i) => {
     if (typeof v !== "number" || !Number.isInteger(v) || v === 0) {
-      fail(`snareDisplacement[${i}]: must be a non-zero integer step offset (got ${JSON.stringify(v)})`);
+      fail(
+        `snareDisplacement[${i}]: must be a non-zero integer step offset (got ${JSON.stringify(v)})`,
+      );
     }
     return v;
   });
@@ -101,12 +103,17 @@ export function parseBreakSpec(yamlText: string): BreakSpec {
     fail(`"name" must be a non-empty string`);
   }
 
-  const statementBars = raw.statementBars === undefined ? 1 : checkNonNegativeInt(raw.statementBars, "statementBars");
+  const statementBars =
+    raw.statementBars === undefined ? 1 : checkNonNegativeInt(raw.statementBars, "statementBars");
   const turnaroundDensity =
-    raw.turnaroundDensity === undefined ? 0.5 : checkUnitRange(raw.turnaroundDensity, "turnaroundDensity");
+    raw.turnaroundDensity === undefined
+      ? 0.5
+      : checkUnitRange(raw.turnaroundDensity, "turnaroundDensity");
   const snareDisplacement = parseSnareDisplacement(raw.snareDisplacement);
   const ghostShuffleChance =
-    raw.ghostShuffleChance === undefined ? 0.0 : checkUnitRange(raw.ghostShuffleChance, "ghostShuffleChance");
+    raw.ghostShuffleChance === undefined
+      ? 0.0
+      : checkUnitRange(raw.ghostShuffleChance, "ghostShuffleChance");
   let allowSubstitution = true;
   if (raw.allowSubstitution !== undefined) {
     if (typeof raw.allowSubstitution !== "boolean") {

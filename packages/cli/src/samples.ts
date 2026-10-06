@@ -210,12 +210,7 @@ export function planIndexUpdate(
   const unchanged: string[] = [];
   for (const f of currentFiles) {
     const existing = index.files[f.path];
-    if (
-      opts.rescan ||
-      !existing ||
-      existing.size !== f.size ||
-      existing.mtimeMs !== f.mtimeMs
-    ) {
+    if (opts.rescan || !existing || existing.size !== f.size || existing.mtimeMs !== f.mtimeMs) {
       toScan.push(f.path);
     } else {
       unchanged.push(f.path);
@@ -748,7 +743,16 @@ export async function runEmbed(opts: {
 
   await saveSamplesIndex(opts.indexPath, index);
 
-  return { embedded, neverEmbedded, stale, upToDate, unreadable, totalCandidates: readable.length, modelLabel: expectedLabel, index };
+  return {
+    embedded,
+    neverEmbedded,
+    stale,
+    upToDate,
+    unreadable,
+    totalCandidates: readable.length,
+    modelLabel: expectedLabel,
+    index,
+  };
 }
 
 /** The reference file's CLAP vector for `similar --semantic`: from the
@@ -764,7 +768,12 @@ export async function resolveReferenceClapVector(
   const absFile = resolve(file);
   const expectedLabel = expectedClapModelLabel(model);
   const existing = index.files[absFile];
-  if (existing && !existing.scan.unreadable && existing.clap && existing.clap.model === expectedLabel) {
+  if (
+    existing &&
+    !existing.scan.unreadable &&
+    existing.clap &&
+    existing.clap.model === expectedLabel
+  ) {
     return { vector: existing.clap, fromIndex: true };
   }
   if (!existsSync(absFile)) {
@@ -953,7 +962,9 @@ export function searchSemantic(
 ): SemanticSearchResult {
   const expectedLabel = expectedClapModelLabel(model);
   const allReadable = Object.values(index.files).filter((e) => !e.scan.unreadable);
-  const embeddedInSpace = allReadable.filter((e) => e.clap && e.clap.model === expectedLabel).length;
+  const embeddedInSpace = allReadable.filter(
+    (e) => e.clap && e.clap.model === expectedLabel,
+  ).length;
 
   // Filter first: reuse searchIndex's trait-filter logic with an empty
   // token query (matches everything token-wise, like `search --band low`
@@ -961,7 +972,11 @@ export function searchSemantic(
   const filtered = searchIndex(index, [], filterOpts);
   const hits = filtered
     .filter((h) => h.entry.clap && h.entry.clap.model === expectedLabel)
-    .map((h) => ({ path: h.path, score: cosineSimilarity(queryVector, h.entry.clap!.v), entry: h.entry }))
+    .map((h) => ({
+      path: h.path,
+      score: cosineSimilarity(queryVector, h.entry.clap!.v),
+      entry: h.entry,
+    }))
     .toSorted((a, b) => b.score - a.score || a.path.localeCompare(b.path));
 
   return {
@@ -1060,7 +1075,11 @@ export function rankSimilarSemantic(
   const excludeAbs = excludePath ? resolve(excludePath) : undefined;
   const hits = candidates
     .filter((c) => c.path !== excludeAbs)
-    .map((c) => ({ path: c.path, score: cosineSimilarity(referenceVector, c.vector.v), entry: c.entry }));
+    .map((c) => ({
+      path: c.path,
+      score: cosineSimilarity(referenceVector, c.vector.v),
+      entry: c.entry,
+    }));
   hits.sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
   return hits;
 }
@@ -1103,7 +1122,13 @@ export interface IndexStats {
   /** Pitch-tag coverage over eligible candidates (isPitchTagCandidate)
    * only, never over the whole library, since most files (hats, vocals,
    * melodic loops) were never candidates in the first place. */
-  pitchTag: { candidates: number; tagged: number; voiced: number; unvoiced: number; tooShort: number };
+  pitchTag: {
+    candidates: number;
+    tagged: number;
+    voiced: number;
+    unvoiced: number;
+    tooShort: number;
+  };
 }
 
 export function summarizeIndex(index: SamplesIndexFile): IndexStats {
@@ -1138,5 +1163,12 @@ export function summarizeIndex(index: SamplesIndexFile): IndexStats {
         meanS: durations.reduce((a, b) => a + b, 0) / durations.length,
       }
     : null;
-  return { totalFiles: entries.length, roots: index.roots, byType, byBand, durationStats, pitchTag };
+  return {
+    totalFiles: entries.length,
+    roots: index.roots,
+    byType,
+    byBand,
+    durationStats,
+    pitchTag,
+  };
 }

@@ -19,9 +19,7 @@ export function resolveMeasurementRecordPath(nameOrPath: string, libraryRoot: st
   if (existsSync(nameOrPath)) return nameOrPath;
   const named = join(libraryRoot, "measurements", `${nameOrPath}.json`);
   if (existsSync(named)) return named;
-  throw new Error(
-    `"${nameOrPath}" is neither a file nor library/measurements/${nameOrPath}.json`,
-  );
+  throw new Error(`"${nameOrPath}" is neither a file nor library/measurements/${nameOrPath}.json`);
 }
 
 export interface MasterDevice {

@@ -21,7 +21,15 @@ describe("path parsing", () => {
   });
 
   it("rejects malformed paths", () => {
-    for (const path of ["", "track", "track:x", "slot:1", "track:1/main", "bogus:0", "track:1/track:2"]) {
+    for (const path of [
+      "",
+      "track",
+      "track:x",
+      "slot:1",
+      "track:1/main",
+      "bogus:0",
+      "track:1/track:2",
+    ]) {
       expect(() => parsePath(path), path).toThrowError(BridgeError);
     }
   });

@@ -23,7 +23,11 @@ export interface WavInfo {
  * RIFF/WAVE file (v1 doesn't support other formats; see design doc).
  */
 export function parseWavHeader(buf: Buffer): WavInfo {
-  if (buf.length < 12 || buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WAVE") {
+  if (
+    buf.length < 12 ||
+    buf.toString("ascii", 0, 4) !== "RIFF" ||
+    buf.toString("ascii", 8, 12) !== "WAVE"
+  ) {
     throw new Error("not a WAV file (missing RIFF/WAVE header) — v1 only supports PCM WAV audio");
   }
   let offset = 12;
@@ -47,8 +51,9 @@ export function parseWavHeader(buf: Buffer): WavInfo {
     }
     offset = body + size + (size % 2); // chunks are word-aligned; odd sizes get a pad byte
   }
-  if (!fmt) throw new Error("WAV file has no \"fmt \" chunk — cannot determine sample rate/channels");
-  if (dataLength === undefined) throw new Error("WAV file has no \"data\" chunk — cannot determine duration");
+  if (!fmt) throw new Error('WAV file has no "fmt " chunk — cannot determine sample rate/channels');
+  if (dataLength === undefined)
+    throw new Error('WAV file has no "data" chunk — cannot determine duration');
   if (fmt.sampleRate <= 0 || fmt.numChannels <= 0 || fmt.bitsPerSample <= 0) {
     throw new Error("WAV file's fmt chunk has an invalid sample rate/channels/bit depth");
   }

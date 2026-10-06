@@ -198,7 +198,10 @@ function emitOpenHatChance(
   }
 }
 
-function pickGhostRole(kit: DrumKit, ghostRoles: readonly ("perc" | "shaker")[]): DrumRole | undefined {
+function pickGhostRole(
+  kit: DrumKit,
+  ghostRoles: readonly ("perc" | "shaker")[],
+): DrumRole | undefined {
   for (const role of ghostRoles) {
     if (kit[role] !== undefined) return role;
   }
@@ -458,13 +461,25 @@ function trapFamilyPlan(spec: TrapFamilyStyleSpec): StyleFactory {
                   ? [0, 0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875] // 32nd roll
                   : [0, 1 / 3, 2 / 3]; // triplet fill
             for (const offset of offsets) {
-              addHit(notes, kit, "hat-closed", b + offset, randVelocity(breath, loud ? ACCENT : GHOST));
+              addHit(
+                notes,
+                kit,
+                "hat-closed",
+                b + offset,
+                randVelocity(breath, loud ? ACCENT : GHOST),
+              );
               loud = !loud;
             }
           } else if (hatBase === "straight-8ths") {
             addHit(notes, kit, "hat-closed", b, randVelocity(breath, loud ? NORMAL : HAT_OFF16));
             loud = !loud;
-            addHit(notes, kit, "hat-closed", b + 0.5, randVelocity(breath, loud ? NORMAL : HAT_OFF16));
+            addHit(
+              notes,
+              kit,
+              "hat-closed",
+              b + 0.5,
+              randVelocity(breath, loud ? NORMAL : HAT_OFF16),
+            );
             loud = !loud;
           } else {
             // 16th bases: on-8ths normal, off-16ths soft (swung base delays them)
@@ -589,9 +604,7 @@ export function generateDrumPatternDetailed(
       : trapFamilyPlan(opts.styleSpec)
     : STYLE_FACTORIES[style];
   if (!factory) {
-    throw new Error(
-      `unknown drum style "${style}" (available: ${listDrumStyles().join(", ")})`,
-    );
+    throw new Error(`unknown drum style "${style}" (available: ${listDrumStyles().join(", ")})`);
   }
 
   const plan = factory(kit, ctx.beatsPerBar, ctx.density, ctx.rng, opts.variant);

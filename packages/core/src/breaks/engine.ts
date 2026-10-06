@@ -17,7 +17,13 @@ import type { NoteSpec } from "../bridge/types.js";
 import { sortNotes } from "../transforms/types.js";
 import { makeRng } from "../transforms/rng.js";
 import type { BreakSpec } from "./spec.js";
-import { type ChopMap, type ChopMapSlice, type ChopRole, type SliceNoteMode, sliceNote } from "./chopmap.js";
+import {
+  type ChopMap,
+  type ChopMapSlice,
+  type ChopRole,
+  type SliceNoteMode,
+  sliceNote,
+} from "./chopmap.js";
 
 /** Below this per-slice confidence, the map's role guesses are too shaky to
  *  trust for a cross-slice substitution. A chop map with all-low-confidence
@@ -100,7 +106,9 @@ export function generateBreakPattern(
   const nSlices = map.slices.length;
 
   if (nSlices === 0) {
-    warnings.push("this chop map has zero slices — nothing to sequence (chop a break with onsets first).");
+    warnings.push(
+      "this chop map has zero slices — nothing to sequence (chop a break with onsets first).",
+    );
     return {
       notes: [],
       warnings,
@@ -153,7 +161,11 @@ export function generateBreakPattern(
     // Snare displacement is decided before the trick roll and excludes it
     // (a displaced snare doesn't also stutter or substitute in place), which
     // keeps one rng draw sequence per step.
-    if (canonical.role === "snare" && spec.snareDisplacement.length > 0 && rng() < spec.turnaroundDensity) {
+    if (
+      canonical.role === "snare" &&
+      spec.snareDisplacement.length > 0 &&
+      rng() < spec.turnaroundDensity
+    ) {
       const delta = pick(spec.snareDisplacement, rng);
       const target = Math.min(Math.max(step + delta, statementSteps), totalSteps - 1);
       events.push({ step: target, index: canonical.index, velocity: VELOCITY_DEFAULT });
@@ -270,7 +282,10 @@ function ratchetEvents(
  * property tested). Zero slices is a state, not an error. Every candidate's
  * notes reference only real slice indices in `map`.
  */
-export function generateBreakFill(map: ChopMap, opts: GenerateBreakFillOptions): GeneratedBreakFill {
+export function generateBreakFill(
+  map: ChopMap,
+  opts: GenerateBreakFillOptions,
+): GeneratedBreakFill {
   const fillSpec = opts.fillSpec ?? DEFAULT_FILL_SPEC;
   const warnings: string[] = [];
   if (map.slices.length === 0) {
@@ -326,7 +341,11 @@ export function generateBreakFill(map: ChopMap, opts: GenerateBreakFillOptions):
         for (let s = 0; s < chunkSpan; s++) {
           for (let t = 0; t < 3; t++) {
             const slice = pool[(s * 3 + t) % pool.length]!;
-            events.push({ step: chunkStart + s + t / 3, index: slice.index, velocity: VELOCITY_DEFAULT });
+            events.push({
+              step: chunkStart + s + t / 3,
+              index: slice.index,
+              velocity: VELOCITY_DEFAULT,
+            });
           }
         }
       } else {

@@ -218,7 +218,10 @@ function parseSections(raw: unknown, layerIds: Set<string>): EndlessSection[] {
   });
 }
 
-function parseTransitions(raw: unknown, sectionIds: Set<string>): Record<string, EndlessTransitionEdge[]> {
+function parseTransitions(
+  raw: unknown,
+  sectionIds: Set<string>,
+): Record<string, EndlessTransitionEdge[]> {
   const obj = asPlainObject(raw, `"transitions"`);
   const transitions: Record<string, EndlessTransitionEdge[]> = {};
   for (const [fromId, edgesRaw] of Object.entries(obj)) {
@@ -230,7 +233,9 @@ function parseTransitions(raw: unknown, sectionIds: Set<string>): Record<string,
       const edge = asPlainObject(rawEdge, `transitions.${fromId}[${j}]`);
       checkUnknownKeys(edge, EDGE_KEYS, `transitions.${fromId}[${j}]`);
       if (typeof edge.to !== "string" || !sectionIds.has(edge.to)) {
-        fail(`transitions.${fromId}[${j}]: "to" (${JSON.stringify(edge.to)}) is not a declared section id`);
+        fail(
+          `transitions.${fromId}[${j}]: "to" (${JSON.stringify(edge.to)}) is not a declared section id`,
+        );
       }
       if (typeof edge.weight !== "number" || Number.isNaN(edge.weight) || edge.weight <= 0) {
         fail(`transitions.${fromId}[${j}] (-> "${edge.to}"): "weight" must be a positive number`);
@@ -253,21 +258,30 @@ function parseRules(raw: unknown, layerIds: Set<string>): EndlessRules {
   checkUnknownKeys(obj, RULES_KEYS, `"rules"`);
   let noRepeatVariant = DEFAULT_NO_REPEAT_VARIANT;
   if (obj.noRepeatVariant !== undefined) {
-    if (typeof obj.noRepeatVariant !== "number" || !Number.isInteger(obj.noRepeatVariant) || obj.noRepeatVariant < 0) {
+    if (
+      typeof obj.noRepeatVariant !== "number" ||
+      !Number.isInteger(obj.noRepeatVariant) ||
+      obj.noRepeatVariant < 0
+    ) {
       fail(`rules.noRepeatVariant must be a non-negative integer`);
     }
     noRepeatVariant = obj.noRepeatVariant;
   }
   let maxConsecutive = DEFAULT_MAX_CONSECUTIVE;
   if (obj.maxConsecutive !== undefined) {
-    if (typeof obj.maxConsecutive !== "number" || !Number.isInteger(obj.maxConsecutive) || obj.maxConsecutive < 1) {
+    if (
+      typeof obj.maxConsecutive !== "number" ||
+      !Number.isInteger(obj.maxConsecutive) ||
+      obj.maxConsecutive < 1
+    ) {
       fail(`rules.maxConsecutive must be a positive integer`);
     }
     maxConsecutive = obj.maxConsecutive;
   }
   let protectedLayers: string[] = [];
   if (obj.protectedLayers !== undefined) {
-    if (!Array.isArray(obj.protectedLayers)) fail(`rules.protectedLayers must be an array of layer ids`);
+    if (!Array.isArray(obj.protectedLayers))
+      fail(`rules.protectedLayers must be an array of layer ids`);
     protectedLayers = obj.protectedLayers.map((id, i) => {
       if (typeof id !== "string" || !layerIds.has(id)) {
         fail(`rules.protectedLayers[${i}]: "${id}" is not a declared layer id`);
@@ -323,7 +337,11 @@ export function parseEndlessSpec(yamlText: string): EndlessSpec {
   }
   let crossfadeMs = DEFAULT_CROSSFADE_MS;
   if (raw.crossfadeMs !== undefined) {
-    if (typeof raw.crossfadeMs !== "number" || Number.isNaN(raw.crossfadeMs) || raw.crossfadeMs < 0) {
+    if (
+      typeof raw.crossfadeMs !== "number" ||
+      Number.isNaN(raw.crossfadeMs) ||
+      raw.crossfadeMs < 0
+    ) {
       fail(`"crossfadeMs" must be a non-negative number`);
     }
     crossfadeMs = raw.crossfadeMs;

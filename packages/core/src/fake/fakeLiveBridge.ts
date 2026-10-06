@@ -178,9 +178,7 @@ export class FakeLiveBridge implements LiveBridge {
     const trackCount = opts.tracks ?? 4;
     const sceneCount = opts.scenes ?? 4;
     for (let i = 0; i < trackCount; i++) {
-      this.tracks.push(
-        makeTrack(i % 2 === 0 ? "midi" : "audio", `${i + 1} Track`, sceneCount),
-      );
+      this.tracks.push(makeTrack(i % 2 === 0 ? "midi" : "audio", `${i + 1} Track`, sceneCount));
     }
     this.returns.push(makeTrack("return", "A Return", 0));
     this.main = makeTrack("main", "Main", 0);
@@ -279,9 +277,7 @@ export class FakeLiveBridge implements LiveBridge {
       sessionClips: t.slots
         .map((clip, i) => (clip ? this.clipSummary(clip, `${path}/slot:${i}`) : null))
         .filter((c): c is ClipSummary => c !== null),
-      arrangementClips: t.arrangement.map((c, i) =>
-        this.clipSummary(c, `${path}/arr:${i}`, true),
-      ),
+      arrangementClips: t.arrangement.map((c, i) => this.clipSummary(c, `${path}/arr:${i}`, true)),
       devices: t.devices.map((d, i) => this.deviceSummary(d, `${path}/dev:${i}`)),
     });
 
@@ -335,9 +331,7 @@ export class FakeLiveBridge implements LiveBridge {
     return Promise.resolve({
       ...this.clipSummary(clip, path, arrangement),
       ...(clip.kind === "midi" ? { notes: [...clip.notes] } : {}),
-      ...(clip.kind === "audio"
-        ? { filePath: clip.filePath, warping: clip.warping }
-        : {}),
+      ...(clip.kind === "audio" ? { filePath: clip.filePath, warping: clip.warping } : {}),
     });
   }
 
@@ -610,7 +604,8 @@ export class FakeLiveBridge implements LiveBridge {
   deleteDevice(path: string): Promise<void> {
     const segments = parsePath(path);
     const last = segments[segments.length - 1];
-    if (last?.kind !== "dev") throw new BridgeError("bad_request", `expected a device path: ${path}`);
+    if (last?.kind !== "dev")
+      throw new BridgeError("bad_request", `expected a device path: ${path}`);
     const { owner } = this.deviceAt(path);
     const devices = "devices" in owner ? owner.devices : [];
     devices.splice(last.index, 1);
@@ -622,7 +617,10 @@ export class FakeLiveBridge implements LiveBridge {
     const p = device.params.find((x) => x.name === paramName);
     if (!p) throw new BridgeError("not_found", `no param "${paramName}" on ${devicePath}`);
     if (value < p.min || value > p.max) {
-      throw new BridgeError("bad_request", `value ${value} outside [${p.min}, ${p.max}] for "${paramName}"`);
+      throw new BridgeError(
+        "bad_request",
+        `value ${value} outside [${p.min}, ${p.max}] for "${paramName}"`,
+      );
     }
     p.value = value;
     return Promise.resolve();

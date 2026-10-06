@@ -106,10 +106,7 @@ export interface RenderClipSpec {
 
 /** Replace `<Elem Value="...">` for every occurrence of elem inside text. */
 function setValues(text: string, elem: string, value: string | number): string {
-  return text.replace(
-    new RegExp(`(<${elem} Value=")[^"]*(")`, "g"),
-    `$1${value}$2`,
-  );
+  return text.replace(new RegExp(`(<${elem} Value=")[^"]*(")`, "g"), `$1${value}$2`);
 }
 
 function formatNoteEvent(
@@ -156,8 +153,7 @@ export function renderAlcClip(templateXml: string, spec: RenderClipSpec): string
   // Template child order inside KeyTrack (Live writes Notes before MidiKey).
   const firstKeyTrack = clip.match(/<KeyTrack Id="\d+">([\s\S]*?)<\/KeyTrack>/);
   const midiKeyFirst = firstKeyTrack
-    ? firstKeyTrack[1]!.indexOf("<MidiKey") <
-      firstKeyTrack[1]!.indexOf("<Notes")
+    ? firstKeyTrack[1]!.indexOf("<MidiKey") < firstKeyTrack[1]!.indexOf("<Notes")
     : false;
 
   const byPitch = new Map<number, NoteSpec[]>();

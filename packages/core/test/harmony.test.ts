@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { parseProgression, type ChordSpec, type ScaleContextLike } from "../src/harmony/progression.js";
+import {
+  parseProgression,
+  type ChordSpec,
+  type ScaleContextLike,
+} from "../src/harmony/progression.js";
 import { renderChords, voiceProgression } from "../src/harmony/voicing.js";
 import { SCALES } from "../src/transforms/scales.js";
 import { BridgeError } from "../src/bridge/types.js";
@@ -65,10 +69,14 @@ describe("parseProgression", () => {
 });
 
 describe("voiceProgression", () => {
-  const chords = (text: string, scale: ScaleContextLike): ChordSpec[] => parseProgression(text, scale);
+  const chords = (text: string, scale: ScaleContextLike): ChordSpec[] =>
+    parseProgression(text, scale);
 
   it("close voicing sits near the target center", () => {
-    const voiced = voiceProgression(chords("I-IV-V-I", C_MAJOR), { center: 60, voiceLeading: false });
+    const voiced = voiceProgression(chords("I-IV-V-I", C_MAJOR), {
+      center: 60,
+      voiceLeading: false,
+    });
     for (const v of voiced) {
       const avg = v.pitches.reduce((a, b) => a + b, 0) / v.pitches.length;
       expect(Math.abs(avg - 60)).toBeLessThan(12);
@@ -192,7 +200,9 @@ describe("renderChords", () => {
     for (let i = 1; i < a.length; i++) {
       const prev = a[i - 1]!;
       const cur = a[i]!;
-      expect(cur.start > prev.start || (cur.start === prev.start && cur.pitch >= prev.pitch)).toBe(true);
+      expect(cur.start > prev.start || (cur.start === prev.start && cur.pitch >= prev.pitch)).toBe(
+        true,
+      );
     }
   });
 });

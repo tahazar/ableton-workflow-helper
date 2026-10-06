@@ -42,7 +42,9 @@ describe("resolveMeasurementRecordPath", () => {
     const measurementsDir = join(dir, "measurements");
     await mkdir(measurementsDir, { recursive: true });
     await writeFile(join(measurementsDir, "myrecord.json"), "{}");
-    expect(resolveMeasurementRecordPath("myrecord", dir)).toBe(join(measurementsDir, "myrecord.json"));
+    expect(resolveMeasurementRecordPath("myrecord", dir)).toBe(
+      join(measurementsDir, "myrecord.json"),
+    );
     await rm(dir, { recursive: true, force: true });
   });
 
@@ -59,7 +61,9 @@ describe("resolveMeasurementRecordPath", () => {
 
 describe("enrichActionsWithDevices", () => {
   it("names a real master-chain device in an action that mentions its class generically", () => {
-    const items = [{ id: "eq-band-1000hz", action: "EQ Eight on master: cut ~3.0 dB around 1000 Hz" }];
+    const items = [
+      { id: "eq-band-1000hz", action: "EQ Eight on master: cut ~3.0 dB around 1000 Hz" },
+    ];
     const devices: MasterDevice[] = [{ path: "main/dev:2", name: "EQ Eight" }];
     const [enriched] = enrichActionsWithDevices(items, devices);
     expect(enriched!.action).toContain('your existing "EQ Eight" (main/dev:2)');
@@ -67,21 +71,27 @@ describe("enrichActionsWithDevices", () => {
   });
 
   it("matches a RENAMED device by class word, not exact string", () => {
-    const items = [{ id: "low-band-correlation", action: "Utility on the bass group: Bass Mono at 120 Hz" }];
+    const items = [
+      { id: "low-band-correlation", action: "Utility on the bass group: Bass Mono at 120 Hz" },
+    ];
     const devices: MasterDevice[] = [{ path: "main/dev:0", name: "Master Utility (renamed)" }];
     const [enriched] = enrichActionsWithDevices(items, devices);
     expect(enriched!.action).toContain('your existing "Master Utility (renamed)" (main/dev:0)');
   });
 
   it("leaves the action untouched when no matching device exists on the chain", () => {
-    const items = [{ id: "eq-band-1000hz", action: "EQ Eight on master: cut ~3.0 dB around 1000 Hz" }];
+    const items = [
+      { id: "eq-band-1000hz", action: "EQ Eight on master: cut ~3.0 dB around 1000 Hz" },
+    ];
     const devices: MasterDevice[] = [{ path: "main/dev:0", name: "Reverb" }];
     const [enriched] = enrichActionsWithDevices(items, devices);
     expect(enriched!.action).toBe(items[0]!.action);
   });
 
   it("is a no-op (same array reference) with zero master devices — additive only, never required", () => {
-    const items = [{ id: "eq-band-1000hz", action: "EQ Eight on master: cut ~3.0 dB around 1000 Hz" }];
+    const items = [
+      { id: "eq-band-1000hz", action: "EQ Eight on master: cut ~3.0 dB around 1000 Hz" },
+    ];
     expect(enrichActionsWithDevices(items, [])).toBe(items);
   });
 });
@@ -110,7 +120,8 @@ async function startFakeGateway(): Promise<OpCaller> {
       body: args === undefined ? undefined : JSON.stringify(args),
     });
     const body = (await res.json()) as { result?: unknown; error?: string; message?: string };
-    if (!res.ok) throw new Error(`${body.error ?? "gateway error"}${body.message ? `: ${body.message}` : ""}`);
+    if (!res.ok)
+      throw new Error(`${body.error ?? "gateway error"}${body.message ? `: ${body.message}` : ""}`);
     return body.result;
   };
 }
@@ -298,7 +309,14 @@ describe.skipIf(!hasBuiltCli || !hasRealPython)("awh mix advise — full CLI int
     };
     await writeFile(
       join(libraryRoot, "measurements", "myreport.json"),
-      JSON.stringify({ schema: 1, saved: "2026-08-24", file: "x.wav", sha256: "x", measurements, findings: [] }),
+      JSON.stringify({
+        schema: 1,
+        saved: "2026-08-24",
+        file: "x.wav",
+        sha256: "x",
+        measurements,
+        findings: [],
+      }),
     );
     await writeFile(
       join(libraryRoot, "targets", "myclub.json"),
@@ -323,7 +341,17 @@ describe.skipIf(!hasBuiltCli || !hasRealPython)("awh mix advise — full CLI int
     );
 
     const result = await runCli(
-      ["--json", "mix", "advise", "--record", "myreport", "--target", "myclub", "--layers", "mylayers"],
+      [
+        "--json",
+        "mix",
+        "advise",
+        "--record",
+        "myreport",
+        "--target",
+        "myclub",
+        "--layers",
+        "mylayers",
+      ],
       { AWH_LIBRARY: libraryRoot },
     );
     expect(result.status).toBe(0);
@@ -424,10 +452,9 @@ describe.skipIf(!hasBuiltCli || !hasRealPython)("awh mix advise — full CLI int
     }
     writeFileSync(after, buffer);
 
-    const compareResult = await runCli(
-      ["--json", "mix", "advise", after, "--compare", "before"],
-      { AWH_LIBRARY: libraryRoot },
-    );
+    const compareResult = await runCli(["--json", "mix", "advise", after, "--compare", "before"], {
+      AWH_LIBRARY: libraryRoot,
+    });
     expect(compareResult.status).toBe(0);
     const parsed = JSON.parse(compareResult.stdout) as {
       compare: { id: string; status: string }[];

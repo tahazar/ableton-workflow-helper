@@ -14,7 +14,10 @@ function padTo4(buf: Buffer): Buffer {
 function refString(s: string): Buffer {
   return padTo4(Buffer.concat([Buffer.from(s, "ascii"), Buffer.alloc(1)]));
 }
-type TaggedArg = { tag: "i"; value: number } | { tag: "f"; value: number } | { tag: "s"; value: string };
+type TaggedArg =
+  | { tag: "i"; value: number }
+  | { tag: "f"; value: number }
+  | { tag: "s"; value: string };
 function refEncode(address: string, args: TaggedArg[]): Buffer {
   const parts: Buffer[] = [refString(address), refString(`,${args.map((a) => a.tag).join("")}`)];
   for (const a of args) {

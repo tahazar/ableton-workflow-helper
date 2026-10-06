@@ -54,10 +54,19 @@ export function parsePipeline(spec: string): PipelineStep[] {
       for (const pair of paramText.split(",")) {
         const [key, raw] = pair.split("=", 2);
         if (!key || raw === undefined) {
-          throw new BridgeError("bad_request", `malformed params in "${step}" (expected key=value)`);
+          throw new BridgeError(
+            "bad_request",
+            `malformed params in "${step}" (expected key=value)`,
+          );
         }
         params[key] =
-          raw === "true" ? true : raw === "false" ? false : /^-?\d+(\.\d+)?$/.test(raw) ? Number(raw) : raw;
+          raw === "true"
+            ? true
+            : raw === "false"
+              ? false
+              : /^-?\d+(\.\d+)?$/.test(raw)
+                ? Number(raw)
+                : raw;
       }
     }
     return { def, params, transform: def.make(params) };
