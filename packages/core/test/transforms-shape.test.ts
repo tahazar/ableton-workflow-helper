@@ -20,7 +20,7 @@ function ctx(overrides: Partial<TransformContext> = {}): TransformContext {
 
 describe("shapeTransforms registry", () => {
   it("exports all eight transforms", () => {
-    expect(shapeTransforms.map((t) => t.name).sort()).toEqual([
+    expect(shapeTransforms.map((t) => t.name).toSorted()).toEqual([
       "densify",
       "fill",
       "invert",

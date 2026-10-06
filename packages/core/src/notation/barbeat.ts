@@ -193,7 +193,7 @@ export function serializeNotation(notes: NoteSpec[], options: NotationOptions = 
 
   // Group simultaneous notes with identical duration/velocity/probability/muted
   // into chords for compactness.
-  const sorted = [...notes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  const sorted = [...notes].toSorted((a, b) => a.start - b.start || a.pitch - b.pitch);
   const groups: NoteSpec[][] = [];
   for (const note of sorted) {
     const group = groups.find(

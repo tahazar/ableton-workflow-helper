@@ -26,7 +26,7 @@ export function registerTransform(def: TransformDef): void {
 export function listTransforms(): { name: string; description: string }[] {
   return [...registry.values()]
     .map(({ name, description }) => ({ name, description }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .toSorted((a, b) => a.name.localeCompare(b.name));
 }
 
 export interface PipelineStep {
@@ -46,7 +46,7 @@ export function parsePipeline(spec: string): PipelineStep[] {
     if (!def) {
       throw new BridgeError(
         "bad_request",
-        `unknown transform "${name}" (known: ${[...registry.keys()].sort().join(", ")})`,
+        `unknown transform "${name}" (known: ${[...registry.keys()].toSorted().join(", ")})`,
       );
     }
     const params: Params = {};

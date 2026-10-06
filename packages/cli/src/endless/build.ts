@@ -199,7 +199,7 @@ export async function buildEndlessPlayer(
   const assets = endlessAssetsDir();
   const templateHtml = await readFile(join(assets, "index.html"), "utf8");
   const playerJs = await readFile(join(assets, "player.js"), "utf8");
-  const poolFiles = [...collectPoolFiles(spec)].sort();
+  const poolFiles = [...collectPoolFiles(spec)].toSorted();
 
   await mkdir(outDir, { recursive: true });
   const written: string[] = [];

@@ -257,7 +257,7 @@ describe("response recipes — determinism + property tests", () => {
         for (const seed of [1, 2, 3, 4, 5]) {
           const result = applyResponseRecipe(recipe, callNotes, scale, BASS_MUSIC_CR_SPEC, makeRng(seed));
           if (result.notes.length === 0) continue;
-          const sorted = [...result.notes].sort((a, b) => a.start - b.start);
+          const sorted = [...result.notes].toSorted((a, b) => a.start - b.start);
           const last = sorted[sorted.length - 1]!;
           const chroma = ((last.pitch - scale.rootNote) % 12 + 12) % 12;
           expect(BASS_MUSIC_CR_SPEC.resolveDegrees).toContain(chroma);
@@ -304,7 +304,7 @@ describe("response recipes — determinism + property tests", () => {
     expect(fitted.lengthBeats).toBe(4);
     for (const n of fitted.notes) expect(n.start + n.duration).toBeLessThanOrEqual(4 + 1e-9);
     expect(fitted.notes.length).toBeGreaterThan(0);
-    const last = [...fitted.notes].sort((a, b) => a.start - b.start).pop()!;
+    const last = [...fitted.notes].toSorted((a, b) => a.start - b.start).pop()!;
     const chroma = ((last.pitch - C_MINOR.rootNote) % 12 + 12) % 12;
     expect(BASS_MUSIC_CR_SPEC.resolveDegrees).toContain(chroma);
   });
@@ -412,7 +412,7 @@ describe("generatePhrase — property tests", () => {
       for (let c = 0; c < 4; c++) {
         const inCell = phrase.responseNotes.filter((n) => n.start >= c * cellBeats && n.start < (c + 1) * cellBeats);
         if (inCell.length === 0) continue;
-        const last = [...inCell].sort((a, b) => a.start - b.start).pop()!;
+        const last = [...inCell].toSorted((a, b) => a.start - b.start).pop()!;
         const chroma = ((last.pitch - C_MINOR.rootNote) % 12 + 12) % 12;
         expect(BASS_MUSIC_CR_SPEC.resolveDegrees).toContain(chroma);
       }

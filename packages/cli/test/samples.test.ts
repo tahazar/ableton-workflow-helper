@@ -1177,7 +1177,7 @@ describe("M11c pitch tagging — index/search logic (fake tagger)", () => {
     });
 
     const hits = searchIndex(index, [], { nearNoteHz: targetHz });
-    const paths = hits.map((h) => h.path).sort();
+    const paths = hits.map((h) => h.path).toSorted();
     expect(paths).toEqual(["/close.wav", "/on-note.wav"]);
   });
 

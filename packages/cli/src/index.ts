@@ -3060,7 +3060,7 @@ mix
     }
     const rows = (await readdir(dir))
       .filter((f) => f.endsWith(".json"))
-      .sort()
+      .toSorted()
       .map((f) => {
         const r = JSON.parse(readFileSync(join(dir, f), "utf8")) as RecordFile;
         const name = f.replace(/\.json$/, "");
@@ -3585,7 +3585,7 @@ async function resolveTriggerSeconds(
     if (detail.kind !== "midi" || !detail.notes?.length) {
       throw new Error(`${cmdOpts.triggerClip} is not a MIDI clip with notes`);
     }
-    const starts = [...new Set(detail.notes.map((n) => n.start))].sort((a, b) => a - b);
+    const starts = [...new Set(detail.notes.map((n) => n.start))].toSorted((a, b) => a - b);
     return {
       seconds: starts.map((b) => b * secPerBeat),
       cycle: detail.duration * secPerBeat,
@@ -3622,14 +3622,14 @@ async function resolveDuckTriggerBeats(
     if (detail.kind !== "midi") {
       throw new Error(`${cmdOpts.triggerClip} is not a MIDI clip`);
     }
-    const beats = [...new Set((detail.notes ?? []).map((n) => n.start))].sort((a, b) => a - b);
+    const beats = [...new Set((detail.notes ?? []).map((n) => n.start))].toSorted((a, b) => a - b);
     return { patternLengthBeats: detail.duration, beats };
   }
   if (!cmdOpts.length) {
     throw new Error("--pattern requires --length <beats> (the pattern's loop length)");
   }
   const beats = cmdOpts.pattern!.trim().length
-    ? [...new Set(cmdOpts.pattern!.split(",").map((b) => Number(b.trim())))].sort((a, b) => a - b)
+    ? [...new Set(cmdOpts.pattern!.split(",").map((b) => Number(b.trim())))].toSorted((a, b) => a - b)
     : [];
   return { patternLengthBeats: Number(cmdOpts.length), beats };
 }
@@ -5277,7 +5277,7 @@ program
         bars = cmdOpts.bars !== undefined ? Number(cmdOpts.bars) : voiced.length; // one bar per chord default
         const segmentLen = (bars * ARP_BEATS_PER_BAR) / voiced.length;
         chords = voiced.map((v, i) => ({
-          pitches: [...v.pitches].sort((a, b) => a - b),
+          pitches: [...v.pitches].toSorted((a, b) => a - b),
           startBeat: i * segmentLen,
           endBeat: (i + 1) * segmentLen,
         }));
@@ -6022,7 +6022,7 @@ refSections
     if (!track) throw new Error(`track not found: ${trackPath}`);
     const sections = track.arrangementClips
       .slice()
-      .sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0))
+      .toSorted((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0))
       .map((c) => {
         // lenient parse of "<name> <len>b [c=0.82]"; corrections may drop parts
         const m = c.name.match(/^(.*?)(?:\s+\d+b)?(?:\s+\[c=([\d.]+)\])?\s*$/);

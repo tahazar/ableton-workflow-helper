@@ -161,7 +161,7 @@ export function renderAlcClip(templateXml: string, spec: RenderClipSpec): string
     : false;
 
   const byPitch = new Map<number, NoteSpec[]>();
-  for (const note of [...spec.notes].sort((a, b) => a.start - b.start || a.pitch - b.pitch)) {
+  for (const note of [...spec.notes].toSorted((a, b) => a.start - b.start || a.pitch - b.pitch)) {
     const list = byPitch.get(note.pitch) ?? [];
     list.push(note);
     byPitch.set(note.pitch, list);
@@ -173,7 +173,7 @@ export function renderAlcClip(templateXml: string, spec: RenderClipSpec): string
   let nextNoteId = 1;
   const keyTrackBlocks: string[] = [];
   let trackId = 0;
-  for (const pitch of [...byPitch.keys()].sort((a, b) => a - b)) {
+  for (const pitch of [...byPitch.keys()].toSorted((a, b) => a - b)) {
     const events = byPitch
       .get(pitch)!
       .map((n) => formatNoteEvent(pattern, n, hasNoteIds ? nextNoteId++ : undefined, i3))

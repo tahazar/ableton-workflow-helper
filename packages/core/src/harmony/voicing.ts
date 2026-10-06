@@ -118,7 +118,7 @@ function spreadPitches(close: number[]): number[] {
   const midIdx = Math.floor(n / 2);
   const dropped = close.map((p, i) => (i === midIdx ? p - 12 : p));
   dropped[0] = dropped[0]! - 12;
-  return dropped.sort((a, b) => a - b);
+  return dropped.toSorted((a, b) => a - b);
 }
 
 /** Voice a chord progression into actual MIDI registers. Deterministic (no

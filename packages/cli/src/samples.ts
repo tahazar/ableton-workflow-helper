@@ -180,7 +180,7 @@ export async function walkSampleFiles(dir: string): Promise<string[]> {
     }
   }
   await walk(absDir);
-  return out.sort();
+  return out.toSorted();
 }
 
 // ---------------------------------------------------------------------------
@@ -333,7 +333,7 @@ export async function runIndex(
   }
 
   const fileLists = await Promise.all(absDirs.map((d) => walkSampleFiles(d)));
-  const allFiles = [...new Set(fileLists.flat())].sort();
+  const allFiles = [...new Set(fileLists.flat())].toSorted();
   const stats: FileStat[] = allFiles.map((p) => {
     const st = statSync(p);
     return { path: p, size: st.size, mtimeMs: st.mtimeMs };
@@ -962,7 +962,7 @@ export function searchSemantic(
   const hits = filtered
     .filter((h) => h.entry.clap && h.entry.clap.model === expectedLabel)
     .map((h) => ({ path: h.path, score: cosineSimilarity(queryVector, h.entry.clap!.v), entry: h.entry }))
-    .sort((a, b) => b.score - a.score || a.path.localeCompare(b.path));
+    .toSorted((a, b) => b.score - a.score || a.path.localeCompare(b.path));
 
   return {
     hits,

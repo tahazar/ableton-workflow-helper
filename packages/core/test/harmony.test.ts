@@ -150,7 +150,7 @@ describe("renderChords", () => {
     const expectedHits = 4 * 4;
     const expectedNotes = voiced.reduce((n, v) => n + v.pitches.length, 0) * 4;
     expect(notes.length).toBe(expectedNotes);
-    const starts = [...new Set(notes.map((n) => n.start))].sort((a, b) => a - b);
+    const starts = [...new Set(notes.map((n) => n.start))].toSorted((a, b) => a - b);
     expect(starts.length).toBe(expectedHits);
     for (const n of notes) expect(n.duration).toBe(0.9);
   });
@@ -179,7 +179,7 @@ describe("renderChords", () => {
     const threeChords = parseProgression("I-IV-V", C_MAJOR);
     const voiced = voiceProgression(threeChords, { voiceLeading: false });
     const notes = renderChords(voiced, { bars: 4, beatsPerBar: 4, rhythm: "whole" });
-    const starts = [...new Set(notes.map((n) => n.start))].sort((a, b) => a - b);
+    const starts = [...new Set(notes.map((n) => n.start))].toSorted((a, b) => a - b);
     expect(starts).toEqual([0, 16 / 3, 32 / 3]);
     for (const n of notes) expect(n.duration).toBeCloseTo(16 / 3, 9);
   });

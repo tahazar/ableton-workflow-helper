@@ -41,7 +41,7 @@ export function renderSections(
 
   plan.sections.forEach((section, sectionIndex) => {
     const sectionLength = section.bars * beatsPerBar;
-    const trackNames = Object.keys(section.tracks).sort();
+    const trackNames = Object.keys(section.tracks).toSorted();
 
     trackNames.forEach((trackName, trackIndex) => {
       const directive = section.tracks[trackName]!;

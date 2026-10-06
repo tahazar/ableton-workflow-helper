@@ -75,7 +75,7 @@ const SIMULTANEOUS_EPS = 1e-6;
 export function chordsFromNotes(notes: NoteSpec[]): ChordsFromNotesResult {
   if (notes.length === 0) return { kind: "melody" };
 
-  const sorted = [...notes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  const sorted = [...notes].toSorted((a, b) => a.start - b.start || a.pitch - b.pitch);
   const groups: NoteSpec[][] = [];
   for (const note of sorted) {
     const last = groups[groups.length - 1];
@@ -89,7 +89,7 @@ export function chordsFromNotes(notes: NoteSpec[]): ChordsFromNotesResult {
   if (groups.every((g) => g.length === 1)) return { kind: "melody" };
 
   const chords: ArpChordSpan[] = groups.map((group, i) => {
-    const pitches = [...new Set(group.map((n) => n.pitch))].sort((a, b) => a - b);
+    const pitches = [...new Set(group.map((n) => n.pitch))].toSorted((a, b) => a - b);
     const startBeat = group[0]!.start;
     const endBeat =
       i + 1 < groups.length
@@ -144,7 +144,7 @@ function contourCycle(contour: Exclude<ArpContour, "walk" | "as-voiced">, poolLe
       return out;
     }
     case "diverge":
-      return [...contourCycle("converge", poolLen)].reverse();
+      return [...contourCycle("converge", poolLen)].toReversed();
   }
 }
 
@@ -186,7 +186,7 @@ function poolWithOctaves(pitches: number[], octaves: number): number[] {
   for (let o = 0; o < octaves; o++) {
     for (const p of pitches) out.push(p + 12 * o);
   }
-  return out.sort((a, b) => a - b);
+  return out.toSorted((a, b) => a - b);
 }
 
 /**
@@ -220,7 +220,7 @@ export function generateArp(chords: ArpChordSpan[], spec: ArpSpec, opts: Generat
     const tLocal = ((t % cycleLen) + cycleLen) % cycleLen;
     const chord = findChordAt(chords, tLocal);
     const pool =
-      spec.contour === "as-voiced" ? [...chord.pitches].sort((a, b) => a - b) : poolWithOctaves(chord.pitches, spec.octaves);
+      spec.contour === "as-voiced" ? [...chord.pitches].toSorted((a, b) => a - b) : poolWithOctaves(chord.pitches, spec.octaves);
     const poolLen = pool.length;
 
     let pitchIndex: number;

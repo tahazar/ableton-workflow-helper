@@ -79,7 +79,7 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
 
     const results = await applyRecipePlan(caller, plan);
     expect(results.every((r) => r.matched)).toBe(true);
-    expect(results.map((r) => r.param).sort()).toEqual(["Ae Attack", "Algorithm", "Osc-A Coarse"]);
+    expect(results.map((r) => r.param).toSorted()).toEqual(["Ae Attack", "Algorithm", "Osc-A Coarse"]);
 
     const after = (await caller("device.get", { path: devicePath })) as DeviceDetail;
     const byName = new Map(after.params.map((p) => [p.name, p.value]));

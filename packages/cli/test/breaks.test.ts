@@ -543,7 +543,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks place — full CLI integration", () =>
       expect(detail.kind).toBe("midi");
       expect(detail.notes!.length).toBe(2);
       // GM fallback: C1 (36, kick) and D1 (38, snare) pass through unchanged.
-      expect(detail.notes!.map((n) => n.pitch).sort()).toEqual([36, 38]);
+      expect(detail.notes!.map((n) => n.pitch).toSorted()).toEqual([36, 38]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

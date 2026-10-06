@@ -76,5 +76,5 @@ export function clampPitch(pitch: number): number {
 
 /** Sort order used everywhere: time, then pitch. */
 export function sortNotes(notes: NoteSpec[]): NoteSpec[] {
-  return [...notes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  return [...notes].toSorted((a, b) => a.start - b.start || a.pitch - b.pitch);
 }

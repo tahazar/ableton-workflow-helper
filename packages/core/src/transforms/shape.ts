@@ -21,7 +21,7 @@ function isDownbeat(start: number, beatsPerBar: number): boolean {
 }
 
 function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
+  const sorted = [...values].toSorted((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0
     ? (sorted[mid - 1]! + sorted[mid]!) / 2
@@ -139,7 +139,7 @@ export const legato: TransformDef = {
     const gap = numParam(params, "gap", 0, { min: 0, max: 1 });
     return (notes) => {
       const sorted = sortNotes(notes);
-      const starts = [...new Set(sorted.map((n) => n.start))].sort((a, b) => a - b);
+      const starts = [...new Set(sorted.map((n) => n.start))].toSorted((a, b) => a - b);
       return sorted.map((n) => {
         const idx = starts.indexOf(n.start);
         const nextStart = idx + 1 < starts.length ? starts[idx + 1] : undefined;

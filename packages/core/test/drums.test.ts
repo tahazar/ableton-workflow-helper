@@ -160,7 +160,7 @@ describe("generateDrumPattern", () => {
 
   it("house: kicks on every beat", () => {
     const notes = generateDrumPattern("house", FULL_KIT, ctx({ bars: 1 }));
-    const kickBeats = notes.filter((n) => n.pitch === FULL_KIT.kick).map((n) => n.start).sort((a, b) => a - b);
+    const kickBeats = notes.filter((n) => n.pitch === FULL_KIT.kick).map((n) => n.start).toSorted((a, b) => a - b);
     expect(kickBeats).toEqual([0, 1, 2, 3]);
   });
 
@@ -169,7 +169,7 @@ describe("generateDrumPattern", () => {
     const kickBeats = notes
       .filter((n) => n.pitch === FULL_KIT.kick && n.start % 1 === 0)
       .map((n) => n.start)
-      .sort((a, b) => a - b);
+      .toSorted((a, b) => a - b);
     expect(kickBeats).toEqual([0, 1, 2, 3]);
   });
 
@@ -243,7 +243,7 @@ describe("drumFill", () => {
     // the fill region is a snare roll with increasing velocity
     const snareHits = after
       .filter((n) => n.pitch === FULL_KIT.snare)
-      .sort((a, b) => a.start - b.start);
+      .toSorted((a, b) => a.start - b.start);
     expect(snareHits.length).toBeGreaterThan(1);
     for (let i = 1; i < snareHits.length; i++) {
       expect(snareHits[i]!.velocity!).toBeGreaterThanOrEqual(snareHits[i - 1]!.velocity!);
@@ -998,7 +998,7 @@ describe("data-driven house-family StyleSpec generation (B4.1)", () => {
     const hatStarts = notes
       .filter((n) => n.pitch === FULL_KIT["hat-closed"])
       .map((n) => n.start)
-      .sort((a, b) => a - b);
+      .toSorted((a, b) => a - b);
     expect(hatStarts).toEqual([0.5, 1.5, 2.5, 3.5]);
   });
 
@@ -1032,7 +1032,7 @@ describe("data-driven house-family StyleSpec generation (B4.1)", () => {
       notes
         .filter((n) => n.pitch === FULL_KIT["hat-closed"] && !isNearGrid(n.start, 0.5))
         .map((n) => n.start)
-        .sort((a, b) => a - b);
+        .toSorted((a, b) => a - b);
     const straightOff16 = off16Starts(straight.notes);
     const swungOff16 = off16Starts(swung.notes);
     expect(straightOff16.length).toBeGreaterThan(0);

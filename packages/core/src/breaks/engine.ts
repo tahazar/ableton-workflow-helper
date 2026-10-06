@@ -286,7 +286,7 @@ export function generateBreakFill(map: ChopMap, opts: GenerateBreakFillOptions):
   const anyNonGhost = map.slices.filter((s) => s.role !== "ghost");
   const fallbackPool = anyNonGhost.length > 0 ? anyNonGhost : map.slices;
   const rushSlice = snarePool.length > 0 ? snarePool[0]! : fallbackPool[0]!;
-  const sortedByIndex = [...map.slices].sort((a, b) => a.index - b.index);
+  const sortedByIndex = [...map.slices].toSorted((a, b) => a.index - b.index);
   const tailSlices = sortedByIndex.slice(Math.floor(sortedByIndex.length / 2));
 
   const candidates: GeneratedBreakFillCandidate[] = [];
@@ -294,7 +294,7 @@ export function generateBreakFill(map: ChopMap, opts: GenerateBreakFillOptions):
     const seed = (opts.seed * 1000003 + i * 7919) >>> 0;
     const rng = makeRng(seed);
     const k = 1 + Math.floor(rng() * fillSpec.maxDevices);
-    const devicesUsed = shuffled(ALL_DEVICES, rng).slice(0, k).sort();
+    const devicesUsed = shuffled(ALL_DEVICES, rng).slice(0, k).toSorted();
 
     // Split the fill's grid steps into one contiguous chunk per device.
     const chunkLen = Math.max(1, Math.floor(spanSteps / devicesUsed.length));
