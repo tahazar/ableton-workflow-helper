@@ -285,7 +285,7 @@ export async function auditionSlug(params: {
 
   let fireArgs: (string | number)[];
   try {
-    fireArgs = await remoteFire({ trackIdx, slotIdx, ...(params.osc ?? {}) });
+    fireArgs = await remoteFire({ trackIdx, slotIdx, ...params.osc });
   } catch (err) {
     throw new Error(`placed ${params.source.slug} -> ${path} but could not fire it: ${(err as Error).message}`);
   }

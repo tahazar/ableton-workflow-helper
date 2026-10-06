@@ -998,10 +998,10 @@ export interface NormalizationStats {
  * natural scales (Hz-valued spectral stats vs. 0..1 band fractions). */
 export function computeNormalizationStats(vectors: number[][]): NormalizationStats {
   const dim = vectors[0]?.length ?? 0;
-  const mean = new Array(dim).fill(0) as number[];
+  const mean = Array.from({ length: dim }, () => 0);
   for (const v of vectors) for (let i = 0; i < dim; i++) mean[i]! += v[i]!;
   for (let i = 0; i < dim; i++) mean[i]! /= vectors.length || 1;
-  const std = new Array(dim).fill(0) as number[];
+  const std = Array.from({ length: dim }, () => 0);
   for (const v of vectors) for (let i = 0; i < dim; i++) std[i]! += (v[i]! - mean[i]!) ** 2;
   for (let i = 0; i < dim; i++) std[i] = Math.sqrt(std[i]! / (vectors.length || 1)) || 1; // 0 -> 1 guard
   return { mean, std };

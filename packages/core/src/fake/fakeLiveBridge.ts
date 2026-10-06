@@ -479,7 +479,7 @@ export class FakeLiveBridge implements LiveBridge {
       throw new BridgeError("bad_request", `scene index out of range: ${at}`);
     }
     this.scenes.splice(at, 0, { name: "" });
-    for (const track of [...this.tracks]) track.slots.splice(at, 0, null);
+    for (const track of this.tracks) track.slots.splice(at, 0, null);
     return Promise.resolve({ path: `scene:${at}` });
   }
 

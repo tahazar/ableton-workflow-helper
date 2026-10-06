@@ -92,10 +92,10 @@ function fakeScanRecord(path: string, overrides: Partial<ScanRecord> = {}): Scan
     spectral_centroid_hz: 1000,
     spectral_rolloff_hz: 3000,
     spectral_flatness: 0.2,
-    mfcc_means: new Array(13).fill(0) as number[],
+    mfcc_means: Array.from({ length: 13 }, () => 0),
     band_energy: { low: 0.6, mid: 0.3, high: 0.1 },
     dominant_band: "low",
-    similarity_vector: [...(new Array(13).fill(0) as number[]), 1000, 3000, 0.2, 0.6, 0.3, 0.1],
+    similarity_vector: [...(Array.from({ length: 13 }, () => 0)), 1000, 3000, 0.2, 0.6, 0.3, 0.1],
     low_band_hz: 120,
     high_band_hz: 2000,
     ...overrides,
@@ -489,7 +489,7 @@ function writeWavMono16(path: string, samples: number[], sr: number): void {
 
 function sineSamples(freq: number, sr: number, durS: number, amp = 0.6): number[] {
   const n = Math.round(durS * sr);
-  const out: number[] = new Array(n);
+  const out = Array.from({ length: n }, () => 0);
   for (let i = 0; i < n; i++) out[i] = amp * Math.sin((2 * Math.PI * freq * i) / sr);
   return out;
 }
@@ -505,7 +505,7 @@ function noiseSamples(durS: number, sr: number, amp = 0.5, seed = 1): number[] {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
   const n = Math.round(durS * sr);
-  const out: number[] = new Array(n);
+  const out = Array.from({ length: n }, () => 0);
   for (let i = 0; i < n; i++) {
     const env = Math.exp(-i / sr / 0.03);
     out[i] = amp * env * (rand() * 2 - 1);
@@ -711,7 +711,7 @@ describe("M11b semantic search — embed/search/similar logic (fake embedder, AW
     // under the stub (which always stamps "stub-v1" regardless of --model).
     const index = await loadSamplesIndex(indexPath);
     for (const entry of Object.values(index.files)) {
-      entry.clap = { model: "clap-general-v1", dim: 8, v: new Array(8).fill(0.1) };
+      entry.clap = { model: "clap-general-v1", dim: 8, v: Array.from({ length: 8 }, () => 0.1) };
     }
     await saveSamplesIndex(indexPath, index);
 

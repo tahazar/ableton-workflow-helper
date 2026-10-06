@@ -158,8 +158,8 @@ describe("euclideanMask", () => {
   });
 
   it("k=0 is all-false, k=n is all-true (degenerate edges, no throw)", () => {
-    expect(euclideanMask(0, 8)).toEqual(new Array(8).fill(false));
-    expect(euclideanMask(16, 16)).toEqual(new Array(16).fill(true));
+    expect(euclideanMask(0, 8)).toEqual(Array.from({ length: 8 }, () => false));
+    expect(euclideanMask(16, 16)).toEqual(Array.from({ length: 16 }, () => true));
   });
 
   it("negative rotate wraps the same as a positive equivalent", () => {

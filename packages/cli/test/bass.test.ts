@@ -180,7 +180,7 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
   });
 
   it("style fallback from a temp knowledge entry — tier printed, variants listable", async () => {
-    const { base } = await startFakeGateway();
+    await startFakeGateway();
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
       const knowledgeDir = join(dir, "knowledge", "rhythm");

@@ -236,7 +236,7 @@ export function advanceToNextSection(spec, state) {
 
   const sectionHistory = [...state.sectionHistory, sectionId].slice(-64);
   const variantHistory = { ...state.variantHistory };
-  const perSection = { ...(variantHistory[sectionId] ?? {}) };
+  const perSection = { ...variantHistory[sectionId] };
   for (const [layerId, v] of Object.entries(variants)) {
     perSection[layerId] = [...(perSection[layerId] ?? []), v.index].slice(-32);
   }

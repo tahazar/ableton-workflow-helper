@@ -167,7 +167,7 @@ function writeWavMono16(path: string, samples: number[], sr: number): void {
 
 function burst(sr: number, freq: number, amp: number, tau: number, noise: boolean): number[] {
   const length = Math.round(8 * tau * sr);
-  const out = new Array(length).fill(0);
+  const out = Array.from({ length }, () => 0);
   for (let i = 0; i < length; i++) {
     const t = i / sr;
     let env = Math.exp(-t / tau);
@@ -192,12 +192,12 @@ function synthBreakWav(path: string): void {
   ];
   const durS = leadS + (Math.max(...events.map((e) => e[0])) + 8) * stepDurS + 0.3;
   const n = Math.round(durS * sr);
-  const sig = new Array(n).fill(0);
+  const sig = Array.from({ length: n }, () => 0);
   for (const [step, kind] of events) {
     const t0 = leadS + step * stepDurS;
     const start = Math.round(t0 * sr);
     const b = kind === "kick" ? burst(sr, 55.0, 0.9, 0.04, false) : kind === "snare" ? burst(sr, 220.0, 0.6, 0.03, false) : burst(sr, 9000.0, 0.3, 0.012, true);
-    for (let i = 0; i < b.length && start + i < n; i++) sig[start + i] += b[i]!;
+    for (let i = 0; i < b.length && start + i < n; i++) sig[start + i]! += b[i]!;
   }
   writeWavMono16(path, sig, sr);
 }

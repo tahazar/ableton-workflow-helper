@@ -13,10 +13,12 @@
     "test": "pnpm --filter @awh/core --filter @awh/cli test",
     "coverage": "pnpm --filter @awh/core --filter @awh/cli coverage",
     "typecheck": "pnpm -r typecheck",
+    "lint": "oxlint --deny-warnings packages scripts",
     "setup:sdk": "node scripts/setup-sdk.mjs"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "2.1.9",
+    "oxlint": "1.87.0",
     "vitest": "2.1.9"
   }
 }

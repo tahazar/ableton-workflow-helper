@@ -195,7 +195,7 @@ function writeWavMono16(path: string, samples: number[], sr: number): void {
 
 function sineSamples(freq: number, sr: number, durS: number, amp = 0.3): number[] {
   const n = Math.round(durS * sr);
-  const out: number[] = new Array(n);
+  const out = Array.from({ length: n }, () => 0);
   for (let i = 0; i < n; i++) out[i] = amp * Math.sin((2 * Math.PI * freq * i) / sr);
   return out;
 }

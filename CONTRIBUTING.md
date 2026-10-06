@@ -24,6 +24,7 @@ in-memory Live Set), with no Live installation:
 
 ```sh
 pnpm install && pnpm build && pnpm test        # Node suites
+pnpm lint                                      # oxlint
 python3 -m venv .venv && .venv/bin/pip install -e 'analysis[dev]'
 .venv/bin/python -m pytest analysis            # Python suite
 ```

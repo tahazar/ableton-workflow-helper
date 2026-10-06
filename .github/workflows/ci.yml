@@ -40,6 +40,7 @@ jobs:
           python -m venv .venv
           .venv/bin/pip install -e 'analysis[dev]'
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
       - run: pnpm build
       # The extension is typechecked against types/ableton-sdk-shim.d.ts but
       # not bundled: the Ableton SDK is not redistributable.
