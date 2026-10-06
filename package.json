@@ -14,10 +14,13 @@
     "coverage": "pnpm --filter @awh/core --filter @awh/cli coverage",
     "typecheck": "pnpm -r typecheck",
     "lint": "oxlint --type-aware --deny-warnings packages scripts",
+    "fmt": "oxfmt packages scripts",
+    "fmt:check": "oxfmt --check packages scripts",
     "setup:sdk": "node scripts/setup-sdk.mjs"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "2.1.9",
+    "oxfmt": "0.72.0",
     "oxlint": "1.87.0",
     "oxlint-tsgolint": "7.0.2003",
     "vitest": "2.1.9"

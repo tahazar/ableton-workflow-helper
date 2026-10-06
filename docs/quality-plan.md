@@ -18,8 +18,8 @@ commit that finishes an item.
 
 - **Branch and PR:** work lands on `ableton-integration-brainstorm`, draft
   PR #13. One commit per item, pushed after each.
-- **Done:** Phase 0 items 1 to 4, L1 to L6.
-- **Next:** L7 to L9 (oxfmt). Then L10 to L11 (Ruff, Python typecheck),
+- **Done:** Phase 0 items 1 to 4, L1 to L7.
+- **Next:** L8 to L9 (oxfmt). Then L10 to L11 (Ruff, Python typecheck),
   L12 (CI lint job), L6b, G8, and Phase 1. L14, L15 and Phase 7 were
   added on 2026-10-06 from a review of agent-guardrail suggestions.
 - **Not verified:** the repository-settings half of Phase 0 item 3 (branch
@@ -213,11 +213,17 @@ L6b. `build: Ban any, ts-comments, TODOs, and unnecessary conditions`
      a condition the types already decide is a defensive check that hides
      intent). `no-magic-numbers` (3,741) stays off: velocities, PPQ and
      beat counts are the domain, not magic.
-L7. `build: Add oxfmt pinned to 0.72.0`
-    Config, `pnpm fmt` and `pnpm fmt:check`. Exact version pin, because a
+L7. `build: Add oxfmt pinned to 0.72.0` (done)
+    `.oxfmtrc.json`, `pnpm fmt` and `pnpm fmt:check`, over `packages` and
+    `scripts` (the same paths as lint). Exact version pin, because a
     pre-1.0 minor release can change output and fail CI on untouched
-    files. Exclude `packages/cli/assets/` unless the endless player
-    template still builds and passes its tests after formatting.
+    files. Default options: print width 100 changes 81 files (+3,000
+    / -1,281 lines), against 86 files at 90 and 97 files at 80. Markdown
+    elsewhere is out of scope: `knowledge/` and `library/` hold
+    executable `awh-*` blocks and generated `INDEX.md` files. The endless
+    assets are formatted: all three template placeholders in `index.html`
+    survive (the spec JSON gains surrounding whitespace, which
+    `JSON.parse` ignores) and the 32 endless tests pass.
 L8. `style: Format codebase with oxfmt`
     Formatting only, no other changes.
 L9. `chore: Ignore formatting commit in git blame`
