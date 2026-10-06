@@ -300,6 +300,9 @@ const HORIZON_S = 0.2; // schedule-ahead window
  * lives inside this function (never at module top level), so importing this
  * file in Node never touches AudioContext.
  */
+// Over the length limit since formatting. Web Audio use must stay inside this
+// function (see above), so split it into inner helpers, not module-level ones.
+// oxlint-disable-next-line max-lines-per-function
 export function createEngine(spec, options = {}) {
   const AudioContextCtor = options.AudioContextCtor ?? (typeof window !== "undefined" ? window.AudioContext || window.webkitAudioContext : undefined);
   if (!AudioContextCtor) throw new Error("endless player: no AudioContext available in this environment");

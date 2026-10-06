@@ -310,10 +310,10 @@ describe("response recipes — determinism + property tests", () => {
   });
 
   it("recipe registry rejects an unknown recipe name", () => {
-    // @ts-expect-error deliberately invalid recipe name
-    expect(() => applyResponseRecipe("echo-loud", callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1))).toThrowError(
-      /unknown response recipe/,
-    );
+    expect(() =>
+      // @ts-expect-error deliberately invalid recipe name
+      applyResponseRecipe("echo-loud", callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1)),
+    ).toThrowError(/unknown response recipe/);
   });
 });
 

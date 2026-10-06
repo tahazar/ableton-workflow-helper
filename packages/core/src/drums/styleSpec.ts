@@ -246,6 +246,9 @@ function parseTrapFamilySpec(raw: Record<string, unknown>): TrapFamilyStyleSpec 
   };
 }
 
+// Over the length limit since formatting; split with the shared spec-parser
+// helpers (quality plan, cleanup).
+// oxlint-disable-next-line max-lines-per-function
 function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpec {
   for (const key of Object.keys(raw)) {
     if (!HOUSE_TOP_LEVEL_KEYS.has(key)) {
