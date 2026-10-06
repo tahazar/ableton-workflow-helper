@@ -150,7 +150,7 @@ describe("readMasterChainDevices", () => {
 // ---------------------------------------------------------------------------
 
 const CLI_DIST = fileURLToPath(new URL("../dist/index.js", import.meta.url));
-const MAIN_VENV_PYTHON = "/home/user/ableton-workflow-helper/.venv/bin/python";
+const MAIN_VENV_PYTHON = fileURLToPath(new URL("../../../.venv/bin/python", import.meta.url));
 const hasBuiltCli = existsSync(CLI_DIST);
 const hasRealPython = existsSync(MAIN_VENV_PYTHON);
 

@@ -17,6 +17,7 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+coverage/
 
 # --- Built extension artifacts (rebuilt from source) ---
 *.ablx
@@ -26,6 +27,7 @@ build/
 
 # --- Python (analysis engine) ---
 .venv/
+.coverage
 __pycache__/
 *.pyc
 *.egg-info/

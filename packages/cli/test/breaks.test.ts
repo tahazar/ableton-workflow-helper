@@ -12,7 +12,7 @@ import { createGatewayServer, FakeLiveBridge, type ClipDetail, type GatewayServe
 // symlink the real analysis/ dir alongside a scratch `library/` so `awh
 // breaks chop` can find the real awh_analysis package without touching the
 // repo's actual library/.
-const MAIN_VENV_PYTHON = "/home/user/ableton-workflow-helper/.venv/bin/python";
+const MAIN_VENV_PYTHON = fileURLToPath(new URL("../../../.venv/bin/python", import.meta.url));
 const hasRealPython = existsSync(MAIN_VENV_PYTHON);
 const REPO_ANALYSIS_DIR = fileURLToPath(new URL("../../../analysis", import.meta.url));
 

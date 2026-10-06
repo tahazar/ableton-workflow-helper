@@ -54,7 +54,7 @@ import {
  *    machinery, which only needs deterministic feature records, not real
  *    audio analysis.
  *  - Real-scanner tests (spawn `python -m awh_analysis samplescan` against
- *    the main checkout's venv) for the negative-control similarity
+ *    the repo's .venv) for the negative-control similarity
  *    ranking, which needs real MFCC/spectral features to be meaningful.
  *
  * Every test sets AWH_SAMPLES_INDEX to a tmp path and never writes to the
@@ -457,11 +457,11 @@ describe("summarizeIndex", () => {
 
 // ---------------------------------------------------------------------------
 // Real python scanner: negative-control similarity ranking + real index
-// build. Uses the main checkout's venv; skipped if it isn't present so the
+// build. Uses the repo's .venv; skipped if it isn't present so the
 // rest of the suite still runs.
 // ---------------------------------------------------------------------------
 
-const MAIN_VENV_PYTHON = "/home/user/ableton-workflow-helper/.venv/bin/python";
+const MAIN_VENV_PYTHON = fileURLToPath(new URL("../../../.venv/bin/python", import.meta.url));
 const hasRealPython = existsSync(MAIN_VENV_PYTHON);
 
 function writeWavMono16(path: string, samples: number[], sr: number): void {
