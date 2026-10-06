@@ -15,43 +15,40 @@ related: [rhythm/burial-2step-skeleton, rhythm/burial-velocity-ghost, rhythm/bur
 
 ## The rule
 
-Burial has said he builds his tracks in Sound Forge — an audio waveform
-editor, not a sequencer with a piano-roll grid — and places drum samples one
-at a time by eye/ear against the waveform, with no quantize step (Wire
-unedited transcript; corroborated in MusicRadar's "rubbish, dying computer"
-retrospective and a dubstepforum thread on his sequencing setup). He's quoted
-describing the resulting look of a finished drum edit: "I know when I'm happy
-with my drums because they look like a nice fishbone" (via MusicRadar's
-retrospective, drawing on the Wire interview), and on avoiding a locked grid
-even in the echoes: "I'm not that into tunes that are so sequenced that all
-you can hear is the perfect grid, even on the echoes." A dubstepforum thread
-on his drum-sequencing approach summarizes the mechanism plainly: multi-
-tracking audio files over each other in Sound Forge with no quantize "is what
-gives his tracks that swing." Mark Fisher, writing in The Wire (Dec 2007,
-issue 286), characterized the resulting drum pattern as sounding "more like
-the klak-klak of a graffiti-splashed ghost train idling in sidings than
-rhythmic" — i.e. critics hear the off-grid placement as a departure from
-metronomic dance-music rhythm, not a rhythmic defect.
+Burial has said he builds tracks in Sound Forge, an audio waveform editor
+with no piano-roll grid, placing drum samples one at a time by eye and ear
+against the waveform, with no quantize step (Wire unedited transcript;
+corroborated in MusicRadar's "rubbish, dying computer" retrospective and a
+dubstepforum thread on his sequencing setup). On a finished drum edit: "I
+know when I'm happy with my drums because they look like a nice fishbone"
+(via MusicRadar's retrospective, drawing on the Wire interview). On avoiding
+a locked grid: "I'm not that into tunes that are so sequenced that all you
+can hear is the perfect grid, even on the echoes." The dubstepforum thread
+states the mechanism: multi-tracking audio files over each other in Sound
+Forge with no quantize "is what gives his tracks that swing." Mark Fisher,
+in The Wire (Dec 2007, issue 286), described the drum pattern as sounding
+"more like the klak-klak of a graffiti-splashed ghost train idling in
+sidings than rhythmic". Critics hear the off-grid placement as a departure
+from metronomic dance rhythm, not a defect.
 
-**Implication for reproducing the feel**: this is NOT swing-as-a-percentage
-applied to a grid. It's manual placement per-hit against a waveform, so no
-swing amount is "the" Burial number — any swing/humanize setting below is an
-approximation for a sequencer-based workflow, not a sourced measurement of
-his actual displacement.
+**Implication for reproducing the feel**: this is not swing-as-a-percentage
+on a grid. It is per-hit manual placement against a waveform, so there is no
+single Burial swing number. The settings below approximate it for a
+sequencer workflow; they are not a measurement of his displacement.
 
 ## Executable
 
-Approximate pipeline (own approximation of the cited by-ear workflow, applied
-on top of a skeleton from `rhythm/burial-2step-skeleton` [sourced]):
+Approximate pipeline (an authored approximation of the cited by-ear
+workflow), applied on top of a skeleton from `rhythm/burial-2step-skeleton`
+[sourced]:
 
 - pipeline: `swing:grid=0.25,amount=0.5 humanize:timing=0.035,velocity=12`
 
-Rationale for the numbers: `swing:grid=0.25` (16th-note grid) with a
-moderate `amount` gets the alternating-hat lean that critics/tutorials
-describe as "shuffled," but the wider `humanize:timing` term does more of
-the work — it's the closer analogue to genuinely non-grid, per-hit placement
-than any fixed swing ratio, since Burial's actual method has no swing grid to
-measure against. Push `humanize:timing` higher (0.05-0.06) and drop
-`swing:amount` toward 0 for a more "unquantized waveform edit" feel; keep
-`swing` if the goal is a more conventional shuffled-garage read rather than
-Burial's specific loose, by-ear character.
+Rationale: `swing:grid=0.25` (16th-note grid) with a moderate `amount`
+gives the alternating-hat lean critics and tutorials call "shuffled". The
+wider `humanize:timing` term does more of the work, since per-hit jitter is
+closer to non-grid placement than any fixed swing ratio, and Burial's method
+has no swing grid to measure against. For a more "unquantized waveform edit"
+feel, push `humanize:timing` to 0.05-0.06 and drop `swing:amount` toward 0.
+Keep `swing` for a conventional shuffled-garage read instead of Burial's
+loose, by-ear character.

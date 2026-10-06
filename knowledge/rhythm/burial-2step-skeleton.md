@@ -14,26 +14,25 @@ related: [rhythm/burial-swing-feel, rhythm/burial-velocity-ghost, rhythm/burial-
 ---
 # Burial 2-step skeleton
 
-Two distinct kick/backbeat grammars turn up across producer breakdowns of
-Burial's tracks and Burial-style tutorials — both are cited "skeletons" to
-place hits against, not a single canonical pattern.
+Producer breakdowns of Burial's tracks and Burial-style tutorials describe
+two kick/backbeat grammars. Both are cited skeletons to place hits against,
+not one canonical pattern.
 
 ## Executable
 
-**Skeleton A — classic 2-step (kick + rimshot backbeat).** Kick on beat 1
-with a second kick placed between the two backbeat hits; rimshot standing in
-for a straight snare (per the dogsonacid MJ Cole/Burial thread — "in place of
-a snare, Burial often opts for a rim shot"); a "main" hat placed between kick
-and backbeat plus a shuffled hat for the skip feel (per the dubstepforum
-drum-sequencing thread and the MusicRadar tutorial's layered
-sidestick/rimshot + shuffled hi-hat groove).
+**Skeleton A: classic 2-step (kick + rimshot backbeat).** Kick on beat 1
+with a second kick between the two backbeat hits. A rimshot stands in for
+the snare (dogsonacid MJ Cole/Burial thread: "in place of a snare, Burial
+often opts for a rim shot"). A "main" hat sits between kick and backbeat,
+plus a shuffled hat for the skip feel (dubstepforum drum-sequencing thread;
+MusicRadar tutorial's layered sidestick/rimshot + shuffled hi-hat groove).
 
 ```awh-notation
 sig 4/4
-# ILLUSTRATIVE — constructed from the cited descriptions (dogsonacid MJ
+# Illustrative, constructed from the cited descriptions (dogsonacid MJ
 # Cole/Burial thread; dubstepforum drum-sequencing thread; MusicRadar
-# "How to make a Burial-style beat" tutorial). NOT a verified transcription
-# of any specific Burial track — no source gives exact hit positions.
+# "How to make a Burial-style beat" tutorial). Not a verified transcription
+# of any specific Burial track; no source gives exact hit positions.
 1|1     C1   1/4  v100   # kick, beat 1
 1|2     C#1  1/4  v95    # rimshot standing in for snare
 1|2.75  C1   1/4  v80    # second kick, between the two backbeat hits
@@ -42,15 +41,15 @@ sig 4/4
 1|4.5   F#1  1/4  v55    # shuffled hat, pickup into next bar
 ```
 
-**Skeleton B — four-to-floor-plus (Ghost Hardware recreation).** Attack
-Magazine's "Beat Dissected: Burial – Ghost Hardware" tutorial describes a
-simpler kick grammar for that track: four-to-the-floor with an extra kick on
-the final eighth of the bar, every hit nudged off the Ableton grid by hand.
+**Skeleton B: four-to-floor-plus (Ghost Hardware recreation).** Attack
+Magazine's "Beat Dissected: Burial – Ghost Hardware" describes a simpler
+kick grammar for that track: four-to-the-floor with an extra kick on the
+final eighth of the bar, every hit nudged off the Ableton grid by hand.
 
 ```awh-notation
 sig 4/4
 # Per Attack Magazine "Beat Dissected: Burial - Ghost Hardware" (a
-# recreation/tutorial breakdown, not a leaked stem transcription) — cited,
+# recreation/tutorial breakdown, not a leaked stem transcription); cited,
 # not own analysis.
 1|1    C1  1/4  v100
 1|2    C1  1/4  v95
@@ -59,21 +58,20 @@ sig 4/4
 1|4.5  C1  1/4  v85   # extra kick, final eighth of the bar
 ```
 
-Apply `rhythm/burial-swing-feel` [sourced] and `rhythm/burial-velocity-ghost`
-[sourced] pipelines on top of either skeleton — neither block above carries
-timing displacement; that's a separate, deliberately non-grid step per the
-cited workflow.
+Apply the `rhythm/burial-swing-feel` [sourced] and
+`rhythm/burial-velocity-ghost` [sourced] pipelines on top of either
+skeleton. Neither block carries timing displacement; in the cited workflow
+that is a separate, deliberately off-grid step.
 
 ## The rule
 
-Two backbeat hits (2 and 4) framed by a moving second kick is the core of
-2-step; Burial's own variant substitutes a rimshot for the snare on most
-tracks (dogsonacid, MJ Cole/Burial typish garage/2step breaks thread) and
-layers a shuffled hat against a steadier "main" hat (dubstepforum drum-
-sequencing thread; MusicRadar tutorial). The Ghost Hardware-style four-to-
-floor-plus kick (Attack Magazine) is a second, house-adjacent kick grammar
-used elsewhere in the catalogue — treat the two skeletons as alternative
-starting cells, not a single rule, when generating a Burial-flavoured pattern.
-Context: Untrue-era tracks generally sit ~130-140bpm (album average ~133bpm
-per songbpm.com/getsongbpm aggregate data), consistent with the half-time UK
-dubstep tempo range.
+Two backbeat hits (2 and 4) framed by a moving second kick are the core of
+2-step. Burial's variant substitutes a rimshot for the snare on most tracks
+(dogsonacid, MJ Cole/Burial typish garage/2step breaks thread) and layers a
+shuffled hat against a steadier "main" hat (dubstepforum drum-sequencing
+thread; MusicRadar tutorial). The Ghost Hardware-style four-to-floor-plus
+kick (Attack Magazine) is a second, house-adjacent grammar used elsewhere in
+the catalogue. Treat the two skeletons as alternative starting cells when
+generating a Burial-flavoured pattern. Untrue-era tracks sit around
+130-140bpm (album average ~133bpm per songbpm.com/getsongbpm aggregate
+data), consistent with the half-time UK dubstep tempo range.

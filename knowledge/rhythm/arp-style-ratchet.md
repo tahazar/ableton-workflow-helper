@@ -12,102 +12,84 @@ related: [rhythm/arp-style-trance-16ths, rhythm/arp-style-melodic-techno, rhythm
 ---
 # Ratchets/rolls as a rhythmic device
 
-**Sourcing note (this session):** page fetches were mostly blocked; research
-went through web-search excerpts (same constraint as this topic's other new
-entries). The mechanical definition of "ratchet" is well corroborated across
-several sequencer-technique pages. The genre-lineage framing this entry was
-asked to cover (psy/techno, Berlin-school) turned out THIN on ratchet-
-specific technical detail once searched directly — Berlin-school material
-talks about sequences and delay/reverb treatment in general, not ratchet
-counts or placement, and psytrance-specific searches returned sample-pack
-marketing rather than technique writing. **The one genuinely detailed,
-numeric source on ratchet PLACEMENT and RESTRAINT this session found is
-about trap hi-hat rolls, not psy/techno** — cited plainly as such below and
-used for the general placement/restraint principle, not as a psy/techno
-fact.
+**Sourcing note:** research went through search excerpts, like this
+topic's other entries. The mechanical definition of "ratchet" is well
+corroborated across several sequencer-technique pages. The genre lineage
+(psy/techno, Berlin-school) is thin on ratchet-specific detail: Berlin-school
+material covers sequences and delay/reverb treatment in general, not ratchet
+counts or placement, and psytrance searches returned sample-pack marketing
+rather than technique writing. The one detailed, numeric source on ratchet
+placement and restraint is about trap hi-hat rolls, not psy/techno. It is
+cited as such and used for the general principle, not as a psy/techno fact.
 
 ## The rule
 
-### What a ratchet actually is, mechanically
+### What a ratchet is, mechanically
 
 "Ratcheting is a 'subdivision' adjustment... it allows you to add trills and
 note flurries that are shorter than the chosen division, without adjusting
-the clock speed or note division" — a ratcheted step repeats at a faster
-internal subdivision while the sequencer's own clock and the surrounding
-steps stay put (Sweetwater InSync, "How to Ratchet Notes in a Step
-Sequencer"). A modular-synthesis walkthrough describes the equivalent
-patch mechanically: an occasional trigger opens a gate for a set duration
-("two clock pulses long," in its example) which lets a faster ratchet
-clock through for exactly that many repeats before closing again
-(learningmodular.com, "Patching a Ratcheting Sequence"). Both sources agree
-on the core shape the pinned schema already captures: one step position,
-subdivided into N equal repeats, rather than a change to the underlying
-grid — exactly what `ratchets: {stepIndex: count}` encodes.
+the clock speed or note division." A ratcheted step repeats at a faster
+internal subdivision while the clock and surrounding steps stay put
+(Sweetwater InSync, "How to Ratchet Notes in a Step Sequencer"). A modular
+walkthrough describes the equivalent patch: an occasional trigger opens a
+gate for a set duration ("two clock pulses long" in its example), letting a
+faster ratchet clock through for that many repeats (learningmodular.com,
+"Patching a Ratcheting Sequence"). Both agree on the shape the schema
+captures: one step position subdivided into N equal repeats, with the
+underlying grid unchanged. That is what `ratchets: {stepIndex: count}`
+encodes.
 
-### Counts: 2-3 is the documented range; nothing sourced this session goes to 4
+### Counts: 2-3 is the documented range; nothing sourced goes to 4
 
-Sweetwater notes some hardware sequencers expose "a 'ratchet' setting of 2,
-3, or 4 gates per step" as adjustable options — so 4 is a real, implemented
-option on real gear, not invented. But no source in this session described
-4-count ratchets as the MUSICAL default or a commonly reached-for choice;
-every worked example actually discussed (the modular patch's "two clock
-pulses," the trap-roll guidance below) uses 2 or 3. Read this entry's
-"rarely 4" framing as an inference from what sources actually reach for in
-practice, not a documented ceiling — 4 is available in the schema
-(`ratchets` accepts 2/3/4 per the pinned spec) and not forbidden, just
-under-attested as a default choice.
+Sweetwater notes some hardware sequencers offer "a 'ratchet' setting of 2,
+3, or 4 gates per step", so 4 exists on real gear. No source describes
+4-count ratchets as a musical default. Every worked example (the modular
+patch's "two clock pulses", the trap-roll guidance below) uses 2 or 3.
+"Rarely 4" is an inference from what sources reach for, not a documented
+ceiling. The schema accepts 2/3/4 and 4 is not forbidden, just
+under-attested.
 
-### Placement and restraint — sourced from trap hats, applied here as general craft
+### Placement and restraint: sourced from trap hats, applied here as general craft
 
-This session found no psy/techno-specific source on WHERE ratchets land or
-how often. The clearest sourced placement/restraint guidance for
-fast-roll rhythmic devices generally came from a trap hi-hat production
-guide: "1/32 and 1/64 rolls are reserved for transitions and snare
-pickups... hi-hat rolls are used before a new bar to guide the listener to
-the next beat of the snare or kick" — i.e. rolls land at phrase/pattern
-BOUNDARIES (the tail of a cell, right before the next downbeat), not
-scattered through the middle of a groove (theghostproduction.com, "Trap
-hats: 7 Rules For Cleaner Rolls"). The same source is explicit about
-restraint being the actual skill: "fast rolls only work when they answer
-the groove," "a 1/64 burst before every snare gets boring by bar five," and
-"strong trap hats usually use one obvious roll per 2-bar phrase, then
-smaller ghost notes to pull the ear forward." Read that as the general
-principle this entry generalizes beyond trap: **one ratchet event per
-phrase, positioned at the tail/pre-downbeat, is a device that still reads
-as a decision; ratcheting every few steps stops reading as anything.**
-This is an explicit genre-crossing extrapolation — trap-hat sourcing
-applied to a psy/techno-framed entry — not a claim that Berghain-style
-techno or psytrance producers follow this exact rule.
+No psy/techno-specific source covers where ratchets land or how often. The
+clearest placement/restraint guidance for fast-roll devices comes from a
+trap hi-hat guide: "1/32 and 1/64 rolls are reserved for transitions and
+snare pickups... hi-hat rolls are used before a new bar to guide the
+listener to the next beat of the snare or kick". Rolls land at phrase or
+pattern boundaries (a cell's tail, right before the next downbeat), not
+mid-groove (theghostproduction.com, "Trap hats: 7 Rules For Cleaner
+Rolls"). The same source treats restraint as the skill: "fast rolls only
+work when they answer the groove", "a 1/64 burst before every snare gets
+boring by bar five", and "strong trap hats usually use one obvious roll per
+2-bar phrase, then smaller ghost notes to pull the ear forward". This entry
+generalizes that beyond trap: **one ratchet per phrase, at the
+tail/pre-downbeat, reads as a decision; ratcheting every few steps reads as
+nothing.** This is an explicit genre-crossing extrapolation, not a claim
+that Berghain-style techno or psytrance producers follow this rule.
 
 ### Why the tail/pre-downbeat position works with the schema's semantics
 
-The pinned schema resolves `ratchets` against PATTERN POSITION (steps
-0-indexed within `patternLength`), independent of which chord or bar is
-currently sounding. That means a ratchet fixed at, say, step 14 of a
-16-step pattern lands on the same relative position — the last 16th before
-the next cycle — every time the pattern repeats, regardless of harmony.
-That is a good structural match for "ratchet at the pre-downbeat tail":
-the device becomes a recurring pattern-level punctuation mark rather than
-a per-bar random event, which is the same "curated, held-per-loop" shape
-`rhythm/drum-style-dubstep` and the trap-family kick-cell model already use
-for their locked, non-random-per-bar craft choices.
+The schema resolves `ratchets` against pattern position (0-indexed steps
+within `patternLength`), independent of the sounding chord or bar. A
+ratchet at step 14 of a 16-step pattern lands on the last 16th before the
+next cycle on every repeat, regardless of harmony. That fits "ratchet at
+the pre-downbeat tail": the device becomes recurring pattern-level
+punctuation, not a per-bar random event. It is the same curated,
+held-per-loop shape `rhythm/drum-style-dubstep` and the trap-family
+kick-cell model use for their locked craft choices.
 
-### Berlin-school note (thin — flagged, not built on)
+### Berlin-school note (thin, flagged, not built on)
 
-Berlin-school sequencer material (Gearspace's "What is Berlin School?"
-thread) describes the lineage's basic sound — "the style is based around
-repetitive short sequences and arps that slowly change and are often run
-through delay and reverb," with a claim that ratcheting there is achieved
-by "setting a sequencer to 32 or 64 steps using shorter note lengths, then
-spacing out the normal sequence to create ratcheting repetitions." That is
-a real, named technique (over-resolving the sequencer and leaving gaps),
-but it is forum material, not a technical breakdown with placement/count
-specifics, and this session found nothing to corroborate it further. It's
-included here as a documented ALTERNATIVE way to get a ratchet-like result
-(over-resolve the whole grid rather than subdivide single steps) — worth
-knowing about, not built into the executable block below, since the pinned
-schema's `ratchets` field already does the single-step-subdivide version
-more directly.
+Gearspace's "What is Berlin School?" thread describes the lineage's sound:
+"the style is based around repetitive short sequences and arps that slowly
+change and are often run through delay and reverb". It claims ratcheting
+there comes from "setting a sequencer to 32 or 64 steps using shorter note
+lengths, then spacing out the normal sequence to create ratcheting
+repetitions". That is a named technique (over-resolve the grid and leave
+gaps), but it is forum material without placement/count specifics, and
+nothing corroborates it. It is a documented alternative route to a
+ratchet-like result. The executable block does not use it, since the
+schema's `ratchets` field does single-step subdivision directly.
 
 ## Executable
 
@@ -129,18 +111,15 @@ velocity:
 swing: 0
 ```
 
-Every value here is this agent's construction translating the sourced
-placement/restraint principle into the schema, not a measured pattern.
-`euclid: {k: 13, n: 16}` thins 3 of the 16 steps (a moderate, not extreme,
-thinning — see `rhythm/euclidean-rhythm-craft` for how E(k,16) choices
-compare) to leave room for the ratchets to read as events rather than get
-buried in a fully dense grid. The two ratchets sit at steps 13 and 15 — the
-pattern's last few 16ths, i.e. the tail immediately before the cycle wraps
-back to step 0 — one restrained 2-count and one slightly busier 3-count
-right at the pre-downbeat position, per the "rolls at phrase boundaries,
-rarely more than one per phrase" reading above. `accentSteps: [0, 15]`
-gives the wrap-around downbeat its lift and puts a second accent on the
-final ratcheted step so the roll actually lands with intent rather than
-trailing off. Treat 2 counts before 3 counts (not the reverse) as this
-entry's own choice — a small crescendo into the downbeat — since no source
-specified an ordering between multiple ratchets in one tail.
+Every value is authored, translating the sourced placement/restraint
+principle into the schema. It is not a measured pattern.
+`euclid: {k: 13, n: 16}` thins 3 of 16 steps (moderate thinning; see
+`rhythm/euclidean-rhythm-craft` for how E(k,16) choices compare) so the
+ratchets read as events instead of getting buried in a dense grid. The
+ratchets sit at steps 13 and 15, the tail right before the cycle wraps to
+step 0: one restrained 2-count and one busier 3-count at the pre-downbeat,
+per "rolls at phrase boundaries, rarely more than one per phrase".
+`accentSteps: [0, 15]` lifts the wrap-around downbeat and accents the final
+ratcheted step so the roll lands with intent. Putting the 2-count before the
+3-count (a small crescendo into the downbeat) is this entry's own choice; no
+source specifies an ordering between ratchets in one tail.
