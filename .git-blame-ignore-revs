@@ -1,0 +1,5 @@
+# Bulk formatting commits, skipped by git blame.
+# Enable locally: git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# style: Format codebase with oxfmt (quality plan L8)
+7a460eb8f32b60fb59f86c443d59ef2390a4c380

@@ -18,10 +18,10 @@ commit that finishes an item.
 
 - **Branch and PR:** work lands on `ableton-integration-brainstorm`, draft
   PR #13. One commit per item, pushed after each.
-- **Done:** Phase 0 items 1 to 4, L1 to L7.
-- **Next:** L8 to L9 (oxfmt). Then L10 to L11 (Ruff, Python typecheck),
-  L12 (CI lint job), L6b, G8, and Phase 1. L14, L15 and Phase 7 were
-  added on 2026-10-06 from a review of agent-guardrail suggestions.
+- **Done:** Phase 0 items 1 to 4, L1 to L9.
+- **Next:** L10 to L11 (Ruff, Python typecheck), then L12 (CI lint job),
+  L6b, G8, and Phase 1. L14, L15 and Phase 7 were added on 2026-10-06
+  from a review of agent-guardrail suggestions.
 - **Not verified:** the repository-settings half of Phase 0 item 3 (branch
   protection on `main`) and S1 cannot be checked from a session; ask the
   owner.
@@ -31,6 +31,7 @@ Checks to run before every commit (all must pass):
 ```sh
 pnpm build         # first: lint and typecheck resolve @awh/core via its dist/*.d.ts
 pnpm lint          # oxlint --type-aware --deny-warnings
+pnpm fmt:check     # oxfmt; run pnpm fmt to fix
 pnpm typecheck     # src and test tsconfigs for core and cli; extension via the SDK shim
 pnpm test
 cd analysis && ../.venv/bin/pytest -q --cov   # when analysis/ changes
@@ -224,10 +225,17 @@ L7. `build: Add oxfmt pinned to 0.72.0` (done)
     assets are formatted: all three template placeholders in `index.html`
     survive (the spec JSON gains surrounding whitespace, which
     `JSON.parse` ignores) and the 32 endless tests pass.
-L8. `style: Format codebase with oxfmt`
-    Formatting only, no other changes.
-L9. `chore: Ignore formatting commit in git blame`
-    Add L8's hash to `.git-blame-ignore-revs`.
+L8. `style: Format codebase with oxfmt` (done)
+    79 files, +2,777 / -1,278 lines, formatting only. It needed a
+    preceding `build: Prepare for oxfmt formatting`: wrapping moved one
+    `@ts-expect-error` off the call it targets, and two functions grew
+    past the 150-line limit (`parseHouseFamilySpec` to 160,
+    `createEngine` in the endless player to 158), so each now carries an
+    inline disable with a reason. `pnpm fmt:check` is not in CI until
+    L12.
+L9. `chore: Ignore formatting commit in git blame` (done)
+    `.git-blame-ignore-revs` lists L8. GitHub applies it automatically;
+    locally, run `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
 L10. `build(analysis): Add ruff lint and format`
      Ruff in the `dev` extras, config in `pyproject.toml`. Enable `F`
      (unused imports), `E`, `B`, and `BLE001` (blind `except Exception`,
