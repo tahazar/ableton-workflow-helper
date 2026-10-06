@@ -113,6 +113,8 @@ function midiClipTarget(a: Record<string, unknown>, op: string): MidiClipTarget 
  * notes land as two undo steps (create, then configure) because the
  * instance only resolves after the async create.)
  */
+// A flat table of op definitions; length tracks the op count, not complexity.
+// oxlint-disable-next-line max-lines-per-function
 export function buildOpRegistry(): Map<string, OpDefinition> {
   const ops = new Map<string, OpDefinition>();
   const add = (op: OpDefinition) => ops.set(op.name, op);

@@ -21,6 +21,14 @@
     "unicorn/consistent-function-scoping": "off",
     "no-underscore-dangle": "off",
     "import/no-cycle": "warn",
+    "max-lines-per-function": [
+      "warn",
+      {
+        "max": 150,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ],
     "no-restricted-imports": [
       "warn",
       {
@@ -64,6 +72,14 @@
         "typescript/no-unsafe-call": "warn",
         "typescript/no-unsafe-member-access": "warn",
         "typescript/no-unsafe-return": "warn"
+      }
+    },
+    {
+      "files": [
+        "packages/*/test/**"
+      ],
+      "rules": {
+        "max-lines-per-function": "off"
       }
     }
   ],

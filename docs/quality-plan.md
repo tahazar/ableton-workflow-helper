@@ -18,9 +18,9 @@ commit that finishes an item.
 
 - **Branch and PR:** work lands on `ableton-integration-brainstorm`, draft
   PR #13. One commit per item, pushed after each.
-- **Done:** Phase 0 items 1 to 4, L1 to L5.
-- **Next:** L6 (`max-lines-per-function` at warn). Then L7 to L9 (oxfmt),
-  L10 to L11 (Ruff, Python typecheck), L12 (CI lint job), and Phase 1.
+- **Done:** Phase 0 items 1 to 4, L1 to L6.
+- **Next:** L7 to L9 (oxfmt). Then L10 to L11 (Ruff, Python typecheck),
+  L12 (CI lint job), and Phase 1.
 - **Not verified:** the repository-settings half of Phase 0 item 3 (branch
   protection on `main`) and S1 cannot be checked from a session; ask the
   owner.
@@ -186,12 +186,22 @@ L5. `build: Add type-aware oxlint rules` (done)
       positives after `never` and exhaustive switches): off.
     - `no-base-to-string`: 9, off for now; see the frontmatter item under
       "Cleanup found along the way".
-L6. `build: Warn on long functions`
-    `max-lines-per-function` at warn with a generous limit, as a ratchet
-    for the `index.ts` split (Phase 4). Lower the limit as groups move
-    out. Leave the rest of `pedantic` and `perf` off: most
-    `no-await-in-loop` hits are intentional sequential gateway calls into
-    Live, which must stay ordered.
+L6. `build: Warn on long functions` (done)
+    `pnpm lint` runs with `--deny-warnings`, so a warn-level rule is a
+    hard limit, and the limit works as a ceiling that only goes down.
+    `max-lines-per-function` is set to 150 (blank lines and comments not
+    counted) for everything outside `packages/*/test/`. Test files are
+    exempt because their long functions are `describe` callbacks.
+    Measured in source: 42 functions over 60 lines, 21 over 80, 11 over
+    100, 6 over 120, 2 over 150. The two over 150 carry an inline disable
+    with a reason. `buildOpRegistry` in `core/src/bridge/ops.ts` (266) is
+    a flat table of op definitions. The `mix records` action in
+    `cli/src/index.ts` (188) is for Phase 4. Most of `index.ts` is
+    module-level command registration, which this rule does not see, so
+    each Phase 4 move should also lower the limit toward 100. The rest of
+    `pedantic` and `perf` stays off. Most `no-await-in-loop` hits are
+    intentional sequential gateway calls into Live, which must stay
+    ordered.
 L7. `build: Add oxfmt pinned to 0.72.0`
     Config, `pnpm fmt` and `pnpm fmt:check`. Exact version pin, because a
     pre-1.0 minor release can change output and fail CI on untouched

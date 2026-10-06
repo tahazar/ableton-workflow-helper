@@ -2911,6 +2911,8 @@ mix
   .description(
     "List saved measurement records (library/measurements/), or show one by name",
   )
+  // Over the length limit; split when the mix group moves out (quality plan Phase 4).
+  // oxlint-disable-next-line max-lines-per-function
   .action(async (name: string | undefined) => {
     const opts = program.opts<GlobalOpts>();
     const dir = join(findLibraryRoot(), "measurements");
