@@ -303,11 +303,10 @@ describe("response recipes — determinism + property tests", () => {
     const fitted = fitResponseToWindow(result, 4, C_MINOR, BASS_MUSIC_CR_SPEC);
     expect(fitted.lengthBeats).toBe(4);
     for (const n of fitted.notes) expect(n.start + n.duration).toBeLessThanOrEqual(4 + 1e-9);
-    if (fitted.notes.length > 0) {
-      const last = [...fitted.notes].sort((a, b) => a.start - b.start).pop()!;
-      const chroma = ((last.pitch - C_MINOR.rootNote) % 12 + 12) % 12;
-      expect(BASS_MUSIC_CR_SPEC.resolveDegrees).toContain(chroma);
-    }
+    expect(fitted.notes.length).toBeGreaterThan(0);
+    const last = [...fitted.notes].sort((a, b) => a.start - b.start).pop()!;
+    const chroma = ((last.pitch - C_MINOR.rootNote) % 12 + 12) % 12;
+    expect(BASS_MUSIC_CR_SPEC.resolveDegrees).toContain(chroma);
   });
 
   it("recipe registry rejects an unknown recipe name", () => {

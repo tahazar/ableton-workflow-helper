@@ -123,9 +123,9 @@ walk:
     expect(arpRateBeats("1/16")).toBeCloseTo(0.25);
     expect(arpRateBeats("1/8t")).toBeCloseTo((4 / 8) * (2 / 3));
     expect(arpRateBeats("1/4d")).toBeCloseTo(1 * 1.5);
-    expect(() => arpRateBeats("1/6")).toThrow();
+    expect(() => arpRateBeats("1/6")).toThrow(/"rate" must be/);
     expect(checkArpGate(0.5)).toBe(0.5);
-    expect(() => checkArpGate(1.2)).toThrow();
+    expect(() => checkArpGate(1.2)).toThrow(/"gate" must be/);
   });
 });
 
@@ -263,9 +263,8 @@ describe("generateArp — polymeter wrap", () => {
       return acc;
     }, []);
     expect(accentedIdx).toEqual([0, 5, 10, 12, 17, 22, 24, 29]);
-    for (const n of notes) {
-      if (!accentedIdx.includes(notes.indexOf(n))) expect(n.velocity).toBe(100);
-    }
+    const unaccented = notes.filter((_, i) => !accentedIdx.includes(i)).map((n) => n.velocity);
+    expect(unaccented).toEqual(Array.from({ length: 24 }, () => 100));
   });
 });
 

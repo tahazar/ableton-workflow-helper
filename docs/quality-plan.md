@@ -92,16 +92,16 @@ Trial on 2026-10-06 with oxlint 1.87.0 over `packages/` and `scripts/`
 oxfmt 0.72.0 with defaults reformats 77 of 106 files (about 4,000 changed
 lines).
 
-L1. `build: Add oxlint with default rules`
+L1. `build: Add oxlint with default rules` (done)
     Add `oxlint` (exact version) as a root dev dependency, `.oxlintrc.json`,
     and `pnpm lint`. Fix the 17 default findings in the same commit. Done
     when `pnpm lint` exits 0.
-L2. `build: Enable oxlint vitest plugin`
-    27 `valid-expect` findings mean `expect()` calls that never assert
-    (missing matcher or missing `await`). These tests count toward
-    coverage while checking nothing, so fix them before raising coverage
-    floors. Also fix `require-to-throw-message` and
-    `no-conditional-expect`.
+L2. `build: Enable oxlint vitest plugin` (done)
+    All 27 `valid-expect` findings were `expect(value, message)`, which
+    vitest supports, so the rule is set to `maxArgs: 2` rather than
+    rewriting the calls. The 5 `require-to-throw-message` findings now pin
+    the expected error, and the 2 `no-conditional-expect` findings assert
+    unconditionally.
 L3. `build: Enable oxlint suspicious category`
     `no-array-sort` (51) flags in-place `.sort()`, which mutates arrays
     that seeded generators may share; prefer `toSorted()`.

@@ -1,4 +1,8 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "unicorn", "oxc", "vitest"],
+  "rules": {
+    "vitest/valid-expect": ["warn", { "maxArgs": 2 }]
+  },
   "ignorePatterns": ["**/dist/**", "**/coverage/**", "vendor/**"]
 }

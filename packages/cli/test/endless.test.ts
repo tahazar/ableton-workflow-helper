@@ -328,7 +328,7 @@ describe("plan.ts", () => {
   });
 
   it("parseSectionsArg rejects a malformed entry", () => {
-    expect(() => parseSectionsArg("intro:eight")).toThrow();
+    expect(() => parseSectionsArg("intro:eight")).toThrow(/bad entry "intro:eight"/);
   });
 
   it("sectionsFromReference converts start_bar/end_bar into bar counts", () => {
@@ -495,7 +495,7 @@ transitions:
     const dir = await tmp("awh-endless-nopartial-");
     const specPath = await writeTinySpecProject(dir, { skipFile: "audio/drop-drums-a.wav" });
     const outDir = join(dir, "out");
-    await expect(buildEndlessPlayer(specPath, outDir)).rejects.toThrow();
+    await expect(buildEndlessPlayer(specPath, outDir)).rejects.toThrow(/missing audio file "audio\/drop-drums-a\.wav"/);
     const { existsSync } = await import("node:fs");
     expect(existsSync(outDir)).toBe(false);
   });

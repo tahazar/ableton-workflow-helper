@@ -435,7 +435,7 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
     });
     const swept = await auditionEnd({ caller, pending: placed.nextPending });
     expect(swept).toEqual(["track:0/slot:0"]);
-    await expect(caller("clip.get", { path: "track:0/slot:0" })).rejects.toThrow();
+    await expect(caller("clip.get", { path: "track:0/slot:0" })).rejects.toThrow(/slot is empty/);
   });
 
   it("--end with nothing pending is a STATE, not an error (undefined, no gateway calls)", async () => {
