@@ -276,7 +276,7 @@ program
   .command("call <op>")
   .description("Invoke a gateway operation with optional JSON args")
   .option("-a, --args <json>", "JSON arguments for the op")
-  .action(async (op: string, cmdOpts: { args?: string }) => {
+  .action(async (opName: string, cmdOpts: { args?: string }) => {
     const opts = program.opts<GlobalOpts>();
     let args: unknown;
     if (cmdOpts.args !== undefined) {
@@ -286,7 +286,7 @@ program
         throw new Error("--args must be valid JSON");
       }
     }
-    const body = (await callGateway(opts, `/api/ops/${op}`, {
+    const body = (await callGateway(opts, `/api/ops/${opName}`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: args === undefined ? undefined : JSON.stringify(args),
@@ -342,11 +342,11 @@ async function readNotationInput(file: string | undefined): Promise<string> {
   return Buffer.concat(chunks).toString("utf8");
 }
 
-const clip = program
+const clipCmd = program
   .command("clip")
   .description("Read and write MIDI clips in bar|beat notation");
 
-clip
+clipCmd
   .command("read <path>")
   .description("Print a MIDI clip as bar|beat notation (or --json for raw notes)")
   .option("--sig <beatsPerBar>", "beats per bar for bar|beat math", "4")
@@ -369,7 +369,7 @@ clip
     );
   });
 
-clip
+clipCmd
   .command("write <path> [file]")
   .description("Replace a MIDI clip's notes from bar|beat notation (file or stdin)")
   .option("--sig <beatsPerBar>", "beats per bar for bar|beat math", "4")
@@ -387,7 +387,7 @@ clip
     );
   });
 
-clip
+clipCmd
   .command("create <target> [file]")
   .description(
     "Create a MIDI clip from bar|beat notation. Target: a slot path (track:0/slot:2) " +
@@ -455,7 +455,7 @@ interface A2mTranscription {
   n_notes: number;
 }
 
-clip
+clipCmd
   .command("from-audio <audioFile> <target>")
   .description(
     "Transcribe melodic audio to a MIDI clip via Basic Pitch (polyphonic pitch " +
@@ -966,11 +966,11 @@ async function writeAuditionState(state: AuditionState | undefined): Promise<voi
   await writeFile(file, JSON.stringify(state, null, 2), "utf8");
 }
 
-const sections = program
+const sectionsCmd = program
   .command("sections")
   .description("Build an arrangement skeleton from source clips via a YAML plan");
 
-sections
+sectionsCmd
   .command("plan")
   .description(
     "Emit an editable YAML sections plan from a genre form preset, or " +
@@ -1023,7 +1023,7 @@ sections
     }
   });
 
-sections
+sectionsCmd
   .command("apply <planFile>")
   .description("Render a YAML sections plan into arrangement clips (create-at-position)")
   .option("--at-bar <bar>", "1-based bar to start the skeleton at", "1")
@@ -2802,7 +2802,7 @@ async function runAnalysis(args: string[]): Promise<void> {
     cwd,
     stdio: "inherit",
   });
-  const code = await new Promise<number>((resolve, reject) => {
+  const code = await new Promise<number>((done, reject) => {
     child.on("error", (err) =>
       reject(
         new Error(
@@ -2811,7 +2811,7 @@ async function runAnalysis(args: string[]): Promise<void> {
         ),
       ),
     );
-    child.on("close", (c) => resolve(c ?? 1));
+    child.on("close", (c) => done(c ?? 1));
   });
   if (code !== 0) process.exitCode = code;
 }
@@ -3063,17 +3063,17 @@ mix
       .toSorted()
       .map((f) => {
         const r = JSON.parse(readFileSync(join(dir, f), "utf8")) as RecordFile;
-        const name = f.replace(/\.json$/, "");
+        const recordName = f.replace(/\.json$/, "");
         if (r.kind === "drumstats") {
           return {
-            name,
+            name: recordName,
             saved: r.saved,
             summary: `drumstats: ${r.stats.n_loops} loop(s), ${r.stats.dataset}`,
           };
         }
         if (r.kind === "layers") {
           return {
-            name,
+            name: recordName,
             saved: r.saved,
             summary: `layers: ${r.tracks.length} track(s) (${r.tracks.map((t) => t.trackName).join(", ")})`,
           };
@@ -3081,7 +3081,7 @@ mix
         if (r.kind === "advice") {
           const actionable = r.items.filter((it) => it.kind === "finding");
           return {
-            name,
+            name: recordName,
             saved: r.saved,
             summary: r.healthy
               ? `advice: healthy (${r.source})`
@@ -3090,13 +3090,13 @@ mix
         }
         if (r.kind === "chopmap") {
           return {
-            name,
+            name: recordName,
             saved: r.saved,
             summary: `chopmap: ${r.chopmap.n_slices} slice(s), ${r.chopmap.bpm.toFixed(1)} bpm (${basename(r.file)})`,
           };
         }
         return {
-          name,
+          name: recordName,
           saved: r.saved,
           summary:
             `${r.measurements.loudness.lufs_integrated.toFixed(1).padStart(6)} LUFS  ` +
@@ -3695,7 +3695,7 @@ async function runAnalysisJson(args: string[]): Promise<Record<string, number>> 
   let err = "";
   child.stdout.on("data", (d: Buffer) => (out += d.toString()));
   child.stderr.on("data", (d: Buffer) => (err += d.toString()));
-  const code = await new Promise<number>((resolve) => child.on("close", (c) => resolve(c ?? 1)));
+  const code = await new Promise<number>((done) => child.on("close", (c) => done(c ?? 1)));
   if (code !== 0) throw new Error(`analysis failed: ${err.trim() || out.trim()}`);
   return JSON.parse(out) as Record<string, number>;
 }
@@ -5905,11 +5905,11 @@ ref
     },
   );
 
-const refSections = ref
+const refSectionsCmd = ref
   .command("sections")
   .description("Draft section map <-> named marker clips on a Sections track");
 
-refSections
+refSectionsCmd
   .command("apply <analysisOrAudio>")
   .description(
     "Write the analyzed section map into Live as empty named clips on a " +
@@ -6005,7 +6005,7 @@ refSections
     },
   );
 
-refSections
+refSectionsCmd
   .command("read <trackPath>")
   .description("Read the (corrected) section clips back into an analysis JSON")
   .option("--sig <beatsPerBar>", "beats per bar on the timeline", "4")
@@ -6022,7 +6022,6 @@ refSections
     const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
     if (!track) throw new Error(`track not found: ${trackPath}`);
     const sections = track.arrangementClips
-      .slice()
       .toSorted((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0))
       .map((c) => {
         // lenient parse of "<name> <len>b [c=0.82]"; corrections may drop parts
@@ -6229,9 +6228,9 @@ program
     process.stdout.write(
       `fake gateway listening on http://127.0.0.1:${port} (ctrl-c to stop)\n`,
     );
-    await new Promise<void>((resolve) => {
+    await new Promise<void>((done) => {
       process.on("SIGINT", () => {
-        void server.stop().then(resolve);
+        void server.stop().then(done);
       });
     });
   });

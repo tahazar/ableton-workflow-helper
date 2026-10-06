@@ -254,7 +254,7 @@ describe.skipIf(!hasBuiltCli || !hasRealPython)("awh mix advise — full CLI int
     };
     expect(parsed.has_target).toBe(false);
     expect(parsed.has_layers).toBe(false);
-    const byId = Object.fromEntries(parsed.items.map((it) => [it.id, it]));
+    const byId = Object.fromEntries(parsed.items.map((item) => [item.id, item]));
     expect(byId["missing-target"]).toMatchObject({ kind: "placeholder", stage: "tonal" });
     expect(byId["missing-layers"]).toMatchObject({ kind: "placeholder", stage: "masking" });
 
@@ -371,7 +371,7 @@ describe.skipIf(!hasBuiltCli || !hasRealPython)("awh mix advise — full CLI int
         items: { id: string; kind: string; action: string }[];
       };
       const eqLikeItem = parsed.items.find(
-        (it) => it.kind === "finding" && it.action.includes("EQ Eight"),
+        (item) => item.kind === "finding" && item.action.includes("EQ Eight"),
       );
       expect(eqLikeItem).toBeDefined();
       expect(eqLikeItem!.action).toContain('your existing "EQ Eight" (main/dev:0)');
