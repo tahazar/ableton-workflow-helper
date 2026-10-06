@@ -29,6 +29,10 @@ commit that finishes an item.
   small, independent items (Phase 3 test files, Phase 6 coverage gaps)
   unattended. Not used for judgment-heavy items; its manifest is not kept
   in sync with this plan.
+- **Merging PR #13:** use a merge commit, not squash or rebase.
+  `.git-blame-ignore-revs` lists the formatting commits by hash, and a
+  squash or rebase gives them new hashes, so blame would stop skipping
+  them.
 - **Not verified:** the repository-settings half of Phase 0 item 3 (branch
   protection on `main`) and S1 cannot be checked from a session; ask the
   owner.
@@ -42,7 +46,7 @@ pnpm fmt:check     # oxfmt; run pnpm fmt to fix
 pnpm typecheck     # src and test tsconfigs for core and cli; extension via the SDK shim
 pnpm test
 cd analysis && ../.venv/bin/ruff check . && ../.venv/bin/ruff format --check . \
-  && ../.venv/bin/pytest -q --cov             # when analysis/ changes
+  && ../.venv/bin/pytest -q --cov             # when analysis/ changes; ruff format . to fix
 ```
 
 Review after every commit, in a fresh context so the reviewer is not
@@ -265,7 +269,7 @@ L10. `build(analysis): Add ruff lint and format` (done)
      unused variables, 2 placeholder-free f-strings, 1 unused loop index,
      1 false-positive `ERA001` (a tuple-layout comment, reworded). The one
      `BLE001` (`clapembed` batch fallback) carries a noqa pointing to item
-     20. `ruff format` reformatted 26 of 47 files; that commit is in
+     20. `ruff format` reformatted 26 files; that commit is in
      `.git-blame-ignore-revs`. CI's Python job runs `ruff check` and
      `ruff format --check` until L12 moves them to the lint job. 182 tests,
      same count before and after.

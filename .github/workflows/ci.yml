@@ -70,9 +70,11 @@ jobs:
       # Moves to the lint job in quality plan L12.
       - name: Lint with ruff
         working-directory: analysis
-        run: |
-          ../.venv/bin/ruff check .
-          ../.venv/bin/ruff format --check .
+        run: ../.venv/bin/ruff check .
+      - name: Check formatting with ruff
+        if: ${{ !cancelled() }}
+        working-directory: analysis
+        run: ../.venv/bin/ruff format --check .
       - name: Test with coverage
         working-directory: analysis
         run: ../.venv/bin/pytest -q --cov

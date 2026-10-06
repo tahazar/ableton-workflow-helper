@@ -17,10 +17,11 @@ the input.
 
 ## Skip
 
-CI already enforces formatting (oxfmt), lint (oxlint, type-aware), types,
-tests and coverage floors; do not re-report what those tools check. Skip
-`pnpm-lock.yaml`, `dist/`, generated `INDEX.md` files, and commits whose
-subject starts with `style:` beyond confirming they change formatting only.
+CI already enforces formatting (oxfmt, `ruff format`), lint (oxlint,
+type-aware; Ruff), types, tests and coverage floors; do not re-report what
+those tools check. Skip `pnpm-lock.yaml`, `dist/`, generated `INDEX.md`
+files, and `style:` or `style(<scope>):` commits beyond confirming they
+change formatting only.
 
 ## Repository checks
 
