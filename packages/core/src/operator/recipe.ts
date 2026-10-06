@@ -47,7 +47,7 @@ function fail(message: string): never {
  * thing), like parsePhraseSpec/parseDrumStyleSpec.
  */
 export function parseOperatorRecipe(yamlText: string): OperatorRecipe {
-  const doc = parseYaml(yamlText);
+  const doc: unknown = parseYaml(yamlText);
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
     fail("expected a YAML mapping at the top level");
   }

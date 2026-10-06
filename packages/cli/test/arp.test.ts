@@ -58,7 +58,7 @@ afterEach(async () => {
 });
 
 async function startFakeGateway(): Promise<{ base: string }> {
-  server = createGatewayServer(new FakeLiveBridge(), { port: 0 as number });
+  server = createGatewayServer(new FakeLiveBridge(), { port: 0 });
   port = await server.start();
   return { base: `http://127.0.0.1:${port}` };
 }

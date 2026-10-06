@@ -213,7 +213,7 @@ function parseVelocity(raw: unknown): Bass808Velocity {
  * parsePhraseSpec, parseArpSpec and parseBreakSpec.
  */
 export function parseBass808Spec(yamlText: string): Bass808Spec {
-  const doc = parseYaml(yamlText);
+  const doc: unknown = parseYaml(yamlText);
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
     fail("expected a YAML mapping at the top level");
   }

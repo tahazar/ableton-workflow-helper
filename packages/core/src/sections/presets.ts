@@ -1,5 +1,5 @@
 import { BridgeError } from "../bridge/types.js";
-import type { SectionsPlan } from "./types.js";
+import type { LayerDirective, SectionsPlan } from "./types.js";
 
 /**
  * Genre form presets: opinionated starting arrangements the planner turns
@@ -17,7 +17,7 @@ interface PresetSection {
   name: string;
   bars: number;
   /** role -> ops pipeline (undefined = verbatim source), or "off". */
-  layers: Record<string, string | "off">;
+  layers: Record<string, string>;
 }
 
 const V = ""; // verbatim marker for readability
@@ -106,7 +106,7 @@ export function planFromForm(
       name: section.name,
       bars: section.bars,
       tracks: Object.fromEntries(
-        Object.entries(roles).map(([role, { source }]) => {
+        Object.entries(roles).map(([role, { source }]): [string, LayerDirective] => {
           const layer = section.layers[role];
           if (layer === "off" || layer === undefined) return [role, "off" as const];
           return [role, { source, ...(layer !== "" ? { ops: layer } : {}) }];

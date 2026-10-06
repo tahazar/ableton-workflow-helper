@@ -238,7 +238,7 @@ function parseTrapFamilySpec(raw: Record<string, unknown>): TrapFamilyStyleSpec 
     family: "trap",
     kickCells,
     ...(snareBeat !== undefined ? { snareBeat } : {}),
-    ...(raw.clapWithSnare !== undefined ? { clapWithSnare: raw.clapWithSnare as boolean } : {}),
+    ...(raw.clapWithSnare !== undefined ? { clapWithSnare: raw.clapWithSnare } : {}),
     ...(hatBases !== undefined ? { hatBases } : {}),
     ...(rollDensity !== undefined ? { rollDensity } : {}),
     ...(openHatChance !== undefined ? { openHatChance } : {}),
@@ -412,7 +412,7 @@ function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpe
  * catches typos instead of silently ignoring a misspelled field.
  */
 export function parseDrumStyleSpec(yamlText: string): DrumStyleSpec {
-  const doc = parseYaml(yamlText);
+  const doc: unknown = parseYaml(yamlText);
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
     fail("expected a YAML mapping at the top level");
   }

@@ -90,7 +90,7 @@ export function validateSectionsPlan(input: unknown): SectionsPlan {
         fail(`sections[${i}].tracks.${trackName} must be "off" or {source, ops?, fill?}`);
       }
     }
-    return { name: sectionName as string, bars: bars as number, tracks };
+    return { name: sectionName, bars, tracks };
   });
   return { name, trackMap, sections };
 }

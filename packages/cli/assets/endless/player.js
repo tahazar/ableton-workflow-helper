@@ -485,7 +485,7 @@ if (typeof window !== "undefined" && window.ENDLESS_SPEC) {
   document.addEventListener("DOMContentLoaded", () => {
     const playButton = el("endless-play");
     if (playButton) {
-      playButton.addEventListener("click", async () => {
+      const togglePlayback = async () => {
         if (playButton.dataset.playing === "1") {
           engine.stop();
           playButton.dataset.playing = "0";
@@ -498,6 +498,16 @@ if (typeof window !== "undefined" && window.ENDLESS_SPEC) {
           playButton.dataset.playing = "1";
           playButton.textContent = "Pause";
         }
+      };
+      playButton.addEventListener("click", () => {
+        togglePlayback().catch((err) => {
+          // A failed start (e.g. a loop that will not decode) must not leave
+          // the button stuck disabled on "Loading...".
+          console.error("endless player failed to start", err);
+          playButton.disabled = false;
+          playButton.dataset.playing = "0";
+          playButton.textContent = "Play";
+        });
       });
     }
   });

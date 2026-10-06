@@ -1010,7 +1010,7 @@ describe("M11c pitch tagging — index/search logic (fake tagger)", () => {
     });
     it("false for an unreadable entry", () => {
       const index = indexFromRecords([
-        { path: "/a.wav", unreadable: true, error: "boom" } as ScanRecord,
+        { path: "/a.wav", unreadable: true, error: "boom" },
       ]);
       expect(isPitchTagCandidate(index.files["/a.wav"]!)).toBe(false);
     });

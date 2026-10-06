@@ -85,7 +85,7 @@ function parseSnareDisplacement(raw: unknown): number[] {
  * parsePhraseSpec.
  */
 export function parseBreakSpec(yamlText: string): BreakSpec {
-  const doc = parseYaml(yamlText);
+  const doc: unknown = parseYaml(yamlText);
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
     fail("expected a YAML mapping at the top level");
   }

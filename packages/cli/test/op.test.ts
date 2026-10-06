@@ -39,7 +39,7 @@ interface GatewayBody {
 }
 
 async function startFakeGateway(): Promise<OpCaller> {
-  server = createGatewayServer(new FakeLiveBridge(), { port: 0 as number });
+  server = createGatewayServer(new FakeLiveBridge(), { port: 0 });
   const port = await server.start();
   const base = `http://127.0.0.1:${port}`;
   return async (name, args) => {

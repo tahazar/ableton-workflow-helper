@@ -301,7 +301,7 @@ function parseFluctuation(raw: unknown): EndlessFluctuation {
  * those.
  */
 export function parseEndlessSpec(yamlText: string): EndlessSpec {
-  const doc = parseYaml(yamlText);
+  const doc: unknown = parseYaml(yamlText);
   const raw = asPlainObject(doc, "expected a YAML mapping at the top level");
   checkUnknownKeys(raw, TOP_LEVEL_KEYS, "top level");
 

@@ -39,7 +39,6 @@ import {
   searchSemantic,
   suggestRelaxations,
   summarizeIndex,
-  type ClapModel,
   type SearchOptions,
 } from "./samples.js";
 import { DUCK_PORT, DUCK_REPLY_PORT, pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from "./duck.js";
@@ -167,7 +166,6 @@ import {
   type Bass808Spec,
   type BreakSpec,
   type ChopMap,
-  type SliceNoteMode,
   type PhraseSpec,
   type ResponseRecipeName,
   type DrumStyleSpec,
@@ -849,7 +847,7 @@ function remoteOscOpts(cmdOpts: RemotePortOpts): { port: number; replyPort: numb
 function addRemotePortOptions<T extends Command>(cmd: T): T {
   return cmd
     .option("--remote-port <port>", "AWH Remote OSC port", String(REMOTE_PORT))
-    .option("--remote-reply-port <port>", "AWH Remote OSC reply port", String(REMOTE_REPLY_PORT)) as T;
+    .option("--remote-reply-port <port>", "AWH Remote OSC reply port", String(REMOTE_REPLY_PORT));
 }
 
 addRemotePortOptions(
@@ -2004,7 +2002,7 @@ drop
       }
 
       const phrase = generatePhrase(spec, keyCtx, {
-        bars: bars as 8 | 16,
+        bars,
         seed: Number(cmdOpts.seed),
         ...(variant !== undefined ? { variant } : {}),
       });
@@ -3183,7 +3181,7 @@ samplesCmd
     if (cmdOpts.model !== "music" && cmdOpts.model !== "general") {
       throw new Error(`--model must be "music" or "general" (got "${cmdOpts.model}")`);
     }
-    const model = cmdOpts.model as ClapModel;
+    const model = cmdOpts.model;
     const indexPath = resolveSamplesIndexPath();
     const index = await loadSamplesIndex(indexPath);
     if (Object.keys(index.files).length === 0) {
@@ -3332,7 +3330,7 @@ samplesCmd
       }
       const searchOpts: SearchOptions = {
         any: cmdOpts.any,
-        type: cmdOpts.type as "loop" | "oneshot" | undefined,
+        type: cmdOpts.type,
         minDurS: cmdOpts.minDur !== undefined ? Number(cmdOpts.minDur) : undefined,
         maxDurS: cmdOpts.maxDur !== undefined ? Number(cmdOpts.maxDur) : undefined,
         bpm: cmdOpts.bpm !== undefined ? Number(cmdOpts.bpm) : undefined,
@@ -3370,7 +3368,7 @@ samplesCmd
                 const s = h.entry.scan;
                 return (
                   `${h.score.toFixed(3)}  ${h.path.padEnd(52)} ${(s.duration_s ?? 0).toFixed(2).padStart(6)}s  ` +
-                  `${(s.type_guess ?? "?").padEnd(7)}` +
+                  (s.type_guess ?? "?").padEnd(7) +
                   (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "          ") +
                   `  ${s.dominant_band ?? "?"}` +
                   (h.entry.pitch?.state === "voiced" ? `  ${pitchDisplayNote(h.entry.pitch)}` : "")
@@ -3410,7 +3408,7 @@ samplesCmd
             const s = h.entry.scan;
             return (
               `${h.path.padEnd(60)} ${(s.duration_s ?? 0).toFixed(2).padStart(6)}s  ` +
-              `${(s.type_guess ?? "?").padEnd(7)}` +
+              (s.type_guess ?? "?").padEnd(7) +
               (s.bpm ? `  ${s.bpm.toFixed(1)}bpm` : "          ") +
               `  ${s.dominant_band ?? "?"}` +
               (h.entry.pitch?.state === "voiced" ? `  ${pitchDisplayNote(h.entry.pitch)}` : "")
@@ -5460,7 +5458,7 @@ breaksCmd
       if (cmdOpts.mode !== "drum-rack" && cmdOpts.mode !== "live-slices") {
         throw new Error(`--mode must be "drum-rack" or "live-slices" (got ${JSON.stringify(cmdOpts.mode)})`);
       }
-      const mode = cmdOpts.mode as SliceNoteMode;
+      const mode = cmdOpts.mode;
       const bars = Number(cmdOpts.bars);
       const variant = cmdOpts.variant !== undefined ? Number(cmdOpts.variant) : undefined;
 

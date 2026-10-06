@@ -33,7 +33,7 @@ describe("SKILL.md typical-flows coverage", () => {
   for (const header of featureHeaders) {
     const commands = [...header[1]!.matchAll(/`awh ([a-z-]+)/g)].map((m) => m[1]!);
     for (const command of commands) {
-      it(`flows reference \`awh ${command}\` (from section: ${header[0]!.slice(3, 50)}…)`, () => {
+      it(`flows reference \`awh ${command}\` (from section: ${header[0].slice(3, 50)}…)`, () => {
         expect(
           flows.includes(`awh ${command}`),
           `"awh ${command}" has a dedicated section but NO Typical flows mention — ` +

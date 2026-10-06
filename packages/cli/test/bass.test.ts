@@ -57,7 +57,7 @@ afterEach(async () => {
 });
 
 async function startFakeGateway(): Promise<{ base: string }> {
-  server = createGatewayServer(new FakeLiveBridge(), { port: 0 as number });
+  server = createGatewayServer(new FakeLiveBridge(), { port: 0 });
   port = await server.start();
   return { base: `http://127.0.0.1:${port}` };
 }
@@ -142,7 +142,7 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
       // slide-lengthened notes shrink back to written length with slides off)
       expect(on.stdout).not.toBe(off.stdout);
 
-      expect((await opCall(base, "set.summary")) as unknown).toBeTruthy(); // gateway still alive
+      expect(await opCall(base, "set.summary")).toBeTruthy(); // gateway still alive
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

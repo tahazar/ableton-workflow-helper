@@ -11,7 +11,7 @@ import { LIVE_API_VERSION, SdkLiveBridge } from "./sdkLiveBridge.js";
 export async function activate(
   activationContext: ActivationContext,
 ): Promise<void> {
-  const ctx = await initialize(activationContext, LIVE_API_VERSION);
+  const ctx = initialize(activationContext, LIVE_API_VERSION);
 
   const bridge = new SdkLiveBridge(ctx);
   const server = createGatewayServer(bridge, { port: DEFAULT_GATEWAY_PORT });

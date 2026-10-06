@@ -259,7 +259,7 @@ function parseWalk(raw: unknown): ArpWalkSpec {
  * parsePhraseSpec.
  */
 export function parseArpSpec(yamlText: string): ArpSpec {
-  const doc = parseYaml(yamlText);
+  const doc: unknown = parseYaml(yamlText);
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
     fail("expected a YAML mapping at the top level");
   }

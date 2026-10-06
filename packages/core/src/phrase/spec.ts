@@ -264,7 +264,7 @@ function parseEvolution(raw: unknown): EvolutionStep[] {
  * (../drums/styleSpec.ts).
  */
 export function parsePhraseSpec(yamlText: string): PhraseSpec {
-  const doc = parseYaml(yamlText);
+  const doc: unknown = parseYaml(yamlText);
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
     fail("expected a YAML mapping at the top level");
   }

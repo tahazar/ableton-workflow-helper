@@ -10,7 +10,7 @@ afterEach(async () => {
 });
 
 async function startServer(): Promise<string> {
-  server = createGatewayServer(new FakeLiveBridge(), { port: 0 as number });
+  server = createGatewayServer(new FakeLiveBridge(), { port: 0 });
   const port = await server.start();
   return `http://127.0.0.1:${port}`;
 }

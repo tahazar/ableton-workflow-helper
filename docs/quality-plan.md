@@ -116,14 +116,28 @@ L4. `build: Enforce SDK import boundary with oxlint` (done)
     and its subpaths everywhere except `packages/extension/**`, and the
     `import` plugin now runs with `import/no-cycle` on. Both had 0
     findings; probe files confirmed each rule fires.
-L5. `build: Add type-aware oxlint rules`
-    Add `oxlint-tsgolint` and run with `--type-aware`. Enable
-    `no-floating-promises`, `no-misused-promises`, `await-thenable`, and
-    `switch-exhaustiveness-check` (the bridge op unions). A trial run via
-    `npx` could not resolve Node built-in types, so its `no-unsafe-*`
-    counts were artifacts. Re-measure with the package installed in the
-    workspace before choosing whether to enable `no-unsafe-*` and
-    `no-unnecessary-type-assertion`.
+L5. `build: Add type-aware oxlint rules` (done)
+    `oxlint-tsgolint` is pinned and `pnpm lint` runs `--type-aware`. The
+    `npx` trial's `no-unsafe-*` noise had two causes: tsgolint follows
+    TypeScript 7 and no longer loads `@types/*` implicitly (fixed with
+    `"types": ["node"]` in `tsconfig.base.json`), and test files were in
+    no tsconfig (fixed by the preceding `build: Typecheck test files`,
+    which also found 16 real test type errors). Re-measured counts and
+    outcomes:
+    - `no-floating-promises`, `switch-exhaustiveness-check`: 0, on.
+    - `await-thenable`: 1, a sync `initialize()` call. `no-misused-promises`:
+      1, the endless player's async click handler, which left the button
+      stuck on "Loading..." when start failed. Both fixed, both on.
+    - `no-unnecessary-type-assertion`: 22, autofixed, on.
+    - `no-unsafe-*`: 8 in `src/` (untyped `parseYaml` results, now
+      `unknown`), on for `packages/*/src/**/*.ts`. Off elsewhere: tests
+      use `JSON.parse` freely, and `cli/assets/` is untyped browser JS.
+    - `no-unsafe-type-assertion` (283, the `JSON.parse(...) as T` and
+      `catch` idiom), `restrict-template-expressions` (13, unvalidated
+      values in error messages), and `consistent-return` (2, false
+      positives after `never` and exhaustive switches): off.
+    - `no-base-to-string`: 9, off for now; see the frontmatter item under
+      "Cleanup found along the way".
 L6. `build: Warn on long functions`
     `max-lines-per-function` at warn with a generous limit, as a ratchet
     for the `index.ts` split (Phase 4). Lower the limit as groups move
@@ -354,6 +368,10 @@ Small, independent commits; take them whenever convenient.
 - `refactor(core): Parse knowledge files once in buildIndex`
   (`knowledge/store.ts` reads and parses each measurement file three
   times).
+- `fix(core): Validate frontmatter string fields` (`library/entry.ts`,
+  `knowledge/entry.ts`, and the gateway error body in `cli/src/index.ts`
+  call `String()` on unvalidated YAML/JSON values, so an object becomes
+  `[object Object]`). Then turn `typescript/no-base-to-string` back on.
 - `refactor(core): Reuse variantSeed for break seed mixing`.
 - `fix(core): Buffer gateway request body without quadratic concat`
   (`bridge/server.ts`).

@@ -148,7 +148,7 @@ export class SdkLiveBridge implements LiveBridge {
       duration,
       looping: clip.looping,
       muted: clip.muted,
-      ...(isMidi ? { noteCount: (clip as MidiClip).notes.length } : {}),
+      ...(isMidi ? { noteCount: clip.notes.length } : {}),
     };
   }
 
@@ -479,7 +479,7 @@ export class SdkLiveBridge implements LiveBridge {
       clip = await this.ctx.withinTransaction(() =>
         lane.createMidiClip(startBeat, args.lengthBeats),
       );
-      path = `${lanePath}`; // lane clips are re-read via summary; no stable sub-index yet
+      path = lanePath; // lane clips are re-read via summary; no stable sub-index yet
     }
 
     // Create-then-configure: second undo step (SDK constraint, documented).

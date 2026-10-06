@@ -111,7 +111,7 @@ export function parseClipEntry(markdown: string): ClipEntry {
     lengthBeats: Number(front.lengthBeats),
     ...(front.beatsPerBar != null ? { beatsPerBar: Number(front.beatsPerBar) } : {}),
     ...(front.source && typeof front.source === "object"
-      ? { source: front.source as EntrySource }
+      ? { source: front.source }
       : {}),
     tier: (front.tier as EntryTier) ?? "draft",
     title: titleMatch?.[1]?.trim() ?? String(front.slug ?? "untitled"),
