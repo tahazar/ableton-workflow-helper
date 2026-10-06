@@ -28,9 +28,10 @@ commit that finishes an item.
 Checks to run before every commit (all must pass):
 
 ```sh
+pnpm build         # first: lint and typecheck resolve @awh/core via its dist/*.d.ts
 pnpm lint          # oxlint --type-aware --deny-warnings
 pnpm typecheck     # src and test tsconfigs for core and cli; extension via the SDK shim
-pnpm build && pnpm test
+pnpm test
 cd analysis && ../.venv/bin/pytest -q --cov   # when analysis/ changes
 ```
 
@@ -45,7 +46,8 @@ Working notes from earlier items:
   delete the probe before committing.
 - Type-aware lint depends on `"types": ["node"]` in `tsconfig.base.json`
   and on `packages/{core,cli}/test/tsconfig.json`. Without them most types
-  resolve to `error` and `no-unsafe-*` counts are noise.
+  resolve to `error` and `no-unsafe-*` counts are noise. It also needs a
+  built `packages/core/dist`: run `pnpm build` first, locally and in CI.
 - `oxlint --fix` for `no-unnecessary-type-assertion` can leave unused type
   imports and redundant parentheses; lint again and tidy by hand.
 - `packages/cli/assets/endless/player.js` is untyped browser JS shipped as

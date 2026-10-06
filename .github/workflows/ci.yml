@@ -40,8 +40,10 @@ jobs:
           python -m venv .venv
           .venv/bin/pip install -e 'analysis[dev]'
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
       - run: pnpm build
+      # Type-aware lint resolves @awh/core through its built .d.ts files, so
+      # it must run after the build.
+      - run: pnpm lint
       # The extension is typechecked against types/ableton-sdk-shim.d.ts but
       # not bundled: the Ableton SDK is not redistributable.
       - run: pnpm typecheck
