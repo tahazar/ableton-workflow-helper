@@ -11,6 +11,46 @@ The test phases (0 to 6) build on each other. The CI tracks (L, S, G)
 depend only on Phase 0 item 3 and can land in parallel with the test
 phases.
 
+## Status and handoff
+
+Read this section first when starting a session. Update it in the same
+commit that finishes an item.
+
+- **Branch and PR:** work lands on `ableton-integration-brainstorm`, draft
+  PR #13. One commit per item, pushed after each.
+- **Done:** Phase 0 items 1 to 4, L1 to L5.
+- **Next:** L6 (`max-lines-per-function` at warn). Then L7 to L9 (oxfmt),
+  L10 to L11 (Ruff, Python typecheck), L12 (CI lint job), and Phase 1.
+- **Not verified:** the repository-settings half of Phase 0 item 3 (branch
+  protection on `main`) and S1 cannot be checked from a session; ask the
+  owner.
+
+Checks to run before every commit (all must pass):
+
+```sh
+pnpm lint          # oxlint --type-aware --deny-warnings
+pnpm typecheck     # src and test tsconfigs for core and cli; extension via the SDK shim
+pnpm build && pnpm test
+cd analysis && ../.venv/bin/pytest -q --cov   # when analysis/ changes
+```
+
+Working notes from earlier items:
+
+- Mark an item `(done)` in place and rewrite its text as a record of what
+  was found and decided (counts, rules turned off and why). Put follow-ups
+  that fall out of an item under "Cleanup found along the way".
+- Before enabling a lint rule, measure it in isolation:
+  `npx oxlint --type-aware -A all -W <plugin>/<rule> packages scripts`.
+  After enabling one, prove it fires with a throwaway probe file and
+  delete the probe before committing.
+- Type-aware lint depends on `"types": ["node"]` in `tsconfig.base.json`
+  and on `packages/{core,cli}/test/tsconfig.json`. Without them most types
+  resolve to `error` and `no-unsafe-*` counts are noise.
+- `oxlint --fix` for `no-unnecessary-type-assertion` can leave unused type
+  imports and redundant parentheses; lint again and tidy by hand.
+- `packages/cli/assets/endless/player.js` is untyped browser JS shipped as
+  a template; keep changes to it minimal and run the endless tests.
+
 ## Baseline (2026-10-06)
 
 Measured with `@vitest/coverage-v8@2.1.9` (installed temporarily, not
@@ -42,21 +82,27 @@ formatting, and error paths in `index.ts` are not.
   failure signal, does not fire on an empty-but-valid result).
 - Coverage thresholds only go up. Each phase ends by raising them to the
   new floor.
+- No commented-out code, unreachable code, or hard-coded machine paths.
+- A fixed delay (`setTimeout` sleep, `time.sleep`) carries a comment saying
+  what it waits for and why there is no signal to wait on instead.
+- A rethrown or wrapped error says which action failed and keeps the
+  original as `cause`. A specific failure (not found, already exists) is
+  told apart from a generic one before anything treats it as normal.
 
 ## Phase 0: tooling
 
-1. `build: Add vitest coverage with v8 provider`
+1. `build: Add vitest coverage with v8 provider` (done)
    Add `@vitest/coverage-v8` (match vitest 2.1.x) as a root dev dependency,
    a `vitest.config.ts` per package with `include: ["src/**"]`, and a root
    `pnpm coverage` script. Done when `pnpm coverage` prints a table for
    core and cli.
-2. `build: Add pytest-cov to analysis dev extras`
+2. `build: Add pytest-cov to analysis dev extras` (done)
    Add a `dev` extras group with `pytest` and `pytest-cov` to
    `analysis/pyproject.toml` (none exists today), and
    `--cov=awh_analysis --cov-report=term-missing` to the pytest config (or
    a documented command). Done when the coverage table prints from
    `analysis/`.
-3. `ci: Run build, typecheck, and tests on pull requests`
+3. `ci: Run build, typecheck, and tests on pull requests` (done)
    No CI exists. Add `.github/workflows/ci.yml` triggered on `pull_request`
    and pushes to `main`, with a Node job (`pnpm install --frozen-lockfile`,
    `pnpm build`, `pnpm typecheck`, `pnpm coverage`) and a Python job (venv
@@ -66,7 +112,7 @@ formatting, and error paths in `index.ts` are not.
    `types/ableton-sdk-shim.d.ts`, so skip `build:extension`. Pin every
    action to a commit SHA. Then, in repository settings, protect `main`:
    require pull requests and require this workflow's jobs to pass.
-4. `test: Enforce current coverage floors`
+4. `test: Enforce current coverage floors` (done)
    Set thresholds at the baseline (rounded down) so regressions fail the
    run. Raised at the end of each later phase.
 
@@ -156,11 +202,31 @@ L9. `chore: Ignore formatting commit in git blame`
 L10. `build(analysis): Add ruff lint and format`
      Ruff in the `dev` extras, config in `pyproject.toml`. Enable `F`
      (unused imports), `E`, `B`, and `BLE001` (blind `except Exception`,
-     the pattern behind several Phase 2 findings). Format commit and
-     blame-ignore entry as in L8 and L9.
-L11. `ci: Add lint job`
-     Runs `pnpm lint`, `pnpm fmt:check`, `ruff check`, and
-     `ruff format --check`. Make it required.
+     the pattern behind several Phase 2 findings). Also enable `ERA001`
+     (commented-out code) and `T201` (`print`) with a per-file ignore for
+     `awh_analysis/__main__.py`, which is the CLI's output; library modules
+     log through `logging` instead (true today: all 28 `print` calls are in
+     `__main__.py`). Format commit and blame-ignore entry as in L8 and L9.
+     oxlint has no commented-out-code rule, so on the TypeScript side that
+     stays a review item.
+L11. `build(analysis): Typecheck with pyright`
+     TypeScript is fully typechecked; `analysis/` is not, and 8 functions
+     lack a return annotation. Add `pyright` to the `dev` extras with
+     `basic` mode in `pyproject.toml`, fix or annotate its findings, and
+     run it in the Python CI job. Measure `standard` mode in the same
+     commit and record the count here before deciding whether to raise it.
+     Ruff's `ANN` rules are the fallback if pyright cannot resolve the
+     numpy/librosa stubs.
+L12. `ci: Add lint job`
+     `pnpm lint` already runs in the Node CI job (added with L1). Move it
+     into its own job with `pnpm fmt:check`, `ruff check`,
+     `ruff format --check`, and pyright, so lint failures report
+     separately from test failures. Make it required.
+L13. Optional: `build: Add pre-commit hook`
+     A checked-in hook (for example `lefthook` or a plain script wired by
+     `git config core.hooksPath`) that runs `oxlint`, `oxfmt --check`, and
+     Ruff on staged files only, so it stays fast. CI remains the gate; the
+     hook only shortens the loop.
 
 ## Track S: security and supply chain
 
@@ -222,6 +288,12 @@ G7. Optional: an LLM pull-request reviewer (Copilot code review or
    honors `AWH_PYTHON`, and logs the skip reason once. Done when the 14
    skips drop to the tests that legitimately need missing models, each
    with a printed reason.
+   Make the split explicit rather than environmental: tag tests that need
+   the venv or real models as integration tests (a `describe` name
+   prefix or separate `*.integ.test.ts` files in vitest, and a registered
+   `integ` marker with `--strict-markers` in pytest). CI runs the
+   integration set as its own step, or deselects it by name, so a skipped
+   test is a visible choice instead of a side effect of the machine.
 6. `test: Extract shared CLI test helpers`
    `runCli`, `startFakeGateway`, `makeTestLibrary`, and `writeWavMono16`
    are copied across 4 to 7 test files. Move them to
