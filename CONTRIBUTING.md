@@ -24,11 +24,13 @@ in-memory Live Set), with no Live installation:
 
 ```sh
 pnpm install && pnpm build && pnpm test        # Node suites
-python3 -m venv .venv && .venv/bin/pip install -e analysis
+python3 -m venv .venv && .venv/bin/pip install -e 'analysis[dev]'
 .venv/bin/python -m pytest analysis            # Python suite
 ```
 
-Both suites must pass. Changes that touch real-Live behavior get an entry in
+Both suites must pass. CI (`.github/workflows/ci.yml`) runs both on every
+pull request. `pnpm coverage` and `pytest --cov` (from `analysis/`) print
+coverage tables. Changes that touch real-Live behavior get an entry in
 the relevant validation checklist in `docs/dev-loop.md`, to be checked off
 in Live.
 
