@@ -33,8 +33,12 @@ MIN_DEPTH_DB = 3.0
 MAX_DEPTH_DB = 24.0
 KICK_OVER_BASS_MARGIN_DB = 6.0  # ducked bass sits >= this below the kick peak
 RELEASE_HEADROOM = 0.85  # release fully done by this fraction of the gap
-PEAK_ALIGN_MAX_FRACTION = 0.25  # low-band peak later than this into the window -> misaligned triggers
-FLOOR_SILENCE_SUSPECT_DB = 90.0  # peak-over-floor beyond this -> floor is digital silence (live pathology read 174 dB)
+PEAK_ALIGN_MAX_FRACTION = (
+    0.25  # low-band peak later than this into the window -> misaligned triggers
+)
+FLOOR_SILENCE_SUSPECT_DB = (
+    90.0  # peak-over-floor beyond this -> floor is digital silence (live pathology read 174 dB)
+)
 
 # --- pitch-aware masking depth ---------------------------------------------
 # For voiced bass, the masking depth compares bass and kick levels in a
@@ -90,7 +94,12 @@ def _calibrated_band_dbfs(x: np.ndarray, sr: int, lo_hz: float, hi_hz: float) ->
 
 
 def _kick_band_dbfs_over_body(
-    x: np.ndarray, sr: int, trigger_times_s: list[float], body_window_s: float, lo_hz: float, hi_hz: float
+    x: np.ndarray,
+    sr: int,
+    trigger_times_s: list[float],
+    body_window_s: float,
+    lo_hz: float,
+    hi_hz: float,
 ) -> float:
     """The kick's calibrated energy in [lo_hz, hi_hz], averaged in linear
     power (averaging dB values directly would bias the result) across each
@@ -292,7 +301,9 @@ def fit_duck_envelope(
             "triggers or a capture that doesn't contain the drums."
         )
 
-    release_end_s = float(min(max(decay_done_s * 1.1, hold_end_s + 0.02), window_s * RELEASE_HEADROOM))
+    release_end_s = float(
+        min(max(decay_done_s * 1.1, hold_end_s + 0.02), window_s * RELEASE_HEADROOM)
+    )
 
     # breakpoints: instant dip, hold, exponential release sampled for drawing
     def frac(t: float) -> float:
@@ -342,9 +353,7 @@ def fit_duck_envelope(
     }
 
 
-def measure_duck_depth(
-    x: np.ndarray, sr: int, trigger_times_s: list[float]
-) -> dict:
+def measure_duck_depth(x: np.ndarray, sr: int, trigger_times_s: list[float]) -> dict:
     """Measure the achieved duck on a bass/sidechain-bus capture: the
     peak-to-trough span of the trigger-aligned low-band envelope. Used by
     the calibration loop (compressor strategy) and for verifying a drawn

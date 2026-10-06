@@ -27,8 +27,8 @@ def _kick_drums(
         if length <= 0:
             continue
         tt = np.arange(length) / sr
-        sig[start : start + length] += 0.8 * np.exp(-tt / decay_tau_s) * np.sin(
-            2 * np.pi * 55.0 * tt
+        sig[start : start + length] += (
+            0.8 * np.exp(-tt / decay_tau_s) * np.sin(2 * np.pi * 55.0 * tt)
         )
     return to_stereo(sig)
 
@@ -94,7 +94,9 @@ def test_duck_fit_broadband_bass_falls_back_to_generic_low_band():
     noise_bass = to_stereo(0.5 * rng.standard_normal(int(4.5 * SR)))
 
     bass_pitch = duck.pitch.analyze_segment(duck.to_mono(noise_bass), SR)
-    assert bass_pitch["voiced_fraction"] < duck.MASKING_MIN_VOICED_FRACTION  # confirms the gate is exercised
+    assert (
+        bass_pitch["voiced_fraction"] < duck.MASKING_MIN_VOICED_FRACTION
+    )  # confirms the gate is exercised
 
     result = duck.fit_duck_envelope(x, SR, TRIGGERS, bass=noise_bass, bass_sr=SR)
     rec = result["recommendation"]
@@ -150,8 +152,8 @@ def test_masking_depth_responds_to_where_the_kicks_energy_actually_is():
         if length <= 0:
             continue
         tt = np.arange(length) / SR
-        kick_near_sig[start : start + length] += 0.8 * np.exp(-tt / 0.12) * np.sin(
-            2 * np.pi * 300.0 * tt
+        kick_near_sig[start : start + length] += (
+            0.8 * np.exp(-tt / 0.12) * np.sin(2 * np.pi * 300.0 * tt)
         )
     kick_near = to_stereo(kick_near_sig)
 

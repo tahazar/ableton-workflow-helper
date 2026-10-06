@@ -332,22 +332,22 @@ def _measure_layer_masking(ctx: Ctx) -> list[Hit]:
                 evidence=evidence,
                 issue=(
                     f'"{layer_a}" and "{layer_b}" carry comparable energy in the '
-                    f'{best["band"]} band ({best["lo_hz"]:.0f}-{best["hi_hz"]:.0f} Hz): '
-                    f'{best["a_dbfs"]:.1f} vs {best["b_dbfs"]:.1f} dBFS '
-                    f'({best["diff"]:.1f} dB apart) — likely masking each other.'
+                    f"{best['band']} band ({best['lo_hz']:.0f}-{best['hi_hz']:.0f} Hz): "
+                    f"{best['a_dbfs']:.1f} vs {best['b_dbfs']:.1f} dBFS "
+                    f"({best['diff']:.1f} dB apart) — likely masking each other."
                 ),
                 action=(
-                    f'Carve one out of the {best["band"]} band: EQ Eight cut on the '
+                    f"Carve one out of the {best['band']} band: EQ Eight cut on the "
                     f"weaker element (or the one that doesn't need this range), or "
                     f"sidechain the quieter one to duck under the louder one in this band."
                 ),
                 verify=(
                     f"re-capture both layers (awh mix layers ...) and awh mix bands the "
-                    f'results — the {best["band"]} band gap should widen past '
+                    f"results — the {best['band']} band gap should widen past "
                     f"{MASKING_COMPARABLE_DB:.1f} dB"
                 ),
                 magnitude=MASKING_COMPARABLE_DB - best["diff"],
-                item_id=f'layer-masking-{_slug(best["band"])}',
+                item_id=f"layer-masking-{_slug(best['band'])}",
             )
         )
     return hits
@@ -422,7 +422,12 @@ def _measure_eq_bands(ctx: Ctx) -> list[Hit]:
         delta = b["delta_db"]
         threshold = b["threshold_db"]
         capped = min(abs(delta), EQ_CAP_DB)
-        evidence = {"freq_hz": freq, "delta_db": delta, "threshold_db": threshold, "capped_amount_db": capped}
+        evidence = {
+            "freq_hz": freq,
+            "delta_db": delta,
+            "threshold_db": threshold,
+            "capped_amount_db": capped,
+        }
         direction_word = "above" if delta > 0 else "below"
         move_word = "cut" if delta > 0 else "boost"
         hits.append(
@@ -525,7 +530,12 @@ def _measure_lufs_delivery(ctx: Ctx) -> list[Hit]:
         tol = preset_cfg["lufs_tolerance"]
         delta = lufs_i - target_lufs
         fires = abs(delta) > tol
-        evidence = {"lufs_integrated": lufs_i, "target_lufs": target_lufs, "tolerance_lu": tol, "delta_lu": delta}
+        evidence = {
+            "lufs_integrated": lufs_i,
+            "target_lufs": target_lufs,
+            "tolerance_lu": tol,
+            "delta_lu": delta,
+        }
         issue = (
             f"{ctx.preset} targets {target_lufs:.0f} LUFS-I (+/-{tol:.0f}); measured "
             f"{lufs_i:.1f} LUFS-I ({delta:+.1f} LU off target)." + note
@@ -739,7 +749,9 @@ def _margin_probes(ctx: Ctx) -> list[dict]:
     return out
 
 
-def advise(measurements: dict, target: dict | None, layers: dict | None, preset: str | None) -> dict:
+def advise(
+    measurements: dict, target: dict | None, layers: dict | None, preset: str | None
+) -> dict:
     """Run the full rule table and return the ranked plan.
 
     Deterministic: a pure function of (measurements, target, layers, preset).
@@ -865,7 +877,14 @@ def compare_advice(old_record: dict, new_result: dict) -> list[dict]:
         )
     for id_, new in new_items.items():
         if id_ not in old_items:
-            out.append({"id": id_, "status": "new", "old_evidence": None, "new_evidence": new.get("evidence")})
+            out.append(
+                {
+                    "id": id_,
+                    "status": "new",
+                    "old_evidence": None,
+                    "new_evidence": new.get("evidence"),
+                }
+            )
 
     order = {"resolved": 0, "improved": 1, "new": 2, "unchanged": 3}
     out.sort(key=lambda c: (order.get(c["status"], 9), c["id"]))

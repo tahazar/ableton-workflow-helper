@@ -37,7 +37,9 @@ def test_phase_rotation_headroom_on_symmetric_sine_near_zero():
     assert result["best_db"] == pytest.approx(0.0, abs=0.3)
 
 
-def _make_pumped_signal(sr: int, bpm: float, duration_s: float, depth_db: float, recover_frac: float = 0.3):
+def _make_pumped_signal(
+    sr: int, bpm: float, duration_s: float, depth_db: float, recover_frac: float = 0.3
+):
     period = 60.0 / bpm
     t = np.arange(int(round(duration_s * sr))) / sr
     carrier = sine(55.0, sr, duration_s, amp=1.0) + 0.5 * sine(1000.0, sr, duration_s, amp=1.0)

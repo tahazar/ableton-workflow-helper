@@ -48,7 +48,11 @@ def _base_measurements(**overrides) -> dict:
             "psr": {"min_psr_loud": 10.0, "windows": []},
         },
         "spectrum": {"freqs": [], "db": [], "tilt_db_per_oct": float("nan")},
-        "stereo": {"width_db": None, "banded_width_db": {}, "correlation": {"full": 1.0, "low": 1.0}},
+        "stereo": {
+            "width_db": None,
+            "banded_width_db": {},
+            "correlation": {"full": 1.0, "low": 1.0},
+        },
         "dynamics": {
             "asymmetry": [{"ratio_db": 0.0, "skewness": 0.0}],
             "phase_rotation_headroom": {"best_db": 0.0, "f0": 100.0, "poles": 2},
@@ -312,7 +316,9 @@ def test_ordering_and_blocked_by_two_stage_fixture():
     assert phase_item["rank"] in tonal_item["blockedBy"]
     assert tonal_item["rank"] not in phase_item["blockedBy"]  # never blocked by something later
     # Rank order matches the items list order (rank is assigned positionally).
-    assert ids_in_rank_order == [it["id"] for it in sorted(result["items"], key=lambda i: i["rank"])]
+    assert ids_in_rank_order == [
+        it["id"] for it in sorted(result["items"], key=lambda i: i["rank"])
+    ]
 
 
 # ---------------------------------------------------------------------------

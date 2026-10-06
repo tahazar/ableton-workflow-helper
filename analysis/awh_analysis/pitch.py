@@ -94,9 +94,7 @@ def _f0_track(mono: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray, np.nda
     return f0, voiced, voiced_prob
 
 
-def harmonic_dominance(
-    mono: np.ndarray, sr: int, f0_track: np.ndarray, voiced: np.ndarray
-) -> dict:
+def harmonic_dominance(mono: np.ndarray, sr: int, f0_track: np.ndarray, voiced: np.ndarray) -> dict:
     """Per voiced frame, compare each of the first HARMONIC_CHECK_MAX_K
     harmonics' magnitude against the fundamental's own. Reported, never
     used to steer f0 (pyin already tracked the real periodicity). Returns

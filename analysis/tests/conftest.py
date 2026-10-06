@@ -10,7 +10,9 @@ import soundfile as sf
 SEED = 20260817
 
 
-def sine(freq: float, sr: int, duration_s: float, amp: float = 1.0, phase: float = 0.0) -> np.ndarray:
+def sine(
+    freq: float, sr: int, duration_s: float, amp: float = 1.0, phase: float = 0.0
+) -> np.ndarray:
     t = np.arange(int(round(duration_s * sr))) / sr
     return amp * np.sin(2 * np.pi * freq * t + phase)
 

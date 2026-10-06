@@ -48,14 +48,10 @@ def load(
 
     if frame_start < 0 or frame_start > total_frames:
         raise ValueError(
-            f"start_s={start_s} is out of range for a file of "
-            f"{total_frames / sr:.3f} s"
+            f"start_s={start_s} is out of range for a file of {total_frames / sr:.3f} s"
         )
     if frame_end < frame_start or frame_end > total_frames:
-        raise ValueError(
-            f"end_s={end_s} is out of range for a file of "
-            f"{total_frames / sr:.3f} s"
-        )
+        raise ValueError(f"end_s={end_s} is out of range for a file of {total_frames / sr:.3f} s")
 
     n_frames = frame_end - frame_start
     if n_frames / sr < MIN_DURATION_S:

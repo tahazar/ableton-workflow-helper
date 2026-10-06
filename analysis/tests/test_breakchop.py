@@ -34,12 +34,27 @@ LEAD_S = LEAD_STEPS * STEP_DUR_S
 
 # amen-shaped skeleton: kick/snare backbeat-ish + hats, well separated (>=8
 # steps apart) so no slice's span accidentally swallows a neighboring hit.
-EVENTS = [(0, "kick"), (8, "snare"), (16, "kick"), (24, "hat"), (32, "snare"), (40, "kick"), (48, "hat")]
+EVENTS = [
+    (0, "kick"),
+    (8, "snare"),
+    (16, "kick"),
+    (24, "hat"),
+    (32, "snare"),
+    (40, "kick"),
+    (48, "hat"),
+]
 
 
 def _burst(
-    n: int, sr: int, t0: float, freq: float, amp: float, tau: float,
-    attack_s: float = 0.005, release_s: float = 0.005, seed: int | None = None,
+    n: int,
+    sr: int,
+    t0: float,
+    freq: float,
+    amp: float,
+    tau: float,
+    attack_s: float = 0.005,
+    release_s: float = 0.005,
+    seed: int | None = None,
 ):
     """A short decaying burst with a raised-cosine attack and release ramp.
     Real percussive hits never start/stop with a mathematical discontinuity;
@@ -134,8 +149,12 @@ def test_shifted_hits_offsets_are_measured_not_snapped(tmp_path):
     amount) must show that shift in its reported offsets, never silently
     re-snapped back onto the grid."""
     shift_s = 0.03
-    on_grid = breakchop.analyze_break(_write(tmp_path, "grid.wav", _synthetic_break(0.0)), bpm_override=BPM)
-    shifted = breakchop.analyze_break(_write(tmp_path, "shifted.wav", _synthetic_break(shift_s)), bpm_override=BPM)
+    on_grid = breakchop.analyze_break(
+        _write(tmp_path, "grid.wav", _synthetic_break(0.0)), bpm_override=BPM
+    )
+    shifted = breakchop.analyze_break(
+        _write(tmp_path, "shifted.wav", _synthetic_break(shift_s)), bpm_override=BPM
+    )
 
     assert on_grid["n_slices"] == shifted["n_slices"] == len(EVENTS)
     for a, b in zip(on_grid["slices"], shifted["slices"], strict=True):
@@ -245,9 +264,18 @@ def test_cli_breakchop_export_and_save_record(tmp_path):
     record_path = tmp_path / "record.json"
     proc = subprocess.run(
         [
-            sys.executable, "-m", "awh_analysis", "breakchop", str(path),
-            "--bpm", str(BPM), "--export", str(export_dir),
-            "--save-record", str(record_path), "--json",
+            sys.executable,
+            "-m",
+            "awh_analysis",
+            "breakchop",
+            str(path),
+            "--bpm",
+            str(BPM),
+            "--export",
+            str(export_dir),
+            "--save-record",
+            str(record_path),
+            "--json",
         ],
         capture_output=True,
         text=True,

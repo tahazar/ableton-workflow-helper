@@ -57,7 +57,9 @@ DUCKING_MAX_MIN_FRACTION = 0.6  # envelope minimum must land in the first 60% of
 NO_DUCK_DEPTH_DB = 1.0
 NO_DUCK_MIN_MIN_FRACTION = 0.75  # minimum in the last 25% = still falling at wrap = decay, not duck
 
-HONEST_LIMIT_SPAN_DB = 20.0  # peak-to-tail beyond this suggests a full-mix / bleed-dominated capture
+HONEST_LIMIT_SPAN_DB = (
+    20.0  # peak-to-tail beyond this suggests a full-mix / bleed-dominated capture
+)
 
 
 def _dip_basis(times: np.ndarray, hold_s: float, tau_s: float) -> np.ndarray:

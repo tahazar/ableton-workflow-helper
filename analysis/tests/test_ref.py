@@ -24,14 +24,18 @@ SR = 44100
 # ---------------------------------------------------------------------------
 
 
-def _kick(n: int, sr: int, amp: float = 0.9, decay_tau: float = 0.12, freq: float = 58.0) -> np.ndarray:
+def _kick(
+    n: int, sr: int, amp: float = 0.9, decay_tau: float = 0.12, freq: float = 58.0
+) -> np.ndarray:
     """A decaying low sine + a short broadband click, like a kick drum."""
     t = np.arange(n) / sr
     sig = amp * np.exp(-t / decay_tau) * np.sin(2 * np.pi * freq * t)
     click_len = min(n, int(0.003 * sr))
     if click_len > 0:
         click_env = np.exp(-np.arange(click_len) / (0.001 * sr))
-        sig[:click_len] += 0.3 * amp * click_env * np.random.default_rng(1).standard_normal(click_len)
+        sig[:click_len] += (
+            0.3 * amp * click_env * np.random.default_rng(1).standard_normal(click_len)
+        )
     return sig
 
 
@@ -103,7 +107,12 @@ def _build_house_track(sr: int = SR) -> tuple[np.ndarray, list[tuple[int, int, s
                     _add(sig, beat_start_s, sr, kick_gain * boost * _kick(int(0.4 * sr), sr))
                 if hat_gain > 0:
                     for sub in (0.0, 0.5):
-                        _add(sig, beat_start_s + sub * beat, sr, hat_gain * 0.5 * _hat(int(0.05 * sr), sr))
+                        _add(
+                            sig,
+                            beat_start_s + sub * beat,
+                            sr,
+                            hat_gain * 0.5 * _hat(int(0.05 * sr), sr),
+                        )
         bar_idx += n_bars
 
     sig = sig / (np.max(np.abs(sig)) + 1e-9) * 0.9
@@ -127,7 +136,12 @@ def _build_trap_track(sr: int = SR) -> np.ndarray:
     for b in range(TRAP_BARS):
         bar_start_s = b * bar
         for beat_pos in (0.0, 3.5):
-            _add(sig, bar_start_s + beat_pos * beat, sr, _kick(int(0.5 * sr), sr, decay_tau=0.25, freq=45.0))
+            _add(
+                sig,
+                bar_start_s + beat_pos * beat,
+                sr,
+                _kick(int(0.5 * sr), sr, decay_tau=0.25, freq=45.0),
+            )
         _add(sig, bar_start_s + 2 * beat, sr, _snare(int(0.2 * sr), sr))
         for sub in np.arange(0, 4, 0.5):
             _add(sig, bar_start_s + sub * beat, sr, _hat(int(0.02 * sr), sr, amp=TRAP_HAT_AMP))
@@ -214,7 +228,9 @@ def test_house_track_tempo_grid_and_sections(tmp_path):
     # Every section has non-empty evidence quoting numbers.
     for s in sections:
         assert s["evidence"], f"section {s} has empty evidence"
-        assert any(ch.isdigit() for ch in s["evidence"]), f"evidence has no numbers: {s['evidence']!r}"
+        assert any(ch.isdigit() for ch in s["evidence"]), (
+            f"evidence has no numbers: {s['evidence']!r}"
+        )
 
     assert "measurements" in result
     assert result["bar_count"] == sum(b[1] for b in HOUSE_SECTIONS)
@@ -346,7 +362,8 @@ def _make_arc(full_vals: list[float], sub_vals: list[float]) -> list[dict]:
     consumes, so this is a legitimate synthetic construction of it, just
     built by hand instead of derived from audio."""
     return [
-        {"bar": i + 1, "full_db": f, "sub_db": s, "high_db": 0.0} for i, (f, s) in enumerate(zip(full_vals, sub_vals, strict=True))
+        {"bar": i + 1, "full_db": f, "sub_db": s, "high_db": 0.0}
+        for i, (f, s) in enumerate(zip(full_vals, sub_vals, strict=True))
     ]
 
 
@@ -368,7 +385,9 @@ def test_detect_sections_likely_drop_below_confirmed_threshold():
     sections = ref.detect_sections(_make_arc(full, sub), phrase_bars=4)
 
     names = [s["name"] for s in sections]
-    assert "drop" not in names, f"a confirmed drop should not fire on a sub-threshold jump: {sections}"
+    assert "drop" not in names, (
+        f"a confirmed drop should not fire on a sub-threshold jump: {sections}"
+    )
     likely = [s for s in sections if s["name"] == "likely-drop"]
     assert len(likely) == 1, f"expected exactly one likely-drop: {sections}"
     ev = likely[0]
@@ -433,15 +452,29 @@ def test_analyze_reference_appends_likely_sections_note(tmp_path, monkeypatch):
     write_wav(path, to_stereo(sig), SR)
 
     canned_sections = [
-        {"name": "likely-drop", "start_bar": 1, "end_bar": 4, "confidence": 0.4, "evidence": "full +2.5 dB..."},
-        {"name": "section", "start_bar": 5, "end_bar": 8, "confidence": 0.3, "evidence": "no rule matched"},
+        {
+            "name": "likely-drop",
+            "start_bar": 1,
+            "end_bar": 4,
+            "confidence": 0.4,
+            "evidence": "full +2.5 dB...",
+        },
+        {
+            "name": "section",
+            "start_bar": 5,
+            "end_bar": 8,
+            "confidence": 0.3,
+            "evidence": "no rule matched",
+        },
     ]
     monkeypatch.setattr(ref, "detect_sections", lambda arc, phrase_bars: canned_sections)
 
     result = ref.analyze_reference(str(path))
 
     assert result["sections"] == canned_sections
-    assert any("likely-*" in note and "confirm by ear" in note for note in result["notes"]), result["notes"]
+    assert any("likely-*" in note and "confirm by ear" in note for note in result["notes"]), result[
+        "notes"
+    ]
 
 
 def test_analyze_reference_no_likely_note_when_no_likely_sections(tmp_path, monkeypatch):
@@ -458,8 +491,17 @@ def test_analyze_reference_no_likely_note_when_no_likely_sections(tmp_path, monk
     write_wav(path, to_stereo(sig), SR)
 
     monkeypatch.setattr(
-        ref, "detect_sections", lambda arc, phrase_bars: [{"name": "section", "start_bar": 1, "end_bar": 8,
-                                                             "confidence": 0.3, "evidence": "no rule matched"}]
+        ref,
+        "detect_sections",
+        lambda arc, phrase_bars: [
+            {
+                "name": "section",
+                "start_bar": 1,
+                "end_bar": 8,
+                "confidence": 0.3,
+                "evidence": "no rule matched",
+            }
+        ],
     )
     result = ref.analyze_reference(str(path))
     assert not any("likely-*" in note for note in result["notes"]), result["notes"]
@@ -483,7 +525,9 @@ def test_bpm_hint_swaps_to_matching_runner_up(tmp_path):
 
     assert hinted["bpm"] == pytest.approx(runner_up, abs=0.1)
     assert hinted["bpm_runner_up"] == pytest.approx(baseline["bpm"], abs=0.1)
-    assert any("hint" in note.lower() and "swap" in note.lower() for note in hinted["notes"]), hinted["notes"]
+    assert any("hint" in note.lower() and "swap" in note.lower() for note in hinted["notes"]), (
+        hinted["notes"]
+    )
 
 
 def test_bpm_hint_ignored_when_it_matches_neither_candidate(tmp_path):

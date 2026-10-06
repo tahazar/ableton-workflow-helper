@@ -133,8 +133,7 @@ def analyze_break(
         "assumptions": [
             "4/4 time signature and a 16th-note grid are assumed for grid-step "
             "math (same convention as awh_analysis.drumstats).",
-            "the file is assumed to start on beat 1 (downbeat at t=0s) — see "
-            "downbeat_check.",
+            "the file is assumed to start on beat 1 (downbeat at t=0s) — see downbeat_check.",
             "role guess (kick/snare/hat) is a low/mid/high BAND-ENERGY PROXY "
             "(same one drumstats.py mines across a whole loop), not source "
             "separation or ground truth — treat it as a GUESS, tier it with "
@@ -279,7 +278,10 @@ def export_slices(path: str, chopmap: dict[str, Any], export_dir: str) -> dict[s
     subtype = info.subtype
 
     exported: list[dict[str, Any]] = []
-    readme_rows = ["| slice | file | start_s | end_s | grid | role | confidence |", "|---|---|---|---|---|---|---|"]
+    readme_rows = [
+        "| slice | file | start_s | end_s | grid | role | confidence |",
+        "|---|---|---|---|---|---|---|",
+    ]
     for sl in chopmap["slices"]:
         idx = sl["index"]
         start = sl["start_s"]

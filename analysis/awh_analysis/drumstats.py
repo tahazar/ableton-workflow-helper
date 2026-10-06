@@ -182,7 +182,9 @@ def _swing_estimate(offsets: dict[str, list[float]], grid: int) -> dict[str, Any
     odd = np.array(offsets["odd"], dtype=np.float64)
     even_mean = float(np.mean(even)) if even.size else None
     odd_mean = float(np.mean(odd)) if odd.size else None
-    delay_frac = (odd_mean - even_mean) if (even_mean is not None and odd_mean is not None) else None
+    delay_frac = (
+        (odd_mean - even_mean) if (even_mean is not None and odd_mean is not None) else None
+    )
     step_beats = float(BEATS_PER_BAR) / grid
     return {
         "band": "high",
@@ -245,7 +247,12 @@ def mine_drum_loops(
         if loop_bpm is None:
             loop_bpm = bpm
         if loop_bpm is None:
-            skipped.append({"file": os.path.basename(path), "reason": "no BPM in filename and no --bpm override"})
+            skipped.append(
+                {
+                    "file": os.path.basename(path),
+                    "reason": "no BPM in filename and no --bpm override",
+                }
+            )
             continue
 
         try:
@@ -335,7 +342,9 @@ def mine_drum_loops(
         "as suggestive, not definitive, until the full dataset is mined.",
     ]
     if skipped:
-        assumptions.append(f"{len(skipped)} file(s) were skipped — see the skipped list for reasons.")
+        assumptions.append(
+            f"{len(skipped)} file(s) were skipped — see the skipped list for reasons."
+        )
 
     result: dict[str, Any] = {
         "dataset": dataset_name or "unnamed",

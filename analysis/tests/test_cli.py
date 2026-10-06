@@ -23,7 +23,16 @@ def test_cli_report_json_smoke(tmp_path):
     assert "measurements" in obj
     assert "findings" in obj
     m = obj["measurements"]
-    for key in ("file", "samplerate", "channels", "duration_s", "loudness", "spectrum", "stereo", "dynamics"):
+    for key in (
+        "file",
+        "samplerate",
+        "channels",
+        "duration_s",
+        "loudness",
+        "spectrum",
+        "stereo",
+        "dynamics",
+    ):
         assert key in m
 
 
@@ -56,7 +65,16 @@ def test_cli_target_json_smoke(tmp_path):
 
     save_path = tmp_path / "target.json"
     proc = subprocess.run(
-        [sys.executable, "-m", "awh_analysis", "target", *paths, "--save", str(save_path), "--json"],
+        [
+            sys.executable,
+            "-m",
+            "awh_analysis",
+            "target",
+            *paths,
+            "--save",
+            str(save_path),
+            "--json",
+        ],
         capture_output=True,
         text=True,
         cwd=str(__import__("pathlib").Path(__file__).resolve().parents[1]),

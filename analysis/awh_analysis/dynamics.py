@@ -202,9 +202,7 @@ def _pump_band(sig: np.ndarray, sr: int, bpm: float) -> dict:
     tail_db = folded_db[-tail_bins:]
     tail_level = float(np.nanmean(tail_db)) if np.isfinite(tail_db).any() else trough_db
     recovery_fraction = (
-        float(np.clip((tail_level - trough_db) / depth_db, 0.0, 1.0))
-        if depth_db > 1e-9
-        else 0.0
+        float(np.clip((tail_level - trough_db) / depth_db, 0.0, 1.0)) if depth_db > 1e-9 else 0.0
     )
     if recovery_fraction >= 0.5 and trough_position <= 0.6:
         shape = "ducking-like"

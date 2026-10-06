@@ -212,7 +212,12 @@ def embed_audio_batch(paths: list[str], model_key: str = DEFAULT_MODEL) -> list[
             try:
                 vec = _stub_embed_audio(path)
                 records.append(
-                    {"path": path, "unreadable": False, "error": None, "clap": _wrap(STUB_MODEL_LABEL, vec)}
+                    {
+                        "path": path,
+                        "unreadable": False,
+                        "error": None,
+                        "clap": _wrap(STUB_MODEL_LABEL, vec),
+                    }
                 )
             except Exception as exc:  # noqa: BLE001 - one bad file is a record, not a crash
                 records.append({"path": path, "unreadable": True, "error": str(exc), "clap": None})
@@ -250,7 +255,9 @@ def embed_audio_batch(paths: list[str], model_key: str = DEFAULT_MODEL) -> list[
                     }
                 )
             except Exception as file_exc:  # noqa: BLE001 - one bad file is a record, not a crash
-                records.append({"path": path, "unreadable": True, "error": str(file_exc), "clap": None})
+                records.append(
+                    {"path": path, "unreadable": True, "error": str(file_exc), "clap": None}
+                )
         return records
 
 

@@ -197,8 +197,14 @@ def test_cli_bands_multi_file_text_smoke(tmp_path):
 
     proc = subprocess.run(
         [
-            sys.executable, "-m", "awh_analysis", "bands",
-            str(path_a), str(path_b), "--bands", "200-500",
+            sys.executable,
+            "-m",
+            "awh_analysis",
+            "bands",
+            str(path_a),
+            str(path_b),
+            "--bands",
+            "200-500",
         ],
         capture_output=True,
         text=True,

@@ -235,11 +235,15 @@ def scan_file(path: str) -> dict[str, Any]:
             )
         )
 
-        bpm_info = _bpm_estimate(mono, sr) if is_loop else {
-            "bpm": None,
-            "bpm_confidence": None,
-            "bpm_runner_up": None,
-        }
+        bpm_info = (
+            _bpm_estimate(mono, sr)
+            if is_loop
+            else {
+                "bpm": None,
+                "bpm_confidence": None,
+                "bpm_runner_up": None,
+            }
+        )
 
         spectral = _spectral_features(mono, sr)
         band = _band_energy(mono, sr)

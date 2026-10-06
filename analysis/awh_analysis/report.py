@@ -177,8 +177,7 @@ def _delivery_findings(measurements: dict, delivery: str) -> list[dict]:
                 "true_peak_db",
                 tp_db,
                 dbtp_max,
-                f"{delivery} requires true peak ≤ {dbtp_max:.1f} dBTP; measured "
-                f"{tp_db:.2f} dBTP.",
+                f"{delivery} requires true peak ≤ {dbtp_max:.1f} dBTP; measured {tp_db:.2f} dBTP.",
                 "Lower the limiter's output ceiling (e.g. to -1.0 dBTP) or add a true-peak "
                 "limiter after the master chain to avoid inter-sample clipping on lossy codecs.",
             )

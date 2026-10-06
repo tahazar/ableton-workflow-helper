@@ -71,8 +71,8 @@ def _decaying_bass(
         if length <= 0:
             continue
         tt = np.arange(length) / sr
-        sig[start : start + length] += 0.7 * np.exp(-tt / decay_tau_s) * np.sin(
-            2 * np.pi * 50.0 * tt
+        sig[start : start + length] += (
+            0.7 * np.exp(-tt / decay_tau_s) * np.sin(2 * np.pi * 50.0 * tt)
         )
     return to_stereo(sig)
 
@@ -127,7 +127,16 @@ def test_cli_pumpcheck_json_smoke(tmp_path):
     trig_arg = ",".join(str(t) for t in TRIGGERS)
 
     proc = subprocess.run(
-        [sys.executable, "-m", "awh_analysis", "pumpcheck", str(path), "--triggers", trig_arg, "--json"],
+        [
+            sys.executable,
+            "-m",
+            "awh_analysis",
+            "pumpcheck",
+            str(path),
+            "--triggers",
+            trig_arg,
+            "--json",
+        ],
         capture_output=True,
         text=True,
         cwd=str(Path(__file__).resolve().parents[1]),

@@ -29,7 +29,9 @@ def _harmonic_stack(f0: float, amps: list[float], sr: int, duration_s: float) ->
     return sig / np.max(np.abs(sig)) * 0.8
 
 
-def _stretched_partial_bell(f0: float, stretch: float, n_partials: int, sr: int, duration_s: float) -> np.ndarray:
+def _stretched_partial_bell(
+    f0: float, stretch: float, n_partials: int, sr: int, duration_s: float
+) -> np.ndarray:
     """A "bell": partial k sits at f0*k*stretch^(k-1) (k=1 unstretched, each
     higher partial pulled progressively further off the integer-harmonic
     grid — the classic stretched-partial/inharmonic timbre), amplitude 1/k.
@@ -170,7 +172,12 @@ def test_match_reports_tier1_summary_for_a_harmonic_stack(tmp_path):
     assert "good Operator candidate" in result["summary"]
     # drawThesePartials is always present, regardless of tier/residual.
     assert len(result["proposal"]["drawThesePartials"]) == opmatch.N_PARTIALS
-    assert set(result["proposal"]["addressable"]) >= {"Ae Attack", "Ae Decay", "Ae Sustain", "Ae Release"}
+    assert set(result["proposal"]["addressable"]) >= {
+        "Ae Attack",
+        "Ae Decay",
+        "Ae Sustain",
+        "Ae Release",
+    }
 
 
 # ---------------------------------------------------------------------------

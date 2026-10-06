@@ -265,7 +265,9 @@ def harmonic_vector_and_ratio(
 
     total_energy = float(np.mean(np.sum(windowed**2, axis=0)))
     total_energy = max(total_energy, 1e-12)
-    harmonicity_ratio = float(np.clip(float(np.mean(harmonic_energy_per_frame)) / total_energy, 0.0, 1.0))
+    harmonicity_ratio = float(
+        np.clip(float(np.mean(harmonic_energy_per_frame)) / total_energy, 0.0, 1.0)
+    )
 
     amps_arr = np.asarray(amps)
     peak_amp = float(amps_arr.max())
@@ -416,7 +418,11 @@ def analyze(path: str) -> dict:
         )
         deviation = partial_deviation_semitones(mag, freqs, sustain_mask, f0["hz"])
     else:
-        harmonic_vector, harmonicity_ratio, harmonic_amps = [0.0] * N_PARTIALS, 0.0, [0.0] * N_PARTIALS
+        harmonic_vector, harmonicity_ratio, harmonic_amps = (
+            [0.0] * N_PARTIALS,
+            0.0,
+            [0.0] * N_PARTIALS,
+        )
         deviation = None
 
     return {
@@ -511,7 +517,10 @@ def propose(analysis_result: dict) -> dict:
         "Ae Sustain": _level_to_raw(adsr["sustain_db"], adsr["floor_db"], adsr["peak_db"]),
         "Ae Release": _time_to_raw(adsr["release_s"]),
     }
-    if centroid["start_hz"] is not None and abs(centroid["end_hz"] - centroid["start_hz"]) > FILTER_SHAPING_HZ:
+    if (
+        centroid["start_hz"] is not None
+        and abs(centroid["end_hz"] - centroid["start_hz"]) > FILTER_SHAPING_HZ
+    ):
         addressable["Filter On"] = 1.0
 
     return {
@@ -598,8 +607,12 @@ def compare(ref_path: str, cand_path: str) -> dict:
     ref_mono = ref_mono[:n]
     cand_mono = cand_mono[:n]
 
-    ref_S = np.abs(librosa.stft(ref_mono, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=FRAME_LENGTH))
-    cand_S = np.abs(librosa.stft(cand_mono, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=FRAME_LENGTH))
+    ref_S = np.abs(
+        librosa.stft(ref_mono, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=FRAME_LENGTH)
+    )
+    cand_S = np.abs(
+        librosa.stft(cand_mono, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=FRAME_LENGTH)
+    )
     m = min(ref_S.shape[1], cand_S.shape[1])
     ref_S = ref_S[:, :m]
     cand_S = cand_S[:, :m]
