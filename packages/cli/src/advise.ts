@@ -1,11 +1,10 @@
 /**
- * `awh mix advise` (M13, docs/design/mix-advisor.md) — helpers split out of
+ * `awh mix advise` helpers (docs/design/mix-advisor.md), kept out of
  * index.ts so the arg-mapping/record-resolution and `--set` device-name
- * enrichment are unit-testable without spawning the Python engine (same
- * spirit as layers.ts/op.ts/duck.ts).
+ * enrichment are unit-testable without spawning the Python engine.
  *
- * The rule engine itself lives in Python (analysis/awh_analysis/advise.py)
- * — this module only resolves CLI inputs to file paths and, when `--set`
+ * The rule engine itself lives in Python (analysis/awh_analysis/advise.py).
+ * This module only resolves CLI inputs to file paths and, when `--set`
  * is passed, additively renames generic device mentions in the engine's
  * action text to the actual devices sitting on the master chain.
  */
@@ -30,13 +29,13 @@ export interface MasterDevice {
   name: string;
 }
 
-// The fake bridge (and the real gateway — see paths.ts's "main" root) both
+// The fake bridge and the real gateway (see paths.ts's "main" root) both
 // address the master track as `main`, e.g. `main/dev:0`. There is no op to
-// LIST a track's devices by path alone (only `device.get` on a known
+// list a track's devices by path alone (only `device.get` on a known
 // path), so this walks `main/dev:0`, `main/dev:1`, ... until the first
-// error (out of range, OR the gateway being unreachable at all — either
-// way an empty/partial list is the right additive-only answer, never a
-// thrown error: --set degrades to "no device names available").
+// error. That error is either out of range or an unreachable gateway. In
+// both cases an empty or partial list is the right additive-only answer:
+// --set degrades to "no device names available" instead of throwing.
 const MASTER_CHAIN_PROBE_CAP = 32;
 
 export async function readMasterChainDevices(caller: OpCaller): Promise<MasterDevice[]> {
@@ -56,9 +55,9 @@ export async function readMasterChainDevices(caller: OpCaller): Promise<MasterDe
 }
 
 /** Generic device-class phrases the engine's action text may use, each
- *  paired with a case-insensitive matcher against a REAL device's name
- *  (which may have been renamed by the owner, e.g. "Master EQ" — matching
- *  on the class word, not an exact string). */
+ *  paired with a case-insensitive matcher against a real device's name.
+ *  Devices may be renamed (e.g. "Master EQ"), so it matches on the class
+ *  word, not an exact string. */
 const DEVICE_ENRICH_PATTERNS: { needle: string; match: RegExp }[] = [
   { needle: "EQ Eight", match: /eq eight/i },
   { needle: "Utility", match: /utility/i },
@@ -67,9 +66,9 @@ const DEVICE_ENRICH_PATTERNS: { needle: string; match: RegExp }[] = [
   { needle: "Compressor", match: /\bcompressor\b/i },
 ];
 
-/** Rewrite the FIRST generic device mention in each item's `action` text
- *  to name a real device on the master chain, when one exists there —
- *  purely additive text substitution; items are returned unchanged when
+/** Rewrite the first generic device mention in each item's `action` text
+ *  to name a real device on the master chain, when one exists there.
+ *  Additive text substitution only; items are returned unchanged when
  *  `masterDevices` is empty (gateway unreachable, or --set not passed). */
 export function enrichActionsWithDevices<T extends { action: string }>(
   items: T[],

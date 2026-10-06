@@ -5,10 +5,10 @@ import { roleOfNote } from "./roles.js";
 import type { DrumContext, DrumKit, DrumRole } from "./types.js";
 
 /**
- * Fill/humanize/vary ops on drum patterns. These are TRANSFORM-mode (R7):
- * they rework notes already produced (by generateDrumPattern or the user's
- * own clip), never inventing a pitch the kit and input didn't already use.
- * PURE — inputs are never mutated, only ever copied and reworked.
+ * Fill/humanize/vary ops on drum patterns. These are transforms: they rework
+ * notes already produced (by generateDrumPattern or the user's own clip),
+ * never inventing a pitch the kit and input didn't already use. Pure: inputs
+ * are never mutated, only copied and reworked.
  */
 
 export interface FillOptions {
@@ -198,7 +198,7 @@ function varyBackbeat(
   const out: NoteSpec[] = [];
   for (const n of roleNotes) {
     if (isOnBeat(n.start)) {
-      out.push(n); // beat 2/4 (or beat 3) hits are the backbone — keep them
+      out.push(n); // beat 2/4 (or beat 3) hits are the backbone; keep them
       continue;
     }
     const kept = dropOrNudge(n, rng, amount * 0.3, clipEnd);
@@ -298,7 +298,7 @@ export function varyDrums(
         return acc;
       }, []);
     }
-    // never erase a role entirely — fall back to the original hits
+    // never erase a role entirely; keep the original hits instead
     result.push(...(varied.length > 0 ? varied : roleNotes));
   }
 

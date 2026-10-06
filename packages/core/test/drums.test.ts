@@ -778,8 +778,8 @@ rumbleKicks: null
 
 describe("data-driven house-family StyleSpec generation (B4.1)", () => {
   // -------------------------------------------------------------------------
-  // REGRESSION: frozen copies of the pre-B4.1 houseBar/technoBar generators,
-  // verbatim, so the new houseFamilyPlan-routed built-ins can be proven
+  // Regression: frozen reference copies of the hand-written houseBar/technoBar
+  // generators, so the houseFamilyPlan-routed built-ins can be proven
   // byte-identical through the public API for a spread of seeds/densities.
   // -------------------------------------------------------------------------
   function referenceHouseBar(

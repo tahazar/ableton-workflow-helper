@@ -1,13 +1,13 @@
 /**
- * Operator assistant (B2) engine: recipe validate/apply flow, split out of
+ * Operator assistant engine: recipe validate/apply flow, kept out of
  * packages/cli/src/index.ts so it's unit-testable against a real (fake-
- * backed) gateway without spawning the CLI itself — see test/op.test.ts,
- * same spirit as duck.ts. docs/design/operator-assistant.md is the spec.
+ * backed) gateway without spawning the CLI (see test/op.test.ts).
+ * docs/design/operator-assistant.md is the spec.
  *
  * Validate-first, fail loudly, zero partial writes (docs/lessons-learned.md
- * #3/#4): `planRecipeApply` reads the device ONCE and reports every param
- * name the recipe references that the live device doesn't have; if any are
- * unknown, `applyRecipePlan` refuses to write ANYTHING.
+ * #3/#4): `planRecipeApply` reads the device once and reports every param
+ * name the recipe references that the live device doesn't have. If any are
+ * unknown, `applyRecipePlan` refuses to write anything.
  */
 import type { DeviceDetail, OperatorRecipe, StoredKnowledgeEntry } from "@awh/core";
 import { extractFencedBlock, parseOperatorRecipe } from "@awh/core";
@@ -38,15 +38,14 @@ export interface RecipePlan {
   devicePath: string;
   recipeName: string;
   moves: RecipeMove[];
-  /** Recipe param names the live device does NOT have — non-empty means
+  /** Recipe param names the live device does not have. Non-empty means
    *  `applyRecipePlan` refuses to write anything. */
   unknownParams: string[];
   knownParamNames: string[];
 }
 
-/** Validate a recipe's param names against a device.get read — device.get
- *  is called ONCE by the caller BEFORE this, so this function is pure and
- *  synchronous: no I/O, easy to unit-test independent of any gateway. */
+/** Validate a recipe's param names against a device.get read. The caller
+ *  does the device.get, so this function is pure and synchronous. */
 export function planRecipeApply(
   detail: DeviceDetail,
   recipe: OperatorRecipe,
@@ -82,12 +81,12 @@ const WRITE_MATCH_TOLERANCE = 1e-6;
 
 /**
  * Write every move in the plan via setDeviceParam, then read the device
- * back once and report per-param target vs. actual (mismatches are NOT
- * thrown — the caller decides how to surface them, matching `duck
- * calibrate`'s report-don't-guess convention). Refuses (throws, writes
- * NOTHING) if the plan carries any unknownParams — the caller should
- * normally have already checked this before calling (for a --dry-run early
- * exit), but this function re-checks so it's safe to call directly too.
+ * back once and report per-param target vs. actual. Mismatches are not
+ * thrown; the caller decides how to surface them, matching `duck
+ * calibrate`'s report-don't-guess convention. Throws without writing
+ * anything if the plan carries any unknownParams. The caller normally
+ * checks this first (for a --dry-run early exit); the re-check makes this
+ * function safe to call directly.
  */
 export async function applyRecipePlan(
   caller: OpCaller,
@@ -130,11 +129,11 @@ export interface RecipeSummary {
 }
 
 /**
- * Pure summarizer over already-loaded knowledge entries (no filesystem
- * I/O here — the caller reads via KnowledgeStore, same discovery/tiering
- * conventions as `kb list`). Throws loudly (a bad recipe entry is a data
- * bug, not a state to silently skip) if a matching entry has no
- * ```awh-operator-patch``` block or fails to parse.
+ * Pure summarizer over already-loaded knowledge entries. The caller reads
+ * via KnowledgeStore, with the same discovery/tiering conventions as
+ * `kb list`. Throws if a matching entry has no ```awh-operator-patch```
+ * block or fails to parse: a bad recipe entry is a data bug, not a state to
+ * skip.
  */
 export function summarizeRecipeEntries(entries: StoredKnowledgeEntry[]): RecipeSummary[] {
   return entries

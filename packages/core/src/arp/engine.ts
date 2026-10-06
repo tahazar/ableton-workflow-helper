@@ -1,22 +1,19 @@
 /**
- * M14 arp engine: generateArp turns a chord progression (as a sequence of
+ * Arp engine: generateArp turns a chord progression (as a sequence of
  * time-spanned chord voicings) into an arpeggiated note stream, driven by an
- * ArpSpec (see spec.ts). Also home to the two reusable rhythm utilities the
- * design calls out: euclideanMask (drums can adopt it later) and
- * chordsFromNotes (reads a chord clip, or reports "this looks like a
- * melody"). Pinned semantics: docs/design/arp-engine.md.
+ * ArpSpec (see spec.ts). Also home to two reusable rhythm utilities:
+ * euclideanMask and chordsFromNotes (reads a chord clip, or reports "this
+ * looks like a melody"). Pinned semantics: docs/design/arp-engine.md.
  *
- * Core design decision (documented, not fully pinned by the spec doc): a
- * SINGLE global step counter `i` (0, 1, 2, ...) drives everything —
- * contour's pitch-pool index, the pattern position (`i mod patternLength`)
- * that drives accents/rests/ratchets, and the walk contour's rng draw. `i`
- * NEVER resets, including across chord boundaries — only the pitch POOL
- * changes there (voicing/octaves of whichever chord's span contains the
- * step's time). That single mechanism is what makes patternLength != bar
- * length true polymeter (it wraps on its own cycle regardless of chord
- * changes) and what makes chord boundaries re-select the pool without
- * resetting pattern position — both fall out of the same rule instead of
- * needing separate bookkeeping.
+ * A single global step counter `i` (0, 1, 2, ...) drives the contour's
+ * pitch-pool index, the pattern position (`i mod patternLength`) that drives
+ * accents/rests/ratchets, and the walk contour's rng draw. `i` never resets,
+ * including across chord boundaries; only the pitch pool changes there
+ * (voicing/octaves of whichever chord's span contains the step's time).
+ * That one rule makes patternLength != bar length true polymeter (it wraps
+ * on its own cycle regardless of chord changes) and lets chord boundaries
+ * re-select the pool without resetting pattern position, with no separate
+ * bookkeeping.
  */
 import type { NoteSpec } from "../bridge/types.js";
 import { sortNotes } from "../transforms/types.js";
@@ -25,18 +22,16 @@ import type { ArpContour, ArpSpec } from "./spec.js";
 import { arpRateBeats } from "./spec.js";
 
 /** Beats per bar assumed throughout the arp engine (the CLI exposes no --sig
- *  for `awh arp` — see docs/design/arp-engine.md's CLI section). */
+ *  for `awh arp`; see docs/design/arp-engine.md's CLI section). */
 export const ARP_BEATS_PER_BAR = 4;
 
 // ---------------------------------------------------------------------------
-// euclideanMask — shared rhythm utility (exported so drums can adopt it
-// later without re-implementation; drum built-ins are untouched by this
-// file, per the M14 hard constraints).
+// euclideanMask: shared rhythm utility
 // ---------------------------------------------------------------------------
 
 /**
  * Euclidean onset mask: exactly `k` onsets spread as evenly as possible over
- * `n` steps (the "Bresenham" bucket-transition construction — deterministic,
+ * `n` steps (the "Bresenham" bucket-transition construction: deterministic,
  * O(n), and degenerates sensibly at the edges: k<=0 -> all false, k>=n -> all
  * true). `rotate` shifts the pattern by that many steps (any integer,
  * normalized mod n).
@@ -52,7 +47,7 @@ export function euclideanMask(k: number, n: number, rotate = 0): boolean[] {
 }
 
 // ---------------------------------------------------------------------------
-// chordsFromNotes — group a clip's notes into chords with spans, for the
+// chordsFromNotes: group a clip's notes into chords with spans, for the
 // chord-clip arp source.
 // ---------------------------------------------------------------------------
 
@@ -74,9 +69,8 @@ const SIMULTANEOUS_EPS = 1e-6;
  * with spans covering the clip: each chord's span runs to the next group's
  * start, and the last group's span runs to its own longest note. A notes
  * list with no simultaneities anywhere (every group is a single note, or
- * there are no notes at all) returns { kind: "melody" } — a state, not a
- * degenerate one-note-chord result (docs/lessons-learned.md #5, and the
- * design's own negative control).
+ * there are no notes at all) returns { kind: "melody" }: a state, not a
+ * degenerate one-note-chord result (docs/lessons-learned.md #5).
  */
 export function chordsFromNotes(notes: NoteSpec[]): ChordsFromNotesResult {
   if (notes.length === 0) return { kind: "melody" };
@@ -170,7 +164,7 @@ export interface GenerateArpOptions {
 
 export interface GeneratedArp {
   notes: NoteSpec[];
-  /** contour/patternLength/seed/rotate — the CLI adds style/tier on top. */
+  /** contour/patternLength/seed/rotate; the CLI adds style/tier on top. */
   meta: Record<string, string>;
 }
 
@@ -186,7 +180,7 @@ function findChordAt(chords: ArpChordSpan[], tLocal: number): ArpChordSpan {
 }
 
 /** Extend a chord's voicing upward by octave copies (1 = unchanged), sorted
- *  ascending — the pool every contour except as-voiced draws from. */
+ *  ascending: the pool every contour except as-voiced draws from. */
 function poolWithOctaves(pitches: number[], octaves: number): number[] {
   const out: number[] = [];
   for (let o = 0; o < octaves; o++) {

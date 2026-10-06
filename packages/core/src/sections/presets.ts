@@ -5,12 +5,12 @@ import type { SectionsPlan } from "./types.js";
  * Genre form presets: opinionated starting arrangements the planner turns
  * into a concrete SectionsPlan for the user's tracks/sources. Encodes the
  * genre conventions from the reference-track research (energy-curve forms
- * for house/techno, 8-16 bar switch-ups for trap) — edit the emitted YAML
+ * for house/techno, 8-16 bar switch-ups for trap). Edit the emitted YAML
  * to taste before applying.
  *
  * Placeholders: role names (drums, bass, lead, ...) map to real tracks/
  * sources via the `roles` argument. Roles a preset uses but the user didn't
- * supply are simply "off" (a two-role skeleton is fine).
+ * supply are "off" (a two-role skeleton is fine).
  */
 
 interface PresetSection {
@@ -48,13 +48,12 @@ export function listForms(): string[] {
 }
 
 /**
- * Build a plan from a reference track's (owner-corrected) section map
- * instead of a genre-form preset — bars come straight from the reference,
- * not an opinionated preset. Every layer defaults to verbatim (no ops):
+ * Build a plan from a reference track's (user-corrected) section map
+ * instead of a genre-form preset: bars come straight from the reference. Every layer defaults to verbatim (no ops):
  * unlike the built-in presets, an arbitrary reference's section names
  * ("bridge 2", "post drop", ...) carry no known genre convention to apply,
- * so this doesn't guess thinning/effects the way HOUSE/TRAP do — the owner
- * edits the emitted YAML to taste, same review-before-apply flow.
+ * so this doesn't guess thinning/effects the way HOUSE/TRAP do. The user
+ * edits the emitted YAML to taste in the same review-before-apply flow.
  */
 export function planFromReferenceSections(
   refSections: { name: string; start_bar: number; end_bar: number }[],

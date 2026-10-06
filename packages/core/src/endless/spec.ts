@@ -1,14 +1,14 @@
 /**
- * M10 EndlessSpec: the per-song `endless.yaml` project file that drives
+ * EndlessSpec: the per-song `endless.yaml` project file that drives
  * `awh endless build` (see docs/design/endless-player.md). Same
  * typo-rejecting/unknown-key-rejecting YAML conventions as PhraseSpec
- * (../phrase/spec.ts) and DrumStyleSpec (../drums/styleSpec.ts) — a
+ * (../phrase/spec.ts) and DrumStyleSpec (../drums/styleSpec.ts): a
  * hand-written spec catches a misspelled field instead of silently
  * ignoring it.
  *
  * `parseEndlessSpec` does structural parsing/validation only (types,
  * ranges, unknown keys, internal cross-references like transitions ->
- * to a known section, pools -> a known layer). It does NOT touch the
+ * to a known section, pools -> a known layer). It does not touch the
  * filesystem. `validateEndlessSpec` runs the two graph/pool checks that
  * are pure functions of the parsed spec (reachability, empty pools) and
  * returns every problem found (not just the first) so the CLI can report
@@ -39,7 +39,7 @@ export interface EndlessSection {
    * but empty is a build-time error (zero-variant pool), not silence. */
   pools: Record<string, string[]>;
   /** 0..1 per-layer chance of a one-layer thin-out mute this section (not
-   * cumulative across layers — each non-protected layer with a pool here
+   * cumulative across layers; each non-protected layer with a pool here
    * rolls independently). Default 0. */
   layerMuteProbability: number;
 }
@@ -66,7 +66,7 @@ export interface EndlessFluctuation {
 export interface EndlessSpec {
   name: string;
   bpm: number;
-  /** v1: "4/4" only (validated literally), like the other engines. */
+  /** "4/4" only (validated literally), like the other engines. */
   sig: "4/4";
   /** 0/absent = fresh random seed each load; N = reproducible performance. */
   seed: number;
@@ -74,11 +74,10 @@ export interface EndlessSpec {
   layers: EndlessLayer[];
   sections: EndlessSection[];
   /** sectionId -> weighted outgoing edges. A section absent here (or with
-   * an empty edge list) has no outgoing edges — the player self-loops on
-   * it rather than crash (see player.js `pickNextSection`), but that is a
-   * dead end worth knowing about, so a section with zero declared edges
-   * still passes reachability as long as something else transitions INTO
-   * it; the player-level self-loop is a runtime safety net, not something
+   * an empty edge list) has no outgoing edges. The player self-loops on
+   * it rather than crash (see player.js `pickNextSection`). A section with
+   * zero declared edges still passes reachability as long as something
+   * else transitions into it; the player-level self-loop is a runtime safety net, not something
    * validation should encourage authors to rely on. */
   transitions: Record<string, EndlessTransitionEdge[]>;
   rules: EndlessRules;
@@ -296,10 +295,10 @@ function parseFluctuation(raw: unknown): EndlessFluctuation {
 /**
  * Parse and structurally validate an EndlessSpec from a YAML document.
  * Rejects unknown top-level (and nested) keys, and rejects any internal
- * cross-reference to an undeclared layer/section id — all a typo check,
- * same discipline as parsePhraseSpec/parseDrumStyleSpec. Does not touch
- * the filesystem or check graph reachability/empty pools — see
- * `validateEndlessSpec` for those.
+ * cross-reference to an undeclared layer/section id, as typo checks like
+ * parsePhraseSpec/parseDrumStyleSpec. Does not touch the filesystem or
+ * check graph reachability/empty pools; see `validateEndlessSpec` for
+ * those.
  */
 export function parseEndlessSpec(yamlText: string): EndlessSpec {
   const doc = parseYaml(yamlText);
@@ -357,7 +356,7 @@ export function parseEndlessSpec(yamlText: string): EndlessSpec {
  * Pure post-parse checks that don't need the filesystem: every section
  * must be reachable in the transition graph (from the first section,
  * which is the performance's entry point), and every pool a section
- * declares must have at least one variant. Returns EVERY problem found
+ * declares must have at least one variant. Returns every problem found
  * (not just the first) so `awh endless build` can report the whole list
  * in one loud pass before writing anything (per docs/lessons-learned.md:
  * validate before write, loud failures before partial output).

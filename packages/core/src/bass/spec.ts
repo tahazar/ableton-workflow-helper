@@ -1,11 +1,10 @@
 /**
- * M16 Bass808Spec: data-driven 808 bassline styles (melodic-rhythmic 808
- * BASSLINE patterns — long holds, syncopated pickups, slides, triplet
- * flows — NOT TR-808 drum patterns; those are the trap drum styles, see
- * ../drums/styleSpec.ts). Sibling of DrumStyleSpec/PhraseSpec/ArpSpec/
- * BreakSpec — same discipline (typo-rejecting, unknown-key rejection,
- * sensible defaults so a knowledge entry only needs to state what it
- * changes). Pinned schema and semantics: docs/design/bass-808.md.
+ * Bass808Spec: data-driven 808 bassline styles. These are melodic-rhythmic
+ * 808 bassline patterns (long holds, syncopated pickups, slides, triplet
+ * flows), not TR-808 drum patterns; those are the trap drum styles in
+ * ../drums/styleSpec.ts. Sibling of DrumStyleSpec, PhraseSpec, ArpSpec and
+ * BreakSpec: unknown keys are rejected, and defaults let a knowledge entry
+ * state only what it changes. Pinned schema and semantics: docs/design/bass-808.md.
  */
 import { parse as parseYaml } from "yaml";
 
@@ -17,8 +16,8 @@ export interface Bass808Step {
    *  sounding note (see generate808); used as-is otherwise. */
   len: number;
   /** Semitone offset from the fitted root. Must be a member of the spec's
-   *  `degrees` validation set (parser-enforced) — NOT re-folded into
-   *  `register` (pinned: register fits the ROOT only). */
+   *  `degrees` validation set (parser-enforced). Not re-folded into
+   *  `register`: the register fits the root only. */
   degree: number;
   /** Extends the note to overlap the next sounding note's start by
    *  `slideOverlapBeats` (bar-crossing included). Default false. */
@@ -43,7 +42,7 @@ export interface Bass808Spec {
   name: string;
   /** Weighted 1-bar cells; one is drawn (seeded, or forced via --variant) per bar. */
   cells: Bass808Cell[];
-  /** Allowed semitone offsets from root — every step's `degree` must be one of these. */
+  /** Allowed semitone offsets from root; every step's `degree` must be one of these. */
   degrees: number[];
   /** MIDI range [lo, hi] the root is octave-fitted into. Default [24, 36] (C1-C2). */
   register: [number, number];
@@ -54,9 +53,8 @@ export interface Bass808Spec {
   turnaroundBar: number;
   /** Optional; same shape as `cells`. Default []. */
   turnaroundCells: Bass808Cell[];
-  /** 0-0.5, even-8th delay fraction applied to the "and" of a beat (drum-engine
-   *  convention, same units as arp/drums' swing) — an open detail the design
-   *  left unstated beyond the schema field; all three built-ins ship 0. */
+  /** 0-0.5, even-8th delay fraction applied to the "and" of a beat (same
+   *  units as the arp and drum engines' swing). All three built-ins ship 0. */
   swing: number;
 }
 
@@ -211,8 +209,8 @@ function parseVelocity(raw: unknown): Bass808Velocity {
 /**
  * Parse and validate a Bass808Spec from a YAML document. Rejects unknown
  * top-level (and nested) keys so hand-written data catches typos instead of
- * silently ignoring a misspelled field — same discipline as
- * parseDrumStyleSpec/parsePhraseSpec/parseArpSpec/parseBreakSpec.
+ * silently ignoring a misspelled field, like parseDrumStyleSpec,
+ * parsePhraseSpec, parseArpSpec and parseBreakSpec.
  */
 export function parseBass808Spec(yamlText: string): Bass808Spec {
   const doc = parseYaml(yamlText);
@@ -285,21 +283,20 @@ export function parseBass808Spec(yamlText: string): Bass808Spec {
 // record (library/measurements/waivops-hhtrp-full.json — n=15,000 real trap
 // loops, low-band/kick-808-proxy `position_prob` across the 16th grid; see
 // also knowledge/rhythm/waivops-drum-stats-pilot.md's HH-TRP section).
-// Beat-1 anchoring reads only 49.4% (position 0) — NOT near-universal — and
+// Beat-1 anchoring reads only 49.4% (position 0), far from universal, and
 // the off-beat "&" positions are far from rare: position 2 (the "&" of beat
 // 1) 18.1%, position 6 (the "&" of beat 2) 24.3%, position 10 (the "&" of
 // beat 3) 26.6%, position 14 (the "&" of beat 4) 25.2%. Read together: real
 // trap low-end material anchors beat 1 barely more than half the time and
-// off-beat placement is common, not exotic — grounding `trap-long`'s
-// octave-answer cell (root does NOT hold through beat 1 alone at full
-// weight) and `trap-syncopated`'s off-beat/"and"-heavy cells below. (The
-// same record's mid-band position-8 hit rate, 93.0%, independently
-// corroborates the snare-on-3 backbeat the trap DRUM styles already assume
-// — cited here only to show the record reads sensibly, not as a claim this
-// module uses that number.)
+// off-beat placement is common. This grounds `trap-long`'s octave-answer
+// cell (the root does not hold through beat 1 alone at full weight) and
+// `trap-syncopated`'s off-beat/"and"-heavy cells below. The same record's
+// mid-band position-8 hit rate (93.0%) matches the snare-on-3 backbeat the
+// trap drum styles assume, a sanity check on the record; this module does
+// not use that number.
 
-/** The design doc's own example spec (docs/design/bass-808.md), verbatim —
- *  sparse, long anchors, one slide pickup per 1-2 bars. */
+/** The example spec from docs/design/bass-808.md, verbatim: sparse, long
+ *  anchors, one slide pickup per 1-2 bars. */
 export const TRAP_LONG_SPEC: Bass808Spec = {
   name: "trap-long",
   cells: [
@@ -330,7 +327,7 @@ export const TRAP_LONG_SPEC: Bass808Spec = {
   swing: 0,
 };
 
-/** Off-beat doubles, "+"-of-3 pickups, more slides than trap-long — grounded
+/** Off-beat doubles, "+"-of-3 pickups, more slides than trap-long. Grounded
  *  in the mining record's non-trivial "&" position probabilities above.
  *  Also exercises turnaroundCells (a "fall to root" resolution every 4th
  *  bar), unlike trap-long. */
@@ -387,7 +384,7 @@ export const TRAP_SYNCOPATED_SPEC: Bass808Spec = {
   swing: 0,
 };
 
-/** 8th-triplet run cells (steps land on the exact triplet grid — multiples
+/** 8th-triplet run cells (steps land on the exact triplet grid, multiples
  *  of 1/3 beat), denser: the modern trap-flow idiom. */
 export const TRIPLET_FLOW_SPEC: Bass808Spec = {
   name: "triplet-flow",
@@ -447,7 +444,7 @@ export function bass808BuiltinSpec(style: string): Bass808Spec | undefined {
   return BASS808_BUILTIN_SPECS[style];
 }
 
-/** Named cell variants a spec offers (variant-listable like drums/phrase) —
+/** Named cell variants a spec offers (variant-listable like drums/phrase):
  *  only `cells`, not `turnaroundCells` (turnaround bars always draw
  *  weighted from `turnaroundCells` when present, regardless of --variant). */
 export function listBass808Variants(spec: Bass808Spec): string[] {

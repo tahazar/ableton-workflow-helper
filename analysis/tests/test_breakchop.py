@@ -1,6 +1,6 @@
-"""M15 break-chop analyzer tests (docs/design/break-engine.md's verification
+"""Break-chop analyzer tests (docs/design/break-engine.md's verification
 bar): synthetic break -> exact slice count, correct roles, small grid
-offsets; a shifted-hits synthetic -> offsets REPORTED (never silently
+offsets; a shifted-hits synthetic -> offsets reported (never silently
 snapped); --export byte-lengths (frame counts) match the reported spans;
 determinism; a negative-control ghost hit; zero-onset state.
 """
@@ -21,10 +21,10 @@ from conftest import to_stereo
 SR = 44100
 BPM = 90.0
 GRID = 16
-STEP_DUR_S = (60.0 / BPM) * (4.0 / GRID)  # 0.16667s — generous relative to
+STEP_DUR_S = (60.0 / BPM) * (4.0 / GRID)  # 0.16667s, generous relative to
 # the onset detector's own ~20-30ms measurement latency, so a well-behaved
 # synthetic fixture's offsets stay a small fraction of one grid step.
-LEAD_STEPS = 3  # pre-roll expressed as a WHOLE number of grid steps (not an
+LEAD_STEPS = 3  # pre-roll expressed as a whole number of grid steps (not an
 # arbitrary lead-in) so the code's "downbeat at absolute t=0" assumption
 # folds the fixture's hits onto the exact intended grid positions, while
 # still giving the onset detector enough pre-roll before the first transient
@@ -40,12 +40,12 @@ def _burst(
     n: int, sr: int, t0: float, freq: float, amp: float, tau: float,
     attack_s: float = 0.005, release_s: float = 0.005, seed: int | None = None,
 ):
-    """A short decaying burst with a raised-cosine attack AND release ramp —
-    real percussive hits never start/stop with a mathematical discontinuity;
+    """A short decaying burst with a raised-cosine attack and release ramp.
+    Real percussive hits never start/stop with a mathematical discontinuity;
     an instantaneous on/off step injects broadband "click" energy that a
     zero-phase (filtfilt) band-split filter can ring across a wide time
     span, contaminating neighboring slices' role classification. The ramps
-    keep this fixture's spectral content honest to the burst's own intended
+    keep this fixture's spectral content true to the burst's intended
     frequency (a tone if seed is None, filtered noise for the hat proxy)."""
     start = int(round(t0 * sr))
     length = min(n - start, int(8 * tau * sr))
@@ -106,7 +106,7 @@ def test_synthetic_break_slice_count_roles_and_small_offsets(tmp_path):
     assert got_steps == expected_steps
     assert got_roles == expected_roles
 
-    # "grid offsets ~0": small relative to the grid, not literally zero — a
+    # "grid offsets ~0": small relative to the grid, not literally zero. A
     # real onset detector has some measurement latency (see module
     # docstring's ramp rationale) which this asserts stays well under a
     # quarter of one grid step, never silently rounded away.
@@ -121,7 +121,7 @@ def test_synthetic_break_slice_count_roles_and_small_offsets(tmp_path):
         assert not sl["is_ghost"]
 
     # every slice's end is the next slice's start (contiguous spans), and
-    # the final slice's end is the file's own end (never truncated early —
+    # the final slice's end is the file's own end (never truncated early;
     # see module docstring's slicing convention).
     for a, b in zip(result["slices"], result["slices"][1:]):
         assert a["end_s"] == b["start_s"]
@@ -129,8 +129,8 @@ def test_synthetic_break_slice_count_roles_and_small_offsets(tmp_path):
 
 
 def test_shifted_hits_offsets_are_measured_not_snapped(tmp_path):
-    """A sloppy break (every hit displaced off the grid by the SAME known
-    amount) must show that shift in its reported offsets — never silently
+    """A sloppy break (every hit displaced off the grid by the same known
+    amount) must show that shift in its reported offsets, never silently
     re-snapped back onto the grid."""
     shift_s = 0.03
     on_grid = breakchop.analyze_break(_write(tmp_path, "grid.wav", _synthetic_break(0.0)), bpm_override=BPM)
@@ -140,7 +140,7 @@ def test_shifted_hits_offsets_are_measured_not_snapped(tmp_path):
     for a, b in zip(on_grid["slices"], shifted["slices"]):
         delta_ms = b["offset_ms"] - a["offset_ms"]
         # allow generous slack for onset-detection quantization (~1 STFT
-        # hop, see ref.ONSET_HOP) — the point is the shift shows up at all.
+        # hop, see ref.ONSET_HOP). The point is the shift shows up at all.
         assert delta_ms > shift_s * 1000.0 * 0.5, (a, b, delta_ms)
 
 
@@ -168,7 +168,7 @@ def test_ghost_negative_control(tmp_path):
 
 
 def test_zero_onsets_is_a_state_not_an_error(tmp_path):
-    """Docs/lessons-learned.md #5: nothing detected is a STATE (empty slice
+    """Docs/lessons-learned.md #5: nothing detected is a state (empty slice
     list), never a raised exception."""
     n = int(round(2.0 * SR))
     sig = np.zeros(n)  # digital silence, no hits at all

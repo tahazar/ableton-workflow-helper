@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { parseProgression, type ChordSpec, type ScaleContextLike } from "../src/harmony/progression.js";
 import { renderChords, voiceProgression } from "../src/harmony/voicing.js";
-import { SCALES, parseScale } from "../src/transforms/scales.js";
+import { SCALES } from "../src/transforms/scales.js";
 import { BridgeError } from "../src/bridge/types.js";
 
 const A_MINOR: ScaleContextLike = { rootNote: 9, intervals: SCALES.minor! };
@@ -112,7 +112,7 @@ describe("voiceProgression", () => {
   });
 
   it("spread + voice leading (the default combination) doesn't drift the register down over a long progression", () => {
-    // Regression: voice-leading a chord against the PREVIOUS chord's
+    // Regression: voice-leading a chord against the previous chord's
     // already-spread pitches (rather than its pre-spread close voicing)
     // compounds each spread pass into the next search target, sinking the
     // whole progression by nearly an octave after the first transition.
@@ -124,7 +124,7 @@ describe("voiceProgression", () => {
       // window around center, but the lowest voice must stay in the same
       // ballpark for every chord, not sink further with each transition
       // (the bug sank this exact progression to a lowest pitch of 24,
-      // 36 semitones below center — well outside this bound).
+      // 36 semitones below center, well outside this bound).
       expect(Math.min(...v.pitches)).toBeGreaterThan(center - 24);
     }
   });

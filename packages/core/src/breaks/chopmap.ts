@@ -1,10 +1,10 @@
 /**
- * M15 chop-map types + the pure (no Python, no I/O) adapter from the
+ * Chop-map types plus the pure (no Python, no I/O) adapter from the
  * analyzer's raw JSON (`analysis/awh_analysis/breakchop.py`, snake_case) to
  * a clean core shape, plus the slice -> MIDI note mapping shared by
  * `--mode drum-rack|live-slices` (see docs/design/break-engine.md's
  * "Targeting modes" section). Kept pure and Python-free so the pattern/fill
- * engine tests without a chop actually having been run.
+ * engine tests without a chop having been run.
  */
 
 export type ChopRole = "kick" | "snare" | "hat" | "ghost";
@@ -16,11 +16,11 @@ export interface ChopMapSlice {
   /** Absolute 16th-grid step (not wrapped to a bar) the slice's onset was
    *  measured nearest to. */
   gridStep: number;
-  /** Signed measured distance (ms) from that grid step's exact line —
-   *  NEVER silently snapped to 0. */
+  /** Signed measured distance (ms) from that grid step's exact line, never
+   *  snapped to 0. */
   offsetMs: number;
   role: ChopRole;
-  /** 0..1 — how confident the role guess is (see breakchop.py: band-energy
+  /** 0..1: how confident the role guess is (see breakchop.py: band-energy
    *  fraction claimed by the winning band, or the ghost margin). */
   confidence: number;
   isGhost: boolean;
@@ -47,7 +47,7 @@ const VALID_ROLES: readonly ChopRole[] = ["kick", "snare", "hat", "ghost"];
 /**
  * Adapt the raw JSON `awh breaks chop`/`analysis.awh_analysis.breakchop`
  * produces (snake_case, python-shaped) into a clean, camelCase ChopMap.
- * Pure — no file I/O, no Python — so pattern/fill generation tests work
+ * Pure (no file I/O, no Python), so pattern/fill generation tests work
  * from hand-built fixtures with no analysis engine involved.
  */
 export function parseChopMap(raw: unknown): ChopMap {
@@ -92,24 +92,24 @@ export function parseChopMap(raw: unknown): ChopMap {
 
 export type SliceNoteMode = "drum-rack" | "live-slices";
 
-/** First MIDI note of the chromatic slice mapping both modes share — C1 in
+/** First MIDI note of the chromatic slice mapping both modes share: C1 in
  *  Ableton's octave convention (see notation/barbeat.ts), matching the
- *  standard 16-pad Drum Rack layout's first pad AND Live's own
- *  Slice-to-New-MIDI-Track convention (both start here; they differ only in
- *  the pad-count cap — see sliceNote below). */
+ *  standard 16-pad Drum Rack layout's first pad and Live's
+ *  Slice-to-New-MIDI-Track convention. The two modes differ only in the
+ *  pad-count cap (see sliceNote). */
 export const SLICE_NOTE_BASE = 36;
 
-/** A standard Drum Rack page holds 16 pads — drum-rack mode literally
- *  cannot address a slice beyond this without a second rack. */
+/** A standard Drum Rack page holds 16 pads, so drum-rack mode cannot
+ *  address a slice beyond this without a second rack. */
 export const DRUM_RACK_PAD_COUNT = 16;
 
 /**
  * MIDI note for slice `index` under `mode`. `drum-rack` (paired with
  * --export) throws once a chop map has more slices than one rack page can
- * address (never silently wraps two different slices onto the same pad —
- * see docs/design/break-engine.md's "honest Simpler constraint"). `--mode
- * live-slices` has no such cap (Live's own chromatic convention can run as
- * far up as MIDI allows) but the CALLER is responsible for the loud
+ * address, rather than wrapping two different slices onto the same pad
+ * (see docs/design/break-engine.md's "honest Simpler constraint"). `--mode
+ * live-slices` has no such cap (Live's chromatic convention can run as far
+ * up as MIDI allows), but the caller is responsible for the loud
  * count-mismatch warning against the map's own slice count (see the CLI).
  */
 export function sliceNote(index: number, mode: SliceNoteMode, nSlices: number): number {
@@ -123,9 +123,8 @@ export function sliceNote(index: number, mode: SliceNoteMode, nSlices: number): 
   return SLICE_NOTE_BASE + index;
 }
 
-/** Reverse of sliceNote: which slice index a MIDI note addresses under
- *  `mode` (both modes share the same C1-up formula) — used by tests to
- *  confirm "every emitted note maps to a real slice". */
+/** Reverse of sliceNote: which slice index a MIDI note addresses (both
+ *  modes share the same C1-up formula). Used by tests to confirm "every emitted note maps to a real slice". */
 export function noteToSliceIndex(note: number): number {
   return note - SLICE_NOTE_BASE;
 }

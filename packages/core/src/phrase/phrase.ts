@@ -1,8 +1,8 @@
 /**
- * M9 phrase engine entry points:
- *  - generateResponses: `awh drop respond` — N candidate responses to an
- *    EXISTING call clip's notes, one freestanding clip per candidate.
- *  - generatePhrase: `awh drop phrase` — cold-start an 8/16-bar call and
+ * Phrase engine entry points:
+ *  - generateResponses: `awh drop respond`, N candidate responses to an
+ *    existing call clip's notes, one freestanding clip per candidate.
+ *  - generatePhrase: `awh drop phrase`, cold-start an 8/16-bar call and
  *    response pair from a PhraseSpec (weighted callCells, evolution plan,
  *    turnaround), two equal-length voices.
  *
@@ -40,10 +40,10 @@ export interface ResponseCandidate {
 
 /**
  * Generate N response candidates answering `callNotes` (an existing call
- * clip's notes, verbatim — never re-fit or truncated). Each candidate is its
+ * clip's notes, verbatim, never re-fit or truncated). Each candidate is its
  * own deterministic (recipe, seed) draw with its own naturally-sized
- * container (call end + delay + content + rest, rounded to a whole bar) —
- * never overlaps the call region regardless of how full the call clip is.
+ * container (call end + delay + content + rest, rounded to a whole bar), so
+ * it never overlaps the call region regardless of how full the call clip is.
  */
 export function generateResponses(
   callNotes: NoteSpec[],
@@ -93,18 +93,18 @@ function evolutionActionAt(evolution: EvolutionStep[], bar: number): EvolutionAc
 /**
  * Generate a cold-start call/response phrase spanning `opts.bars` bars.
  *
- * Groove-level choices — the call's rhythmic cell, and which response
- * recipe answers it — are drawn ONCE and held for the whole phrase (same
- * discipline as the drum grammars' groove-level choices, ../drums/
- * grammars.ts). "State" bars (evolution.action === "state") replay that
- * held call verbatim; "vary-call" bars redraw fresh PITCHES over the SAME
- * rhythmic cell (rather than a different cell or a different response) so
- * the call's own bar-length never changes — which is what lets the single
- * anchored response (principle: "evolve one side at a time", response never
- * varies) stay byte-identical and provably non-overlapping across every
- * cell without being recomputed per bar. Turnaround (drop-response |
- * extra-rest | none) is a distinct, response-only adjustment applied on the
- * last bar of each phraseBars unit — it never touches the call.
+ * Groove-level choices (the call's rhythmic cell, and which response recipe
+ * answers it) are drawn once and held for the whole phrase, like the drum
+ * grammars' groove-level choices (../drums/grammars.ts). "State" bars
+ * (evolution.action === "state") replay that held call verbatim; "vary-call"
+ * bars redraw fresh pitches over the same rhythmic cell (rather than a
+ * different cell or a different response) so the call's bar-length never
+ * changes. That lets the single anchored response (principle: "evolve one
+ * side at a time", the response never varies) stay byte-identical and
+ * non-overlapping across every cell without being recomputed per bar.
+ * Turnaround (drop-response | extra-rest | none) is a separate,
+ * response-only adjustment applied on the last bar of each phraseBars unit;
+ * it never touches the call.
  */
 export function generatePhrase(spec: PhraseSpec, scale: ScaleContext, opts: GeneratePhraseOptions): GeneratedPhrase {
   const beatsPerBar = PHRASE_BEATS_PER_BAR;

@@ -13,8 +13,6 @@ import {
 import { decodeOscMessage, encodeOscMessage, oscFloat } from "../src/osc.js";
 import type { OpCaller } from "../src/op.js";
 import {
-  REMOTE_PORT,
-  REMOTE_REPLY_PORT,
   auditionEnd,
   auditionSlug,
   parseLaunchTarget,
@@ -25,21 +23,20 @@ import {
   remoteScene,
   remoteStop,
   remoteStopClips,
-  type AuditionState,
 } from "../src/remote.js";
 
 /**
- * AWH Remote (m4l/) verification: OSC byte checks for the new messages,
+ * AWH Remote (m4l/) verification: OSC byte checks for the replying messages,
  * integration against a fake UDP device (records the message sequence,
  * replies pong v2 + status/error), a negative control (no listener -> clear
  * error, fast, no hang), and `lib audition` end-to-end against a real fake
- * gateway (serve-fake style) + a fake UDP device simultaneously — same
- * pattern as duck.test.ts/op.test.ts. docs/design/live-remote.md is the spec.
+ * gateway (serve-fake style) and a fake UDP device together, as in
+ * duck.test.ts/op.test.ts. docs/design/live-remote.md is the spec.
  */
 
 // ---------------------------------------------------------------------------
 // OSC byte checks (independent reference encoder, same discipline as
-// packages/cli/test/osc.test.ts — not a tautological re-use of encodeOscMessage).
+// packages/cli/test/osc.test.ts, not a tautological re-use of encodeOscMessage).
 // ---------------------------------------------------------------------------
 
 function padTo4(buf: Buffer): Buffer {
@@ -290,7 +287,7 @@ describe("parseLaunchTarget", () => {
 
 // ---------------------------------------------------------------------------
 // `awh lib audition` end-to-end: real fake gateway (serve-fake style) + a
-// fake UDP AWH Remote device running SIMULTANEOUSLY.
+// fake UDP AWH Remote device running together.
 // ---------------------------------------------------------------------------
 
 interface GatewayBody {
@@ -352,7 +349,7 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
     expect(result.swept).toBeUndefined();
     expect(result.nextPending).toEqual({ trackPath: "track:0", name: "audition: kick-verified", slug: "kick-verified" });
 
-    // the clip really got created — read it back via the same gateway.
+    // The clip was created: read it back via the same gateway.
     const clip = (await caller("clip.get", { path: "track:0/slot:0" })) as { name: string; notes: unknown[] };
     expect(clip.name).toBe("audition: kick-verified");
     expect(clip.notes).toHaveLength(1);
@@ -387,7 +384,7 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
     const fake = fakeRemote(port, replyPort);
     cleanup = fake.close;
 
-    // A same-PREFIX (but not exact-name) clip must survive the sweep.
+    // A same-prefix (but not exact-name) clip must survive the sweep.
     await caller("clip.create-midi", {
       target: { type: "session", slotPath: "track:0/slot:3" },
       lengthBeats: 4,
@@ -412,9 +409,9 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
     });
 
     expect(second.swept).toEqual(["track:0/slot:0"]);
-    // sweeping the first freed slot:0 — the SECOND audition reclaimed it
-    // (sweep-before-place is what makes that possible), so slot:0 now holds
-    // the NEW clip, not the old one.
+    // Sweeping freed slot:0 and the second audition reclaimed it
+    // (sweep-before-place makes that possible), so slot:0 now holds the new
+    // clip, not the old one.
     expect(second.path).toBe("track:0/slot:0");
     const nowThere = (await caller("clip.get", { path: "track:0/slot:0" })) as { name: string };
     expect(nowThere.name).toBe("audition: snare-draft");
@@ -454,7 +451,7 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
     const fake = fakeRemote(port, replyPort);
     cleanup = fake.close;
 
-    // FakeLiveBridge's default track:0 has 4 session slots — fill them all.
+    // FakeLiveBridge's default track:0 has 4 session slots; fill them all.
     for (let i = 0; i < 4; i++) {
       await caller("clip.create-midi", {
         target: { type: "session", slotPath: `track:0/slot:${i}` },
@@ -473,7 +470,7 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
       }),
     ).rejects.toThrow(/no empty session slot/i);
 
-    // nothing was fired — the failure happened before any OSC traffic.
+    // Nothing was fired: the failure happened before any OSC traffic.
     await new Promise((r) => setTimeout(r, 50));
     expect(fake.received).toEqual([]);
   });
@@ -495,7 +492,7 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
     }).catch((err: Error) => err);
     expect(result).toBeInstanceOf(Error);
     expect((result as Error).message).toMatch(/could not fire it/i);
-    // the clip was still created — an OSC failure doesn't lose the placement.
+    // The clip was still created: an OSC failure doesn't lose the placement.
     const clip = (await caller("clip.get", { path: "track:0/slot:0" })) as { name: string };
     expect(clip.name).toBe("audition: kick-verified");
   });

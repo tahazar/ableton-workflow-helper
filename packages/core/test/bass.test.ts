@@ -184,7 +184,7 @@ describe("generate808 — slide overlap mechanics (hand-verified fixture)", () =
 
     // one cell per bar, 4 steps/cell -> the bar-crossing slide is always the
     // 4th note of bars 1-3 (indices 3, 7, 11); bar 4's slide step (index 15)
-    // is the very LAST placed note overall (no successor).
+    // is the last placed note overall (no successor).
     for (const i of [3, 7, 11]) {
       const cur = notes[i]!;
       const next = notes[i + 1]!;
@@ -193,7 +193,7 @@ describe("generate808 — slide overlap mechanics (hand-verified fixture)", () =
     }
     expect(notes[15]!.duration).toBeCloseTo(1.0, 9); // written length, no successor to slide onto
 
-    // every OTHER adjacent pair has zero (or positive) gap — only the three
+    // every other adjacent pair has zero (or positive) gap; only the three
     // bar-crossing slide pairs above ever overlap.
     for (let i = 0; i + 1 < notes.length; i++) {
       if ([3, 7, 11].includes(i)) continue;
@@ -243,7 +243,7 @@ describe("generate808 — degree/register semantics", () => {
     const spec: Bass808Spec = { ...SIMPLE_SPEC, register: [24, 30] }; // narrow window
     const { notes, meta } = generate808(spec, 0 /* C */, { seed: 1, bars: 1 });
     expect(Number(meta.root)).toBe(24); // C (pitch class 0) fitted up into [24, 30]
-    // degree 7 (G) -> 31: outside [24, 30] and must NOT be clamped/folded back in
+    // degree 7 (G) -> 31: outside [24, 30] and must not be clamped/folded back in
     expect(notes.some((n) => n.pitch === 31)).toBe(true);
   });
 

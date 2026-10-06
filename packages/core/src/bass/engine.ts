@@ -1,14 +1,14 @@
 /**
- * M16 808 bass engine: generate808 turns a Bass808Spec (see spec.ts) + a
+ * 808 bass engine: generate808 turns a Bass808Spec (see spec.ts) plus a
  * song-key root into a full melodic-rhythmic 808 bassline. Pinned semantics:
  * docs/design/bass-808.md.
  *
- * The glide contract is the point: `slide: true` steps are emitted LEGATO —
- * extended to overlap the next sounding note's start by exactly
- * `slideOverlapBeats` — so any mono synth with glide (an 808 plugin, Serum
- * mono, the `operator-recipe-glide-bass` knowledge entry) slides exactly
- * where the pattern says. `--slides off` (opts.slides = false) trims every
- * step to its written length instead — plain gates, zero overlaps.
+ * Glide contract: `slide: true` steps are emitted legato, extended to
+ * overlap the next sounding note's start by exactly `slideOverlapBeats`, so
+ * any mono synth with glide (an 808 plugin, Serum mono, the
+ * `operator-recipe-glide-bass` knowledge entry) slides exactly where the
+ * pattern says. `--slides off` (opts.slides = false) trims every step to its
+ * written length instead: plain gates, zero overlaps.
  */
 import type { NoteSpec } from "../bridge/types.js";
 import { clampPitch, sortNotes } from "../transforms/types.js";
@@ -17,16 +17,15 @@ import { pickWeighted } from "../phrase/util.js";
 import { fitPitchToRegister } from "../phrase/util.js";
 import type { Bass808Cell, Bass808Spec } from "./spec.js";
 
-/** 808 bass is 4/4 only today (same convention as the arp engine — see
- *  docs/design/arp-engine.md — the CLI exposes no --sig for `awh bass 808`). */
+/** 808 bass is 4/4 only, like the arp engine (docs/design/arp-engine.md);
+ *  the CLI exposes no --sig for `awh bass 808`. */
 export const BASS808_BEATS_PER_BAR = 4;
 
 export interface GenerateBass808Options {
   seed: number;
   /** Force a specific cell (index into listBass808Variants) for every
-   *  non-turnaround bar. Turnaround bars ignore this — see spec.ts. */
+   *  non-turnaround bar. Turnaround bars ignore this (see spec.ts). */
   variant?: number;
-  /** Total bars to generate. */
   bars: number;
   /** Legato glide overlaps on `slide: true` steps. Default true. */
   slides?: boolean;
@@ -34,7 +33,7 @@ export interface GenerateBass808Options {
 
 export interface GeneratedBass808 {
   notes: NoteSpec[];
-  /** root/seed/bars/slides/cellDraws — the CLI adds style/tier on top. */
+  /** root/seed/bars/slides/cellDraws; the CLI adds style/tier on top. */
   meta: Record<string, string>;
 }
 
@@ -48,16 +47,16 @@ interface PlacedStep {
   len: number;
   degree: number;
   slide: boolean;
-  /** Bar-local pos, BEFORE swing — used for the beat-1 accent check. */
+  /** Bar-local pos before swing, used for the beat-1 accent check. */
   isBarFirst: boolean;
 }
 
 /**
  * Generate a full 808 bassline spanning `opts.bars` bars from `spec`, with
  * `rootPitchClass` (0-11, e.g. from resolveKey's ScaleContext.rootNote)
- * octave-fitted into `spec.register` ONCE for the whole pattern. Every
- * step's pitch is `root + degree` — degrees are NOT re-folded into the
- * register (pinned: register fits the ROOT only). Deterministic: same
+ * octave-fitted into `spec.register` once for the whole pattern. Every
+ * step's pitch is `root + degree`; degrees are not re-folded into the
+ * register (the register fits the root only). Deterministic: same
  * spec + rootPitchClass + opts => byte-identical notes.
  */
 export function generate808(
@@ -93,11 +92,10 @@ export function generate808(
 
     const barStart = bar * BASS808_BEATS_PER_BAR;
     for (const step of cell.steps) {
-      // Open-detail (unstated by the design beyond the schema field): swing
-      // nudges the "and" of a beat (bar-local pos with a 0.5 fractional
-      // part) later by `spec.swing` beats — same drum-engine convention as
-      // arp/drums' swing. All three built-ins ship swing: 0, so this is
-      // inert for them; it exists for schema completeness only.
+      // Swing nudges the "and" of a beat (bar-local pos with a 0.5
+      // fractional part) later by `spec.swing` beats, the same convention as
+      // the arp and drum engines. All three built-ins ship swing: 0, so this
+      // only affects knowledge-authored specs.
       const swungPos = Math.abs((step.pos % 1) - 0.5) < 1e-9 ? step.pos + spec.swing : step.pos;
       placed.push({
         start: barStart + swungPos,

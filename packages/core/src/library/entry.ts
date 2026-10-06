@@ -1,7 +1,7 @@
 /**
- * Library entry format (B3): markdown + YAML frontmatter with an EXECUTABLE
- * bar|beat notation block. Grep-able, git-diffable, LLM-native — see
- * docs/design/library-kb.md.
+ * Library entry format: markdown + YAML frontmatter with an executable
+ * bar|beat notation block. Grep-able, git-diffable, LLM-readable (see
+ * docs/design/library-kb.md).
  */
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 

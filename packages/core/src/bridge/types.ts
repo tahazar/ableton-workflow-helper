@@ -4,9 +4,9 @@
  * Ableton Extensions SDK; FakeLiveBridge implements it for tests and offline
  * development. Nothing outside packages/extension may import the SDK (ADR-001).
  *
- * All times are in BEATS. All indices are 0-based. Objects are addressed by
+ * All times are in beats. All indices are 0-based. Objects are addressed by
  * stable-format path strings (see paths.ts) that are re-resolved on every
- * call — indices shift when the user moves/deletes things, so paths are
+ * call. Indices shift when the user moves/deletes things, so paths are
  * cheap addresses, not durable identities.
  */
 
@@ -17,7 +17,8 @@ export interface BridgeInfo {
 }
 
 // ---------------------------------------------------------------------------
-// Notes (wire format; bar|beat text notation lives above the bridge, in M2)
+// Notes (wire format; bar|beat text notation lives above the bridge, in
+// notation/barbeat.ts)
 // ---------------------------------------------------------------------------
 
 export interface NoteSpec {
@@ -175,8 +176,8 @@ export interface UpdateTrackArgs {
 
 export interface MixerArgs {
   path: string;
-  /** Raw DeviceParameter values (Live's internal scale — see docs/dev-loop.md
-   *  M1 calibration note; dB/pan mapping is a documented follow-up). */
+  /** Raw DeviceParameter values on Live's internal scale, not dB/pan units
+   *  (see docs/research/mixer-calibration.md for measured raw-to-dB pairs). */
   volume?: number;
   pan?: number;
   /** Send index → raw value. */
@@ -189,7 +190,7 @@ export interface MixerArgs {
 
 /**
  * A clip captured from Live's UI via the right-click "save to library"
- * action (B3b). Buffered extension-side (storageDirectory outbox) because
+ * action. Buffered extension-side (storageDirectory outbox) because
  * the extension sandbox cannot write into the repo; `awh lib import` drains.
  */
 export interface OutboxEntry {
@@ -223,9 +224,9 @@ export interface LiveBridge {
     startBeat: number,
     endBeat: number,
   ): Promise<void>;
-  /** Render an AUDIO track's pre-FX signal between two beat positions to a
-   *  WAV in the extension temp dir (SDK constraint: audio tracks only,
-   *  pre-FX only — post-FX capture is the M6 M4L tap). */
+  /** Render an audio track's pre-FX signal between two beat positions to a
+   *  WAV in the extension temp dir. SDK constraint: audio tracks only, pre-FX
+   *  only; the SDK has no post-FX capture. */
   renderPreFxAudio(
     trackPath: string,
     startBeat: number,

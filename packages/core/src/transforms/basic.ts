@@ -8,7 +8,7 @@ import {
 } from "./types.js";
 
 /**
- * Exemplar transforms — the pattern every transform follows:
+ * Exemplar transforms showing the pattern every transform follows:
  * - `make(params)` validates params once and returns a pure Transform.
  * - No mutation of input notes; all randomness via ctx.rng.
  */

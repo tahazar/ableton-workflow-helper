@@ -1,21 +1,20 @@
-"""Calibrated narrowband energy compare (M6b masking toolkit).
+"""Calibrated narrowband energy compare (masking toolkit).
 
-Closes two of the gaps found doing real masking analysis (see
-docs/design/analysis-engine.md's "Future work" section, 2026-08-23):
+Addresses two gaps in ad-hoc masking analysis (see
+docs/design/analysis-engine.md's "Future work" section):
 
-1. **Not calibrated.** The scratch numpy from that session computed a bare
-   `10*log10(sum |FFT|^2)` — only meaningful for comparing captures taken in
-   the same sitting at the same gain staging. Here, band levels are
-   reported as dBFS with a stated calibration reference: a full-scale sine
-   (peak amplitude 1.0) reads 0 dBFS, same discipline as `loudness.py`'s
-   true-peak dBTP.
-2. **Time-smeared.** One FFT over an entire multi-bar capture treats a
+1. Calibration. A bare `10*log10(sum |FFT|^2)` is only meaningful for
+   comparing captures taken in the same sitting at the same gain staging.
+   Here, band levels are reported as dBFS with a stated calibration
+   reference: a full-scale sine (peak amplitude 1.0) reads 0 dBFS, same
+   discipline as `loudness.py`'s true-peak dBTP.
+2. Time smearing. One FFT over an entire multi-bar capture treats a
    rhythmically-changing bassline as a stationary tone. Band power here is
-   integrated from a Welch periodogram (spectrum.py's `welch_psd` — same
+   integrated from a Welch periodogram (spectrum.py's `welch_psd`, the same
    4096-pt FFT / Hann / 50% overlap machinery as the third-octave
    spectrum), which time-averages several overlapping windows rather than
-   one FFT over the whole file — real narrowband masking questions that
-   need a MOMENT, not an average, want `--from/--to` or `mix pitch
+   one FFT over the whole file. Narrowband masking questions that need a
+   moment rather than an average want `--from/--to` or `mix pitch
    --per-note`, not this tool alone (see the design doc's "confirmed, not
    a gap" note on `mix report`'s spectral tilt for the same reasoning).
 """
@@ -27,8 +26,8 @@ import numpy as np
 from .audio import to_mono
 from .spectrum import band_power, welch_psd
 
-# Named default zones (sub / low / scoop zone / low-mid / mid) — the exact
-# ranges the gap report's own example used ("20-100,140-200,200-500"),
+# Named default zones (sub / low / scoop zone / low-mid / mid): the
+# ranges from the design doc's masking example ("20-100,140-200,200-500"),
 # filled out to a contiguous 20 Hz-2 kHz sweep with a "low" zone (100-140)
 # and "mid" (500-2000) added so the defaults cover a full masking-diagnosis
 # pass without the caller having to know the danger zones by heart.
@@ -156,8 +155,8 @@ def compare_files(
     end_s: float | None = None,
 ) -> dict:
     """Aligned per-band comparison across 1+ files; per-band `delta_db` vs.
-    the FIRST file is added to every file after the first (None where
-    either side isn't a finite dBFS number — silence in one band is a
+    the first file is added to every file after the first (None where
+    either side isn't a finite dBFS number; silence in one band is a
     state, not something to fake a delta for)."""
     analyses = [analyze_file(p, bands_spec, start_s, end_s) for p in paths]
     baseline = analyses[0]

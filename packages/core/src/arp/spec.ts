@@ -1,8 +1,7 @@
 /**
- * M14 ArpSpec: data-driven arp & rhythm styles, third instance of the
- * data-driven spec pattern (drums/styleSpec.ts, phrase/spec.ts) — same
- * discipline (typo-rejecting, unknown-key rejection, sensible defaults so a
- * knowledge entry only needs to state what it changes). Pinned schema and
+ * ArpSpec: data-driven arp and rhythm styles, following the same data-driven
+ * spec pattern as drums/styleSpec.ts and phrase/spec.ts: unknown keys are
+ * rejected, and defaults let a knowledge entry state only what it changes. Pinned schema and
  * semantics: docs/design/arp-engine.md.
  */
 import { parse as parseYaml } from "yaml";
@@ -57,7 +56,7 @@ export interface ArpSpec {
   patternLength: number;
   /** Euclidean onset mask over the step grid; k<n thins. */
   euclid: ArpEuclidSpec;
-  /** Explicit pattern positions (0-based) silenced AFTER the euclid mask. */
+  /** Explicit pattern positions (0-based) silenced after the euclid mask. */
   rests: number[];
   /** Pattern position -> subdivision count (2/3/4). */
   ratchets: Record<number, 2 | 3 | 4>;
@@ -104,7 +103,7 @@ function fail(message: string): never {
 }
 
 /** Step length in beats for a rate string like "1/16", "1/16t", "1/8d". Throws
- *  on an unrecognized rate — shared by the parser and CLI --rate overrides. */
+ *  on an unrecognized rate. Shared by the parser and CLI --rate overrides. */
 export function arpRateBeats(rate: string): number {
   const m = RATE_RE.exec(rate);
   if (!m) {
@@ -117,7 +116,7 @@ export function arpRateBeats(rate: string): number {
   return base;
 }
 
-/** Validates an arp gate value (0.05-1.0) — shared by the parser and CLI
+/** Validates an arp gate value (0.05-1.0). Shared by the parser and CLI
  *  --gate overrides. */
 export function checkArpGate(value: unknown): number {
   if (typeof value !== "number" || Number.isNaN(value) || value < 0.05 || value > 1) {
@@ -256,8 +255,8 @@ function parseWalk(raw: unknown): ArpWalkSpec {
 /**
  * Parse and validate an ArpSpec from a YAML document. Rejects unknown
  * top-level (and nested) keys so hand-written data catches typos instead of
- * silently ignoring a misspelled field — same discipline as
- * parseDrumStyleSpec / parsePhraseSpec.
+ * silently ignoring a misspelled field, like parseDrumStyleSpec and
+ * parsePhraseSpec.
  */
 export function parseArpSpec(yamlText: string): ArpSpec {
   const doc = parseYaml(yamlText);
@@ -348,8 +347,8 @@ export const BASIC_UP_SPEC: ArpSpec = {
   walk: { maxInterval: 2 },
 };
 
-/** The built-in "melodic-techno-16ths" style — the design doc's own example
- *  spec, verbatim (docs/design/arp-engine.md). */
+/** The built-in "melodic-techno-16ths" style: the example spec from
+ *  docs/design/arp-engine.md, verbatim. */
 export const MELODIC_TECHNO_16THS_SPEC: ArpSpec = {
   name: "melodic-techno-16ths",
   contour: "updown",

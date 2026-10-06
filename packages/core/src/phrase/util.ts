@@ -9,7 +9,7 @@ import { clampPitch, sortNotes } from "../transforms/types.js";
 import { shiftDegrees, snapToScale } from "../transforms/scales.js";
 import type { CallCell } from "./spec.js";
 
-/** Phrase engine is 4/4 only today (see docs/design/phrase-engine.md). */
+/** Phrase engine is 4/4 only (see docs/design/phrase-engine.md). */
 export const PHRASE_BEATS_PER_BAR = 4;
 
 export function callEndBeat(notes: NoteSpec[]): number {

@@ -2,8 +2,8 @@ import type { NoteSpec } from "../bridge/types.js";
 import { numParam, sortNotes, type TransformDef } from "./types.js";
 
 /**
- * Rhythm transforms (M3): reshape note timing without touching pitch.
- * Same pattern as basic.ts — make(params) validates once, returns a pure
+ * Rhythm transforms: reshape note timing without touching pitch.
+ * Same pattern as basic.ts: make(params) validates once, returns a pure
  * Transform; randomness (syncopate) flows through ctx.rng only.
  */
 

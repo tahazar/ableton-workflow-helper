@@ -110,7 +110,7 @@ function midiClipTarget(a: Record<string, unknown>, op: string): MidiClipTarget 
 /**
  * Deterministic operation registry: one op = one logical, undoable action.
  * (SDK constraint: create-then-configure ops such as clip.create-midi with
- * notes land as two undo steps — create, then configure — because the
+ * notes land as two undo steps (create, then configure) because the
  * instance only resolves after the async create.)
  */
 export function buildOpRegistry(): Map<string, OpDefinition> {

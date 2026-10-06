@@ -35,13 +35,12 @@ def _burst(n: int, sr: int, t0: float, freq: float, amp: float, tau: float, seed
 
 
 LEAD_IN_S = 0.06  # pre-roll before the first hit, comfortably past one full
-# STFT analysis window (2048 samples @ 44.1kHz = 46.4ms — see ref.py's
+# STFT analysis window (2048 samples @ 44.1kHz = 46.4ms; see ref.py's
 # ONSET_NFFT). A transient inside that first window is partly "seen" by
-# frame 0 itself, damping the flux between frames 0 and 1 below threshold;
-# real files always have SOME lead-in, so this is not a synthetic-only
-# quirk to special-case away, just a resolution limit worth clearing with
-# margin (the real pilot data confirms real loops clear it: every WaivOps
-# example loop's first low-band onset landed near t=0, see
+# frame 0 itself, damping the flux between frames 0 and 1 below threshold.
+# Real files always have some lead-in, so this is a resolution limit worth
+# clearing with margin rather than a synthetic-only quirk (in the WaivOps
+# pilot corpus every loop's first low-band onset landed near t=0; see
 # downbeat_check in the pilot's saved records).
 
 
@@ -78,8 +77,8 @@ def _write_loop(tmp_path, name: str, sig: np.ndarray) -> str:
 
 
 def test_mine_drum_loops_recovers_known_pattern(tmp_path):
-    """POSITIVE: a synthetic four-floor kick + offbeat-8th hat loop must be
-    recovered by the miner — low-band peaks at grid positions 0/4/8/12,
+    """Positive case: a synthetic four-floor kick + offbeat-8th hat loop
+    must be recovered by the miner, with low-band peaks at grid positions 0/4/8/12,
     high-band peaks at 2/6/10/14."""
     path = _write_loop(tmp_path, "synthetic.wav", _synthetic_loop())
     result = drumstats.mine_drum_loops([path], bpm_from_name=False, bpm=BPM, grid=GRID, dataset_name="synth")
@@ -102,18 +101,18 @@ def test_mine_drum_loops_recovers_known_pattern(tmp_path):
             assert high_prob[i] <= 0.2, f"high band position {i} should be quiet, got {high_prob[i]}"
 
     # swing computation must not crash even when it has partial/no data to
-    # work with (every synthetic onset here lands on an EVEN grid position)
+    # work with (every synthetic onset here lands on an even grid position)
     assert result["swing_estimate"]["band"] == "high"
 
-    # honest pilot-size framing is always present
+    # pilot-size caveat is always present
     assert any("PILOT sample size" in a for a in result["assumptions"])
-    # the synthetic loop genuinely starts on beat 1 — the check should agree
+    # the synthetic loop starts on beat 1, so the check should agree
     assert result["downbeat_check"]["loops_checked"] == 1
     assert result["downbeat_check"]["loops_near_zero"] == 1
 
 
 def test_mine_drum_loops_silence_is_zero_items(tmp_path):
-    """Zero items is a STATE, not an error (docs/lessons-learned.md #5): a
+    """Zero items is a state, not an error (docs/lessons-learned.md #5): a
     silent loop must mine cleanly to all-zero histograms, never crash or
     produce NaN."""
     silent = np.zeros(int(round(8.0 * SR)))
@@ -153,7 +152,7 @@ def test_cli_drumstats_no_audio_files_exits_zero(tmp_path):
 
 
 def test_mine_drum_loops_white_noise_negative_control(tmp_path):
-    """NEGATIVE CONTROL (docs/lessons-learned.md #2): stationary white noise
+    """Negative control (docs/lessons-learned.md #2): stationary white noise
     carries no rhythmic structure, so no single grid position should
     dominate the way a real kick/hat does. Empirically, with n=16 x 8s
     loops (64 bars total) the noisiest observed max/mean ratio across many

@@ -1,7 +1,7 @@
 /**
- * B2 (Operator assistant): OperatorRecipe format, sibling to M9's PhraseSpec
- * (../phrase/spec.ts) and B4's DrumStyleSpec (../drums/styleSpec.ts) — same
- * typo-rejecting parsing conventions (unknown top-level keys rejected).
+ * Operator assistant: OperatorRecipe format, sibling to PhraseSpec
+ * (../phrase/spec.ts) and DrumStyleSpec (../drums/styleSpec.ts), with the
+ * same parsing conventions (unknown top-level keys rejected).
  *
  * A recipe lives inside an `operator-recipe-<name>` knowledge entry as a
  * ```awh-operator-patch``` fenced YAML block (extractFencedBlock, see
@@ -10,22 +10,22 @@
  *   name: growl-bass
  *   device: Operator
  *   params:                 # raw device.get/device.param values (0..1 etc)
- *     Algorithm: 0.09        # comment each with the DISPLAY intent
+ *     Algorithm: 0.09        # comment each with the display intent
  *     "Osc-A Coarse": 0.5
  *   playNotes: "1|1 F1 1 v110"   # optional audition phrase
  *
- * Raw values are the honest gap (see knowledge/setup/
- * compressor-raw-display-mapping.md): this module only validates SHAPE
- * (every param a finite number), never the values themselves — whether a
- * given raw number is actually verified against the real device is a
- * property of the knowledge entry (tier + prose), not of the parser.
+ * Raw values are the known gap (see knowledge/setup/
+ * compressor-raw-display-mapping.md): this module only validates shape
+ * (every param a finite number), never the values themselves. Whether a
+ * given raw number is verified against the real device is a property of
+ * the knowledge entry (tier + prose), not of the parser.
  */
 import { parse as parseYaml } from "yaml";
 
 export interface OperatorRecipe {
   /** Recipe id (matches the knowledge entry's slug suffix, not enforced here). */
   name: string;
-  /** Target device name — always "Operator" for this recipe format. */
+  /** Target device name; "Operator" for this recipe format. */
   device: string;
   /** Raw device.get/device.param values, keyed by exact param name. */
   params: Record<string, number>;
@@ -44,7 +44,7 @@ function fail(message: string): never {
  * ```awh-operator-patch``` block's raw text). Rejects unknown top-level
  * keys and non-numeric param values so a hand-authored recipe catches typos
  * instead of silently producing a patch that writes nothing (or the wrong
- * thing) — same discipline as parsePhraseSpec/parseDrumStyleSpec.
+ * thing), like parsePhraseSpec/parseDrumStyleSpec.
  */
 export function parseOperatorRecipe(yamlText: string): OperatorRecipe {
   const doc = parseYaml(yamlText);

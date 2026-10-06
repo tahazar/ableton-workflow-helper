@@ -227,7 +227,7 @@ describe("response recipes — determinism + property tests", () => {
       const a = applyResponseRecipe(recipe, callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(11));
       const c = applyResponseRecipe(recipe, callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(12));
       // At least the entry delay is drawn from the seed, so timing should differ
-      // for at least one of several seeds — check across a small spread instead
+      // for at least one of several seeds. Check across a small spread instead
       // of asserting a single pair (a legitimate coincidence is possible).
       const others = [12, 13, 14, 15].map((s) =>
         applyResponseRecipe(recipe, callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(s)),
@@ -447,14 +447,14 @@ describe("generatePhrase — property tests", () => {
 
     // "state": call repeats verbatim between the two state cells
     expect(call0).toEqual(call1);
-    // response is the SAME anchored response in every cell (state or vary-call;
+    // response is the same anchored response in every cell (state or vary-call;
     // cell 3 is the turnaround cell for this spec so is excluded from this
-    // specific claim — covered separately by the turnaround tests)
+    // claim; the turnaround tests cover it)
     expect(resp0).toEqual(resp1);
     expect(resp1).toEqual(resp2);
     void resp3;
     // "vary-call": call rhythm (onset times) is identical to the base cell,
-    // only pitches may differ — and at least one vary-call bar actually
+    // only pitches may differ, and at least one vary-call bar
     // differs in pitch from the base call (it's not a no-op)
     expect(call2.map((n) => n.start)).toEqual(call0.map((n) => n.start));
     expect(call3.map((n) => n.start)).toEqual(call0.map((n) => n.start));

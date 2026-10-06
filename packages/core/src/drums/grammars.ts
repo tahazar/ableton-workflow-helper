@@ -16,7 +16,7 @@ import type {
  * optional/ghost elements from ctx.rng on every bar so the loop isn't a
  * literal copy-paste but stays reproducible for a given seed.
  *
- * All hits are SHORT (0.25 beats) — drum racks don't need note-off timing to
+ * All hits are short (0.25 beats): drum racks don't need note-off timing to
  * read musically, and short notes never bleed into the next hit.
  */
 
@@ -56,23 +56,23 @@ export function isNearGrid(value: number, grid: number): boolean {
 }
 
 // ---------------------------------------------------------------------------
-// house family — four-on-the-floor (house/techno/garage-adjacent) styles
+// house family: four-on-the-floor (house/techno/garage-adjacent) styles
 //
 // A house-family groove has no groove-level "held" choice the way trap's
 // kick cell does (the four-floor kick is fixed); every draw happens per bar.
 // The built-in "house" and "techno" styles are houseFamilyPlan(spec) over
-// HOUSE_STYLE_SPEC / TECHNO_STYLE_SPEC below — see those constants' comments
-// for exactly how each field reproduces the original hand-written generators
-// draw-for-draw, so existing seeded output never changes.
+// HOUSE_STYLE_SPEC / TECHNO_STYLE_SPEC below. Their draw order is pinned
+// draw-for-draw to the reference generators frozen in test/drums.test.ts, so
+// seeded output stays stable.
 // ---------------------------------------------------------------------------
 
 const RUMBLE_KICK_VELOCITY = 45;
 // Ableton note-probability value on rumble-kick hits; fixed (not spec data),
-// matching the original technoBar literal.
+// matching the reference technoBar generator.
 const RUMBLE_KICK_NOTE_PROBABILITY = 0.4;
-// Fixed entry gate for the perc/shaker ghost layer (matches original houseBar's
-// `density > 0.3`); not spec-configurable — ghostChance only scales the
-// per-16th hit chance once this gate is open.
+// Fixed entry gate for the perc/shaker ghost layer (matches the reference
+// houseBar's `density > 0.3`). Not spec-configurable: ghostChance only scales
+// the per-16th hit chance once this gate is open.
 const GHOST_GATE_MIN_DENSITY = 0.3;
 
 function isBackbeatBeat(b: number): boolean {
@@ -102,9 +102,9 @@ function emitKicks(notes: NoteSpec[], kit: DrumKit, beatsPerBar: number, rng: ()
  * Closed-hat base grid, dispatching on density vs `grid.threshold` (default
  * 0.5). See HouseHatLowMode/HouseHatHighMode in styleSpec.ts for what each
  * mode means; "8ths" at `high` and "16ths" at `low`/`high` intentionally
- * describe the VELOCITY treatment (uniform vs on-8th/off-16th split), not
+ * describe the velocity treatment (uniform vs on-8th/off-16th split), not
  * grid spacing, since that's what's needed to reproduce both house's and
- * techno's original dense-hat passes from the same code.
+ * techno's reference dense-hat passes from the same code.
  */
 function emitHatGrid(
   notes: NoteSpec[],
@@ -225,18 +225,17 @@ function emitGhosts(
 }
 
 /**
- * Build a StyleFactory for a house-family StyleSpec (data-driven B4.1
- * mechanism). The built-in "house" and "techno" styles are
+ * Build a StyleFactory for a house-family StyleSpec. The built-in "house" and "techno" styles are
  * houseFamilyPlan(HOUSE_STYLE_SPEC) / houseFamilyPlan(TECHNO_STYLE_SPEC).
  *
- * `openHatOffbeats === true` (house's default) selects the INTERLEAVED
+ * `openHatOffbeats === true` (house's default) selects the interleaved
  * structure: kick, backbeat, and open-hat are drawn together in one per-beat
- * loop, exactly matching the original houseBar's draw order. Any other value
- * (a number, techno-style) selects the SEQUENTIAL structure: kicks, then the
+ * loop, matching the reference houseBar's draw order. Any other value (a
+ * number, techno-style) selects the sequential structure: kicks, then the
  * hat grid, ride, backbeat, rumble kicks and open-hat chance each as their
- * own pass — exactly matching the original technoBar's draw order. This
- * split exists purely to keep both built-ins byte-identical to their
- * pre-B4.1 output; a fresh house-family spec can use either shape.
+ * own pass, matching the reference technoBar's draw order. The split keeps
+ * both built-ins byte-identical to the reference generators frozen in
+ * test/drums.test.ts; a new house-family spec can use either shape.
  */
 function houseFamilyPlan(spec: HouseFamilyStyleSpec): StyleFactory {
   const backbeat = spec.backbeat ?? ["clap", "snare"];
@@ -257,7 +256,7 @@ function houseFamilyPlan(spec: HouseFamilyStyleSpec): StyleFactory {
     const hatBase = density >= threshold ? hatGrid.high : hatGrid.low;
 
     const bar = (barCtx: { rng: () => number; turnaround: boolean }): NoteSpec[] => {
-      const { rng } = barCtx; // house family has no turnaround logic (matches original)
+      const { rng } = barCtx; // house family has no turnaround logic
       const notes: NoteSpec[] = [];
       const backbeatEnabled = backbeat.length > 0 && density >= backbeatMinDensity;
 
@@ -296,7 +295,7 @@ function houseFamilyPlan(spec: HouseFamilyStyleSpec): StyleFactory {
   };
 }
 
-/** The built-in "house" style, expressed as data through the B4.1 path. */
+/** The built-in "house" style, expressed as house-family spec data. */
 export const HOUSE_STYLE_SPEC: HouseFamilyStyleSpec = {
   name: "house",
   family: "house",
@@ -312,7 +311,7 @@ export const HOUSE_STYLE_SPEC: HouseFamilyStyleSpec = {
   swingDelay: 0,
 };
 
-/** The built-in "techno" style, expressed as data through the B4.1 path. */
+/** The built-in "techno" style, expressed as house-family spec data. */
 export const TECHNO_STYLE_SPEC: HouseFamilyStyleSpec = {
   name: "techno",
   family: "house",
@@ -329,11 +328,11 @@ export const TECHNO_STYLE_SPEC: HouseFamilyStyleSpec = {
 };
 
 // ---------------------------------------------------------------------------
-// trap (half-time) — pattern-CELL model
+// trap (half-time): pattern-cell model
 //
 // A real trap groove locks its kick figure and rides it; only the top end
 // breathes. So the kick pattern is a seeded choice from a curated table of
-// COMMON variations (cells), held for the whole loop, while per-bar rng only
+// common variations (cells), held for the whole loop, while per-bar rng only
 // touches velocities, roll events, ghosts, and turnaround-bar fills.
 // ---------------------------------------------------------------------------
 
@@ -345,7 +344,7 @@ export interface TrapKickCell {
 
 /** Curated common trap kick figures (beat 1 always anchors). */
 export const TRAP_KICK_CELLS: TrapKickCell[] = [
-  { name: "hold", offsets: [0, 3.25] }, // 1, 4.25 — boom … ba into the loop
+  { name: "hold", offsets: [0, 3.25] }, // 1, 4.25: boom … ba into the loop
   { name: "double-tap", offsets: [0, 0.75, 3.5] }, // 1, 1.75, 4.5
   { name: "late-lean", offsets: [0, 1.5, 2.75] }, // 1, 2.5, 3.75
   { name: "rolling", offsets: [0, 0.75, 2.5, 3.25] }, // 1, 1.75, 3.5, 4.25
@@ -356,11 +355,11 @@ export const TRAP_KICK_CELLS: TrapKickCell[] = [
 const TRAP_HAT_BASES = ["straight-8ths", "16th-run", "swung-16ths"] as const;
 
 /**
- * Weight of each hat base at a given density, in the ORIGINAL (fixed, all-
- * three-bases) proportions: {0.4, 0.35, 0.25} once dense, {0.7, 0.3, 0} when
+ * Weight of each hat base at a given density, in the built-in trap style's
+ * (fixed, all-three-bases) proportions: {0.4, 0.35, 0.25} once dense, {0.7, 0.3, 0} when
  * sparse (swung-16ths never appears at low density). pickHatBase renormalizes
  * these over whichever bases a spec allows, so a spec listing all three in
- * this order reproduces the exact original draw.
+ * this order reproduces the built-in trap draw exactly.
  */
 const HAT_BASE_WEIGHT: Record<TrapHatBaseName, (density: number) => number> = {
   "straight-8ths": (density) => (density >= 0.5 ? 0.4 : 0.7),
@@ -393,10 +392,10 @@ function pickHatBase(
 }
 
 /**
- * Build a StyleFactory for a trap-family StyleSpec (data-driven B4 mechanism).
- * The built-in "trap" style is just trapFamilyPlan(TRAP_STYLE_SPEC) — see
- * below — so new trap-family grooves can be authored as spec DATA instead of
- * code, through the exact same generator path.
+ * Build a StyleFactory for a trap-family StyleSpec. The built-in "trap"
+ * style is trapFamilyPlan(TRAP_STYLE_SPEC), so new trap-family grooves can
+ * be authored as spec data instead of code, through the same generator
+ * path.
  */
 function trapFamilyPlan(spec: TrapFamilyStyleSpec): StyleFactory {
   const cells = spec.kickCells;
@@ -408,7 +407,7 @@ function trapFamilyPlan(spec: TrapFamilyStyleSpec): StyleFactory {
   const swingDelay = spec.swingDelay ?? 0.06;
 
   return (kit, beatsPerBar, density, rng, variant) => {
-    // --- groove-level choices: drawn ONCE, held for the whole loop ---------
+    // --- groove-level choices: drawn once, held for the whole loop ---------
     const cell =
       cells[
         variant !== undefined
@@ -423,7 +422,7 @@ function trapFamilyPlan(spec: TrapFamilyStyleSpec): StyleFactory {
       const { rng: breath, turnaround } = barCtx;
       const notes: NoteSpec[] = [];
 
-      // kick: the cell, placement LOCKED — only velocities breathe
+      // kick: the cell's placement is locked; only velocities breathe
       for (const pos of kickOffsets) {
         addHit(notes, kit, "kick", pos, randVelocity(breath, pos === 0 ? ACCENT : NORMAL));
       }
@@ -439,8 +438,8 @@ function trapFamilyPlan(spec: TrapFamilyStyleSpec): StyleFactory {
         addHit(notes, kit, "clap", snareBeat, randVelocity(breath, ACCENT));
       }
 
-      // hats: the held base pattern, with per-bar roll EVENTS substituted in —
-      // 0-1 on ordinary bars, always one on the LAST beat of turnaround bars
+      // hats: the held base pattern, with per-bar roll events substituted in:
+      // 0-1 on ordinary bars, always one on the last beat of turnaround bars
       if (kit["hat-closed"] !== undefined || kit["hat-open"] !== undefined) {
         const eventBeats = new Set<number>();
         if (turnaround) eventBeats.add(beatsPerBar - 1);
@@ -483,7 +482,7 @@ function trapFamilyPlan(spec: TrapFamilyStyleSpec): StyleFactory {
           }
         }
 
-        // open hat at the bar end — likelier going into the next phrase
+        // open hat at the bar end, likelier going into the next phrase
         const openChance = turnaround ? 0.7 : density >= 0.4 ? openHatChanceVal : 0;
         if (kit["hat-open"] !== undefined && openChance > 0 && breath() < openChance) {
           addHit(notes, kit, "hat-open", beatsPerBar - 0.5, randVelocity(breath, NORMAL));
@@ -497,7 +496,7 @@ function trapFamilyPlan(spec: TrapFamilyStyleSpec): StyleFactory {
   };
 }
 
-/** The built-in "trap" style, expressed as data through the same B4 path. */
+/** The built-in "trap" style, expressed as trap-family spec data. */
 export const TRAP_STYLE_SPEC: TrapFamilyStyleSpec = {
   name: "trap",
   family: "trap",
@@ -516,7 +515,7 @@ export const TRAP_STYLE_SPEC: TrapFamilyStyleSpec = {
 
 /**
  * A prepared style: groove-level choices (pattern cells, hat base, …) are
- * already drawn and HELD; bar() emits one bar, drawing only the breathing
+ * already drawn and held; bar() emits one bar, drawing only the breathing
  * layer (velocities, ghosts, roll events) from the passed rng.
  */
 interface StylePlan {
@@ -558,8 +557,8 @@ export interface GeneratePatternOptions {
   /** Force a specific groove variant (index into listDrumVariants). Ignored
    * for house-family specs. */
   variant?: number;
-  /** Data-driven style spec (B4/B4.1). When set, used regardless of `style`,
-   * which becomes just a display label. */
+  /** Data-driven style spec. When set, used regardless of `style`, which
+   * becomes a display label only. */
   styleSpec?: DrumStyleSpec;
 }
 
@@ -574,7 +573,7 @@ export interface GeneratedPattern {
  * (e.g. trap's kick cell) are drawn once from ctx.rng and held for the whole
  * loop; each bar then draws only its breathing layer (velocities, ghosts,
  * roll events) so the loop repeats like a played groove without being a
- * copy-paste. Every 4th bar — and the final bar — is a "turnaround" that may
+ * copy-paste. Every 4th bar, and the final bar, is a "turnaround" that may
  * carry a fill gesture (trap only; house-family styles ignore it). Deterministic:
  * same kit + ctx (incl. rng) => byte-identical notes.
  */

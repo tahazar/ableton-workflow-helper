@@ -102,7 +102,7 @@ export class LibraryStore {
     return file;
   }
 
-  /** Regenerate `clips/INDEX.md` — the grep/browse entry point. */
+  /** Regenerate `clips/INDEX.md`, the grep/browse entry point. */
   async buildIndex(): Promise<string> {
     const entries = await this.listClips();
     const byCategory = new Map<string, StoredClipEntry[]>();

@@ -9,7 +9,7 @@ import {
 } from "./types.js";
 
 /**
- * Shape transforms — rework existing material (spec R7): they may drop,
+ * Shape transforms rework existing material: they may drop,
  * reshape, double, or echo the user's notes, but never invent pitches that
  * didn't come from the input.
  */

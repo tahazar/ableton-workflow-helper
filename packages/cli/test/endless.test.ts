@@ -23,13 +23,12 @@ import { buildEndlessDemo } from "../src/endless/demo.js";
 import { parseSectionsArg, sectionsFromReference, buildEndlessPlanYaml } from "../src/endless/plan.js";
 
 /**
- * M10 endless player tests (docs/design/endless-player.md "Verification bar").
+ * Endless player tests (docs/design/endless-player.md "Verification bar").
  *
- * IMPORTANT: the decision-core imports above come straight from
- * `packages/cli/assets/endless/player.js` — the SAME FILE the emitted
- * HTML loads in the browser. There is no second, TS-typed copy of the
- * decision logic; this file is the architecture's whole point (see the
- * file's own header comment).
+ * The decision-core imports above come straight from
+ * `packages/cli/assets/endless/player.js`, the same file the emitted HTML
+ * loads in the browser. There is no second, TS-typed copy of the decision
+ * logic (see player.js's header comment).
  */
 
 function makeSpec(overrides: Record<string, unknown> = {}) {
@@ -353,7 +352,7 @@ describe("plan.ts", () => {
 });
 
 // ---------------------------------------------------------------------------
-// endless build — validation + emission (real tmp files on disk)
+// endless build: validation + emission (real tmp files on disk)
 // ---------------------------------------------------------------------------
 
 function wavBytesFor(durationSeconds: number, sampleRate = 44100): Buffer {
@@ -519,9 +518,9 @@ describe("endless build — happy path emission", () => {
   });
 
   it("replaces __ENDLESS_TITLE__ everywhere it appears, not just the first occurrence", async () => {
-    // regression test: String.prototype.replace() (non-global) only swaps the FIRST
-    // match, so the <title> tag got the real name while the on-page <h1> kept the
-    // literal placeholder — found via a real curl against a served demo.
+    // String.prototype.replace() (non-global) only swaps the first match, which
+    // would give the <title> tag the real name while the on-page <h1> keeps the
+    // literal placeholder.
     const dir = await tmp("awh-endless-title-");
     const specPath = await writeTinySpecProject(dir);
     await buildEndlessPlayer(specPath, join(dir, "out"));
@@ -547,7 +546,7 @@ describe("endless build — happy path emission", () => {
 });
 
 // ---------------------------------------------------------------------------
-// endless demo — synthesizes + builds in one step
+// endless demo: synthesizes + builds in one step
 // ---------------------------------------------------------------------------
 
 describe("endless demo", () => {

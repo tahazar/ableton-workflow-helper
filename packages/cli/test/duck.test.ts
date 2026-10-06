@@ -1,11 +1,11 @@
-import { createSocket, type Socket } from "node:dgram";
+import { createSocket } from "node:dgram";
 import { afterEach, describe, expect, it } from "vitest";
 import { decodeOscMessage, encodeOscMessage } from "../src/osc.js";
 import { pushDuck, shapeFromFitJson, type DuckShape, type DuckTriggerSet } from "../src/duck.js";
 
 /** A fake AWH Ducker device: binds `port`, records every decoded message it
  * receives, and replies to /awh/duck/ping with /awh/duck/pong <version> on
- * `replyPort` — enough to drive the real push flow end to end without Max. */
+ * `replyPort`. Enough to drive the real push flow end to end without Max. */
 function fakeDucker(port: number, replyPort: number, version = "1"): { received: { address: string; args: (string | number)[] }[]; close: () => Promise<void> } {
   const socket = createSocket("udp4");
   const received: { address: string; args: (string | number)[] }[] = [];

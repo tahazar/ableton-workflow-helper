@@ -558,7 +558,7 @@ def _cmd_drumstats(args: argparse.Namespace) -> int:
         dataset_name = os.path.basename(os.path.normpath(args.paths[0]))
 
     if not files:
-        # Zero audio files found is a STATE, not an error (docs/lessons-learned.md #5).
+        # Zero audio files found is a state, not an error (docs/lessons-learned.md #5).
         payload = {"dataset": dataset_name, "n_loops": 0, "files": []}
         if args.json:
             _print_json(payload)
@@ -904,7 +904,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_samplescan = sub.add_parser(
         "samplescan",
-        help="Scan sample files -> one JSONL feature record per line (M11 sample library)",
+        help="Scan sample files -> one JSONL feature record per line for the sample library",
     )
     p_samplescan.add_argument(
         "files", nargs="*",
@@ -914,7 +914,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_samplepitch = sub.add_parser(
         "samplepitch",
-        help="Pitch-tag sample files (M11c) -> one JSONL f0/note/voiced-fraction record per line",
+        help="Pitch-tag sample files -> one JSONL f0/note/voiced-fraction record per line",
     )
     p_samplepitch.add_argument(
         "files", nargs="*",
@@ -924,7 +924,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_clapembed = sub.add_parser(
         "clapembed",
-        help="CLAP audio/text embeddings for semantic sample search (M11b) -> JSONL per file, "
+        help="CLAP audio/text embeddings for semantic sample search -> JSONL per file, "
         "or one JSON object with --text",
     )
     p_clapembed.add_argument(
@@ -947,7 +947,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_advise = sub.add_parser(
         "advise",
-        help="Deterministic rule-based mix advice (M13): a ranked, cited, verifiable plan",
+        help="Deterministic rule-based mix advice: a ranked, cited, verifiable plan",
     )
     p_advise.add_argument(
         "file", nargs="?", default=None, help="audio capture to measure (omit with --record)"
@@ -976,7 +976,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_breakchop = sub.add_parser(
         "breakchop",
-        help="Chop a break sample (amen, think, ...) into a labeled slice map (M15)",
+        help="Chop a break sample (amen, think, ...) into a labeled slice map",
     )
     p_breakchop.add_argument("file")
     p_breakchop.add_argument("--bpm", type=float, default=None, help="override the BPM estimate")

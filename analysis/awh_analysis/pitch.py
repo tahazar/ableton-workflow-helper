@@ -1,21 +1,18 @@
-"""Pitch tracking (M6b masking toolkit): periodicity-based f0, never a
-naive FFT-peak pick.
+"""Pitch tracking (masking toolkit): periodicity-based f0, never a naive
+FFT-peak pick.
 
-Closes the headline gap found doing real masking analysis (see
-docs/design/analysis-engine.md's "Future work" section, 2026-08-23): the
-only pitch tool available at the time was "loudest FFT bin" peak-picking,
-which was CAUGHT being wrong live — a growl patch's 2nd harmonic outshone
-its own fundamental partway through a sustained note, and the naive picker
-reported the harmonic as the note. `estimate_f0` here follows pyin
-(autocorrelation/YIN-style periodicity tracking, the same proven approach
-opmatch.py already uses), so it tracks the waveform's actual repetition
-rate rather than whichever partial happens to be loudest at a given moment.
+"Loudest FFT bin" peak-picking misreports pitch when a harmonic outshines
+the fundamental, as a growl patch's 2nd harmonic does partway through a
+sustained note (see docs/design/analysis-engine.md's "Future work"
+section). `estimate_f0` follows pyin (autocorrelation/YIN-style
+periodicity tracking, the same approach opmatch.py uses), so it tracks the
+waveform's repetition rate rather than whichever partial is loudest at a
+given moment.
 
-The harmonic-dominance check below is the HONESTY half of that fix: rather
-than silently trusting f0 and hiding the fact that a harmonic got louder
-than the fundamental, it explicitly measures and reports exactly that
-condition — the failure mode itself, now surfaced as information instead
-of corrupting the pitch estimate.
+The harmonic-dominance check below reports that condition instead of
+hiding it: rather than trusting f0 silently, it measures when a harmonic
+gets louder than the fundamental and surfaces it as information without
+letting it corrupt the pitch estimate.
 """
 
 from __future__ import annotations
@@ -39,13 +36,13 @@ N_FFT = 4096
 # questions (like the growl case) actually live without paying for a full
 # 16-partial sweep (opmatch.py's job, not this tool's).
 HARMONIC_CHECK_MAX_K = 5
-# Search window half-width as a fraction of the target frequency — wide
+# Search window half-width as a fraction of the target frequency, wide
 # enough to catch small per-frame f0 estimation error (mirrors opmatch.py's
 # harmonic-band search), capped well under half the harmonic spacing so it
 # can't bleed into a neighboring partial. Also floored to the analysis
 # window's own mainlobe half-width (2*sr/FRAME_LENGTH, same formula as
-# opmatch.py) so low fundamentals — where a purely relative width can be
-# narrower than a single FFT bin — still land on a real bin. See
+# opmatch.py) so low fundamentals, where a purely relative width can be
+# narrower than a single FFT bin, still land on a real bin. See
 # test_pitch.py's low-fundamental regression: at f0=100 Hz/sr=44100 a purely
 # relative 3% window (±3 Hz) missed the 2nd-harmonic bin entirely (~10.8 Hz
 # bin spacing), silently reporting "no dominance" on material that plainly
@@ -101,9 +98,9 @@ def harmonic_dominance(
     mono: np.ndarray, sr: int, f0_track: np.ndarray, voiced: np.ndarray
 ) -> dict:
     """Per voiced frame, compare each of the first HARMONIC_CHECK_MAX_K
-    harmonics' magnitude against the fundamental's own — reported, never
+    harmonics' magnitude against the fundamental's own. Reported, never
     used to steer f0 (pyin already tracked the real periodicity). Returns
-    the STRONGEST instance found (biggest ratio_db, i.e. harmonic loudest
+    the strongest instance found (biggest ratio_db, i.e. harmonic loudest
     relative to the fundamental) plus how much of the voiced material it
     covers.
     """
@@ -116,7 +113,7 @@ def harmonic_dominance(
     times = librosa.frames_to_time(np.arange(mag.shape[1]), sr=sr, hop_length=HOP_LENGTH)
     n_frames = min(mag.shape[1], len(f0_track), len(voiced))
     # Analysis window's own mainlobe half-width (same formula as
-    # opmatch.py's harmonic_vector_and_ratio) — floors the search band so a
+    # opmatch.py's harmonic_vector_and_ratio) floors the search band so a
     # purely relative width can't fall narrower than a single FFT bin.
     mainlobe_half_hz = 2.0 * sr / FRAME_LENGTH
 
@@ -151,10 +148,9 @@ def harmonic_dominance(
                 continue
             harm_amp = float(mag[band, i].max())
             ratio_db = 20.0 * np.log10(max(harm_amp, 1e-12) / fund_amp)
-            # Only track candidates that actually EXCEED the fundamental —
-            # this is the specific, named failure mode being surfaced
-            # ("report WHEN a harmonic exceeds the fundamental's energy"),
-            # not a running "loudest relative partial" score that would
+            # Only track candidates that exceed the fundamental. This is the
+            # specific failure mode being surfaced (a harmonic exceeding the
+            # fundamental's energy), not a running "loudest relative partial" score that would
             # populate harmonic/ratio_db/time_s even on a clean tone where
             # nothing exceeded anything.
             if ratio_db > 0:
@@ -180,8 +176,8 @@ def harmonic_dominance(
 
 def analyze_segment(x: np.ndarray, sr: int) -> dict:
     """f0/note/stability/confidence + harmonic-dominance for one span of
-    audio. Unvoiced/silent/too-short is a reported STATE (`state` field),
-    never an exception — docs/lessons-learned.md rule 5."""
+    audio. Unvoiced/silent/too-short is a reported state (`state` field),
+    never an exception (docs/lessons-learned.md rule 5)."""
     mono = to_mono(np.asarray(x, dtype=np.float64))
 
     if mono.size < MIN_ANALYZABLE_SAMPLES:
@@ -236,8 +232,8 @@ def pitch(
     onset_min_gap_s: float = 0.08,
 ) -> dict:
     """Top-level `awh mix pitch` measurement: whole-span f0 analysis, plus
-    (with `per_note=True`) an onset-segmented per-note breakdown — each
-    note gets its OWN f0/stability/harmonic-dominance rather than one
+    (with `per_note=True`) an onset-segmented per-note breakdown. Each
+    note gets its own f0/stability/harmonic-dominance rather than one
     average across a changing melody (same time-smearing concern
     bands.py's Welch-vs-one-FFT fix addresses for band energy)."""
     from . import audio
@@ -256,9 +252,9 @@ def pitch(
             onsets = detect_onsets(x, sr, min_gap_s=onset_min_gap_s)
         except ValueError:
             onsets = []
-        # Segment boundaries = [0, onset_1, onset_2, ..., duration] — an
-        # onset list only marks WHERE a new note starts, so the first
-        # segment (the audio BEFORE the first detected onset, likely the
+        # Segment boundaries = [0, onset_1, onset_2, ..., duration]. An
+        # onset list only marks where a new note starts, so the first
+        # segment (the audio before the first detected onset, likely the
         # first note itself) must be included too, not silently dropped.
         bounds = [0.0, *onsets, duration_s] if onsets else []
         notes = []
@@ -270,7 +266,7 @@ def pitch(
             seg_result["end_s"] = float(end)
             notes.append(seg_result)
         # Zero onsets is a state (silent/percussive/no clean attacks found),
-        # not an error — same "zero items is a state" rule as everywhere
+        # not an error: the same "zero items is a state" rule as everywhere
         # else (docs/lessons-learned.md rule 5).
         result["notes"] = notes
 

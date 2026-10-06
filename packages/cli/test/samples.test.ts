@@ -48,17 +48,16 @@ import {
 } from "../src/samples.js";
 
 /**
- * M11 sample-library tests (docs/design/sample-library.md's verification
- * bar). Two tiers, deliberately:
- *  - FAKE-scanner tests (fast, no python) for the index/prune/search
- *    machinery, which only needs deterministic feature RECORDS, not real
+ * Sample-library tests (docs/design/sample-library.md's verification
+ * bar), in two tiers:
+ *  - Fake-scanner tests (fast, no python) for the index/prune/search
+ *    machinery, which only needs deterministic feature records, not real
  *    audio analysis.
- *  - REAL-scanner tests (spawn `python -m awh_analysis samplescan` against
- *    the venv in the MAIN checkout, per the task's setup note) for the
- *    negative-control similarity ranking, which genuinely needs real
- *    MFCC/spectral features to be meaningful.
+ *  - Real-scanner tests (spawn `python -m awh_analysis samplescan` against
+ *    the main checkout's venv) for the negative-control similarity
+ *    ranking, which needs real MFCC/spectral features to be meaningful.
  *
- * Every test sets AWH_SAMPLES_INDEX to a tmp path — NEVER writes to the
+ * Every test sets AWH_SAMPLES_INDEX to a tmp path and never writes to the
  * real ~/.awh (docs/design/sample-library.md: "Never committed... nothing
  * under library/ or knowledge/").
  */
@@ -164,7 +163,7 @@ describe("walkSampleFiles", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AWH_SAMPLES_INDEX honored — NEVER the real ~/.awh
+// AWH_SAMPLES_INDEX honored, never the real ~/.awh
 // ---------------------------------------------------------------------------
 
 describe("resolveSamplesIndexPath", () => {
@@ -188,7 +187,7 @@ describe("resolveSamplesIndexPath", () => {
 });
 
 // ---------------------------------------------------------------------------
-// runIndex: incremental skip + prune (fake scanner — deterministic, fast)
+// runIndex: incremental skip + prune (fake scanner: deterministic, fast)
 // ---------------------------------------------------------------------------
 
 describe("runIndex (fake scanner) — incremental + prune", () => {
@@ -205,7 +204,7 @@ describe("runIndex (fake scanner) — incremental + prune", () => {
     expect(first.pruned).toBe(0);
     expect(calls.length).toBeGreaterThan(0);
 
-    // touch NOTHING -> second run must scan 0 files (incremental skip)
+    // touch nothing -> second run must scan 0 files (incremental skip)
     const second = await runIndex([corpus], { rescan: false, indexPath, scanner });
     expect(second.scanned).toBe(0);
     expect(second.unchanged).toBe(2);
@@ -305,7 +304,7 @@ describe("planIndexUpdate", () => {
         },
       },
     };
-    // indexing ONLY /roots/a this run — /roots/b entries must survive even
+    // indexing only /roots/a this run; /roots/b entries must survive even
     // though they're not in currentFiles
     const plan = planIndexUpdate(index, ["/roots/a"], [], { rescan: false });
     expect(plan.toPrune).toEqual(["/roots/a/gone.wav"]);
@@ -457,9 +456,9 @@ describe("summarizeIndex", () => {
 });
 
 // ---------------------------------------------------------------------------
-// REAL python scanner — negative-control similarity ranking + real index
-// build. Uses the venv in the MAIN checkout (task setup note); skipped
-// gracefully if it isn't present so the rest of the suite still runs.
+// Real python scanner: negative-control similarity ranking + real index
+// build. Uses the main checkout's venv; skipped if it isn't present so the
+// rest of the suite still runs.
 // ---------------------------------------------------------------------------
 
 const MAIN_VENV_PYTHON = "/home/user/ableton-workflow-helper/.venv/bin/python";
@@ -495,7 +494,7 @@ function sineSamples(freq: number, sr: number, durS: number, amp = 0.6): number[
   return out;
 }
 
-/** Deterministic PRNG (mulberry32) — no external deps needed for a fake
+/** Deterministic PRNG (mulberry32), so no external deps are needed for a fake
  * noise burst in a Node test. */
 function noiseSamples(durS: number, sr: number, amp = 0.5, seed = 1): number[] {
   let s = seed >>> 0;
@@ -569,9 +568,9 @@ describe.skipIf(!hasRealPython)("real analysis engine — index build + similari
       expect(ranked.length).toBe(4); // everything except the reference itself
 
       const rankedNames = ranked.map((h) => h.path.split("/").pop());
-      // NEGATIVE CONTROL: both hats must rank BELOW both other basses —
-      // the reference is more similar to any other sine bass than to a
-      // noise burst.
+      // Negative control: both hats must rank below both other basses,
+      // since the reference is more similar to any other sine bass than to
+      // a noise burst.
       const bassRanks = rankedNames
         .map((n, i) => (n?.startsWith("bass") ? i : -1))
         .filter((i) => i >= 0);
@@ -610,13 +609,13 @@ describe.skipIf(!hasRealPython)("real analysis engine — index build + similari
 });
 
 // ---------------------------------------------------------------------------
-// M11b semantic search (docs/design/sample-semantic.md) — ALL under
-// AWH_CLAP_STUB=1, same two-tier split as above:
+// Semantic search (docs/design/sample-semantic.md), all under
+// AWH_CLAP_STUB=1, with the same two-tier split as above:
 //  - pure logic (fake embedder, no python) for embed/mismatch/search/rank
-//  - real `clapembed.py` subprocess (still AWH_CLAP_STUB=1, so no torch
-//    ever loads) for the end-to-end integration + the negative control,
-//    which genuinely needs the CLI's OWN wiring in src/index.ts, not just
-//    the samples.ts library functions.
+//  - real `clapembed.py` subprocess (still AWH_CLAP_STUB=1, so torch never
+//    loads) for the end-to-end integration + the negative control, which
+//    needs the CLI's own wiring in src/index.ts, not only the samples.ts
+//    library functions.
 // ---------------------------------------------------------------------------
 
 describe("M11b semantic search — embed/search/similar logic (fake embedder, AWH_CLAP_STUB=1)", () => {
@@ -630,7 +629,7 @@ describe("M11b semantic search — embed/search/similar logic (fake embedder, AW
     else process.env.AWH_CLAP_STUB = originalStub;
   });
 
-  /** A trivially fake embedder — deterministic per path, no python, but
+  /** A fake embedder: deterministic per path, no python, but
    * still stamped "stub-v1" so it agrees with `expectedClapModelLabel`
    * under AWH_CLAP_STUB=1 (set above), the same contract the real
    * clapembed.py subprocess honors. */
@@ -707,7 +706,7 @@ describe("M11b semantic search — embed/search/similar logic (fake embedder, AW
     const { scanner } = fakeScannerWithCallCount();
     await runIndex([corpus], { rescan: false, indexPath, scanner });
 
-    // seed a prior embed under a DIFFERENT model label — simulating a real
+    // seed a prior embed under a different model label, simulating a real
     // `embed --model general` run without needing two real model spaces
     // under the stub (which always stamps "stub-v1" regardless of --model).
     const index = await loadSamplesIndex(indexPath);
@@ -837,7 +836,7 @@ describe.skipIf(!hasRealPython)(
       "embeds real files through the real clapembed subprocess and is incremental",
       async () => {
         const corpus = join(tmpDir, "corpus");
-        // NOTE: content doesn't need to be valid audio — the stub embedder
+        // Content doesn't need to be valid audio: the stub embedder
         // hashes raw bytes, it never decodes anything.
         await touchFile(join(corpus, "a.wav"), "content-a");
         await touchFile(join(corpus, "b.wav"), "content-b");
@@ -916,7 +915,7 @@ describe.skipIf(!hasRealPython)(
         const indexPath = join(tmpDir, "index.json");
         const { scanner } = fakeScannerWithCallCount();
         await runIndex([corpus], { rescan: false, indexPath, scanner });
-        // deliberately never run `embed` — the index has entries, zero vectors
+        // deliberately never run `embed`: the index has entries, zero vectors
 
         const result = spawnSync(
           process.execPath,
@@ -943,11 +942,10 @@ describe.skipIf(!hasRealPython)(
 );
 
 // ---------------------------------------------------------------------------
-// M11c: pitch tagging (kicks/subs -> f0/note, for key-matched search).
-// Built 2026-08-23 after using `mix pitch` to find a real Reese/Sub
-// conflict — same shape as M11b's embed/search-semantic pattern above:
-// a separate, opt-in enrichment pass, incremental, only over eligible
-// candidates (isPitchTagCandidate).
+// Pitch tagging (kicks/subs -> f0/note, for key-matched search). Same shape
+// as the embed/search-semantic pattern above: a separate, opt-in
+// enrichment pass, incremental, only over eligible candidates
+// (isPitchTagCandidate).
 // ---------------------------------------------------------------------------
 
 describe("M11c pitch tagging — index/search logic (fake tagger)", () => {
@@ -1092,12 +1090,12 @@ describe("M11c pitch tagging — index/search logic (fake tagger)", () => {
   });
 
   // ---------------------------------------------------------------------
-  // Octave-convention correctness — the trickiest part of this feature:
-  // Python's pitch.py stamps `note.name` in STANDARD/scientific notation
-  // (C4 = MIDI 60), a full octave apart from this codebase's Ableton
-  // convention (C3 = MIDI 60, @awh/core's pitchToMidi/midiToPitch). Every
-  // note NAME the user ever sees or types must go through the Ableton
-  // convention — the raw Python `name` string must never reach a user.
+  // Octave-convention correctness. Python's pitch.py stamps `note.name` in
+  // scientific notation (C4 = MIDI 60), an octave apart from this
+  // codebase's Ableton convention (C3 = MIDI 60, @awh/core's
+  // pitchToMidi/midiToPitch). Every note name the user sees or types must
+  // use the Ableton convention; the raw Python `name` must never reach a
+  // user.
   // ---------------------------------------------------------------------
 
   it("noteNameToHz parses Ableton-convention names (A3 = 440 Hz, not A4)", () => {
@@ -1110,13 +1108,13 @@ describe("M11c pitch tagging — index/search logic (fake tagger)", () => {
       analysisVersion: PITCH_ANALYSIS_VERSION,
       state: "voiced",
       f0Hz: 440,
-      note: { name: "A4", midi: 69, cents: 0 }, // Python's own (standard-notation) name — must be ignored
+      note: { name: "A4", midi: 69, cents: 0 }, // Python's scientific-notation name, must be ignored
       voicedFraction: 0.9,
       confidence: 0.6,
       f0StabilitySemitones: 0.1,
       harmonicDominance: { flagged: false, harmonic: null, ratioDb: null, timeS: null, fractionOfVoicedFrames: 0 },
     };
-    expect(pitchDisplayNote(info)).toBe("A3"); // Ableton convention, NOT the stored "A4"
+    expect(pitchDisplayNote(info)).toBe("A3"); // Ableton convention, not the stored "A4"
   });
 
   it("pitchDisplayNote returns null when there's no pitch", () => {

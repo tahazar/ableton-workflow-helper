@@ -1,6 +1,6 @@
 /**
- * `awh endless build` — validate an endless.yaml spec loudly (everything at
- * once, before any output — docs/lessons-learned.md's "validate before
+ * `awh endless build`: validate an endless.yaml spec (every problem at
+ * once, before any output, per docs/lessons-learned.md's "validate before
  * write, loud failures before partial output"), then emit the player:
  * index.html + player.js + the audio pools + endless-README.md. See
  * docs/design/endless-player.md for the format.
@@ -17,14 +17,13 @@ export const SINGLE_FILE_WARN_BYTES = 12 * 1024 * 1024;
 
 /**
  * The player's static assets (player.js + the index.html template) live in
- * packages/cli/assets/endless/ — a sibling of src/, so `tsc` never touches
- * or copies them (they're not TypeScript). We resolve their path at
- * runtime relative to THIS compiled module's own location (dist/endless/
- * build.js -> ../../assets/endless), the same "resolve relative to where
- * the code actually runs from" approach `findLibraryRoot`/the `new
- * project` template copy use for their own runtime files (packages/cli/src/
- * index.ts) — just anchored to the package's install location instead of
- * cwd, since these are OUR assets, not the owner's.
+ * packages/cli/assets/endless/, a sibling of src/, so `tsc` never touches
+ * or copies them (they're not TypeScript). Their path is resolved at
+ * runtime relative to this compiled module's location (dist/endless/
+ * build.js -> ../../assets/endless). `findLibraryRoot` and the `new
+ * project` template copy in index.ts also resolve from where the code runs,
+ * but they anchor to cwd; these assets ship with the package, so they
+ * anchor to the package's install location.
  */
 export function endlessAssetsDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
@@ -42,7 +41,7 @@ function collectPoolFiles(spec: EndlessSpec): Set<string> {
 }
 
 /**
- * Structural validation (parseEndlessSpec + validateEndlessSpec) PLUS the
+ * Structural validation (parseEndlessSpec + validateEndlessSpec) plus the
  * file-level checks that need real files on disk: every pool file exists,
  * and every file's duration matches bars*4*60/bpm within +-25ms (pure RIFF
  * chunk math, see wav.ts). Returns every problem found, spec-dir-relative
@@ -95,7 +94,7 @@ export async function checkEndlessSpecFile(
 
 function escapeForInlineScript(json: string): string {
   // A </script> substring inside embedded JSON would prematurely close the
-  // tag under HTML parsing rules regardless of the tag's `type` — escape it.
+  // tag under HTML parsing rules regardless of the tag's `type`, so escape it.
   return json.replace(/<\/script/gi, "<\\/script");
 }
 
@@ -180,7 +179,7 @@ export interface BuildResult {
 
 /**
  * Validates everything (structural + every file's existence/duration),
- * throwing the FULL problem list if anything is wrong — nothing is written
+ * throwing the full problem list if anything is wrong. Nothing is written
  * on failure. On success emits index.html (+ player.js + audio/ unless
  * --single-file, which inlines both) + endless-README.md into `outDir`.
  */

@@ -314,8 +314,8 @@ def findings(measurements: dict, delivery: str | None = None) -> list[dict]:
             offset = band.get("trough_offset_ms")
             shape = band.get("shape")
             depth = band.get("depth_db")
-            # Misalignment is only meaningful when the modulation actually
-            # looks like ducking — a decay-like trough sits late in the
+            # Misalignment is only meaningful when the modulation
+            # looks like ducking. A decay-like trough sits late in the
             # cycle by nature, not because a compressor is mis-synced.
             if (
                 shape == "ducking-like"
@@ -359,9 +359,9 @@ def findings(measurements: dict, delivery: str | None = None) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Measurement records: a git-versioned "db" of analyzed files (owner request,
-# M6 follow-up). One JSON per analyzed file under library/measurements/ —
-# retrievable by grep/Claude without re-running the DSP.
+# Measurement records: a git-versioned "db" of analyzed files. One JSON per
+# analyzed file under library/measurements/, searchable with ordinary text
+# tools without re-running the DSP.
 # ---------------------------------------------------------------------------
 
 

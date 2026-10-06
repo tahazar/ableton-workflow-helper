@@ -1,6 +1,6 @@
-"""awh_analysis: measurements + explanations for rendered audio (M6).
+"""awh_analysis: measurements + explanations for rendered audio.
 
-Deterministic DSP for the Ableton Workflow Helper analysis engine —
+Deterministic DSP for the Ableton Workflow Helper analysis engine:
 loudness (BS.1770), true peak, PSR, third-octave spectrum/tilt, stereo
 width/correlation, waveform asymmetry, phase-rotation headroom, sidechain
 pump, genre targets, and A/B comparison. See

@@ -192,11 +192,11 @@ def _pump_band(sig: np.ndarray, sr: int, bpm: float) -> dict:
             break
 
     # --- shape features: ducking vs natural decay ------------------------
-    # A beat-synced RMS trough alone CANNOT prove a sidechain compressor is
-    # engaged (a retriggered note's own decay folds to the same periodicity
-    # — found in live verification). What does differ is the SHAPE:
-    # genuine ducking dips early in the cycle and RECOVERS before the next
-    # beat; natural decay keeps falling until the cycle wraps.
+    # A beat-synced RMS trough alone cannot prove a sidechain compressor is
+    # engaged: a retriggered note's own decay folds to the same periodicity.
+    # What differs is the shape. Ducking dips early in the cycle and
+    # recovers before the next beat; natural decay keeps falling until the
+    # cycle wraps.
     trough_position = trough_time / period_s  # 0..1 fraction into the cycle
     tail_bins = max(1, n_bins // 10)  # last ~10% of the cycle
     tail_db = folded_db[-tail_bins:]
@@ -228,12 +228,12 @@ def pump(x: np.ndarray, sr: int, bpm: float) -> dict:
     """Beat-synchronous level-modulation analysis (RMS envelope folded
     modulo the beat period), full band and <120 Hz.
 
-    HONEST SCOPE: this measures how much the level pumps with the beat and
-    what SHAPE the pump has (ducking-like / decay-like / ambiguous) — it
-    cannot, from one file, prove a sidechain compressor is engaged, because
-    a retriggered note's natural decay is also beat-synced. Definitive
+    Scope: this measures how much the level pumps with the beat and what
+    shape the pump has (ducking-like / decay-like / ambiguous). It cannot,
+    from one file, prove a sidechain compressor is engaged, because a
+    retriggered note's natural decay is also beat-synced. Definitive
     sidechain verification is an A/B: capture with the compressor on and
-    bypassed, then `ab_compare` — the depth delta is the evidence.
+    bypassed, then `ab_compare`; the depth delta is the evidence.
     """
     if not bpm or bpm <= 0:
         raise ValueError("pump() requires a positive bpm")

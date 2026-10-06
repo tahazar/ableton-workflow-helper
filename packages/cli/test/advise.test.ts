@@ -15,20 +15,17 @@ import {
 } from "../src/advise.js";
 
 /**
- * M13 mix advisor (docs/design/mix-advisor.md) — CLI-side tests. The rule
- * engine itself is Python-tested (analysis/tests/test_advise.py); this
- * file covers what's specific to the CLI layer: record-name resolution,
- * `--set` device-name enrichment (pure function + against a real fake
- * gateway — the fake bridge's "main" track IS the master, see
- * packages/core/src/bridge/paths.ts, so no deviation from the design's
- * "read the master chain via device.get" was needed), missing-target/
- * missing-layers placeholders reaching real CLI output, and the
- * skill-flows mechanized gate (packages/core/test/skill-flows.test.ts,
- * asserted green separately — this file doesn't duplicate it).
+ * Mix advisor (docs/design/mix-advisor.md) CLI-side tests. The rule engine
+ * itself is Python-tested (analysis/tests/test_advise.py). This file covers
+ * what's specific to the CLI layer: record-name resolution, `--set`
+ * device-name enrichment (pure function, and against a real fake gateway
+ * whose "main" track is the master; see packages/core/src/bridge/paths.ts),
+ * and missing-target/missing-layers placeholders reaching real CLI output.
+ * The skill-flows gate lives in packages/core/test/skill-flows.test.ts.
  */
 
 // ---------------------------------------------------------------------------
-// resolveMeasurementRecordPath — pure, no gateway/python needed.
+// resolveMeasurementRecordPath: pure, no gateway/python needed.
 // ---------------------------------------------------------------------------
 
 describe("resolveMeasurementRecordPath", () => {
@@ -57,7 +54,7 @@ describe("resolveMeasurementRecordPath", () => {
 });
 
 // ---------------------------------------------------------------------------
-// enrichActionsWithDevices — pure text substitution, additive-only.
+// enrichActionsWithDevices: pure text substitution, additive-only.
 // ---------------------------------------------------------------------------
 
 describe("enrichActionsWithDevices", () => {
@@ -90,7 +87,7 @@ describe("enrichActionsWithDevices", () => {
 });
 
 // ---------------------------------------------------------------------------
-// readMasterChainDevices — against a real fake gateway (same pattern as
+// readMasterChainDevices against a real fake gateway (same pattern as
 // layers.test.ts). Confirms the fake bridge's "main" path answers
 // device.get the same way a real track does, and that a gateway
 // failure/absence degrades to an empty list rather than throwing.
@@ -145,11 +142,11 @@ describe("readMasterChainDevices", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Full CLI integration (spawns the BUILT dist/index.js, real Python engine)
-// — arg mapping, --record/--target/--layers resolution, missing-target
+// Full CLI integration (spawns the built dist/index.js, real Python engine):
+// arg mapping, --record/--target/--layers resolution, missing-target
 // placeholder in real output, --set enrichment end to end, --compare.
-// Skipped gracefully when the CLI hasn't been built or the venv isn't
-// present, same convention as samples.test.ts's real-engine tests.
+// Skipped when the CLI hasn't been built or the venv isn't present, as in
+// samples.test.ts's real-engine tests.
 // ---------------------------------------------------------------------------
 
 const CLI_DIST = fileURLToPath(new URL("../dist/index.js", import.meta.url));
@@ -158,9 +155,9 @@ const hasBuiltCli = existsSync(CLI_DIST);
 const hasRealPython = existsSync(MAIN_VENV_PYTHON);
 
 // `analysisPython()` (src/analysis-python.ts) derives its python `cwd` as
-// `dirname(AWH_LIBRARY)/analysis` — so an isolated test library needs an
+// `dirname(AWH_LIBRARY)/analysis`, so an isolated test library needs an
 // `analysis` sibling too, or `python -m awh_analysis` can't find the
-// package. Symlinking the REAL analysis/ dir alongside a scratch `library/`
+// package. Symlinking the real analysis/ dir alongside a scratch `library/`
 // keeps each test's fixtures fully isolated without touching the repo's
 // actual library/ directory.
 const REPO_ANALYSIS_DIR = fileURLToPath(new URL("../../../analysis", import.meta.url));
@@ -210,15 +207,14 @@ interface CliResult {
 }
 
 /**
- * ASYNC on purpose (not spawnSync): several tests below run an in-process
- * fake gateway (`createGatewayServer`) in this SAME event loop for `--set`
+ * Async on purpose (not spawnSync): several tests below run an in-process
+ * fake gateway (`createGatewayServer`) in this same event loop for `--set`
  * to talk to. `spawnSync` blocks the whole Node event loop while the child
- * runs, which would starve that in-process HTTP server of the chance to
- * answer the child's requests at all — a real deadlock (found live: it hung
- * for undici's ~5-minute default fetch timeout before the -set test failed
- * with an empty device list, not a fast, obviously-wrong error). Spawning
- * async keeps this process's event loop free to service the gateway while
- * the child CLI process runs concurrently.
+ * runs, so the in-process HTTP server could never answer the child's
+ * requests. That deadlock hangs for undici's ~5-minute default fetch
+ * timeout and then fails with an empty device list. Spawning async keeps
+ * this process's event loop free to service the gateway while the child
+ * CLI process runs.
  */
 function runCli(args: string[], env: Record<string, string>): Promise<CliResult> {
   return new Promise((resolvePromise) => {
@@ -276,8 +272,8 @@ describe.skipIf(!hasBuiltCli || !hasRealPython)("awh mix advise — full CLI int
     await mkdir(join(libraryRoot, "measurements"), { recursive: true });
     await mkdir(join(libraryRoot, "targets"), { recursive: true });
 
-    // A minimal, valid mix-report-shaped measurement record (kind absent —
-    // report.save_record's own convention).
+    // A minimal, valid mix-report-shaped measurement record (kind absent,
+    // per report.save_record's convention).
     const measurements = {
       file: "x.wav",
       samplerate: 44100,
@@ -400,13 +396,13 @@ describe.skipIf(!hasBuiltCli || !hasRealPython)("awh mix advise — full CLI int
     expect(existsSync(join(libraryRoot, "measurements", "before.json"))).toBe(true);
 
     // After: safely gained (true-peak-ceiling resolved), decorrelated low
-    // band (a NEW item: low-band-correlation).
+    // band (a new item: low-band-correlation).
     const after = join(dir, "after.wav");
     const t = Array.from({ length: 44100 * 2 }, (_, i) => i / 44100);
     const left = t.map((s) => 0.3 * Math.sin(2 * Math.PI * 60 * s));
     const right = t.map((s) => -0.3 * Math.sin(2 * Math.PI * 60 * s));
     // Interleave into a stereo 16-bit wav by hand (writeWavMono16 is mono
-    // only) — build the buffer directly here.
+    // only).
     const n = left.length;
     const buffer = Buffer.alloc(44 + n * 2 * 2);
     buffer.write("RIFF", 0);

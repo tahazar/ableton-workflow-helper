@@ -20,9 +20,9 @@ import {
 
 /**
  * Fake-Operator apply engine tests (against a real gateway server backed by
- * FakeLiveBridge — same pattern as packages/core/test/server.test.ts) and
- * `op recipes` listing tests (against an isolated tmp KnowledgeStore — same
- * pattern as packages/core/test/knowledge.test.ts). See docs/design/
+ * FakeLiveBridge, as in packages/core/test/server.test.ts) and `op recipes`
+ * listing tests (against an isolated tmp KnowledgeStore, as in
+ * packages/core/test/knowledge.test.ts). See docs/design/
  * operator-assistant.md's verification bar.
  */
 
@@ -94,8 +94,8 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
     const before = (await caller("device.get", { path: devicePath })) as DeviceDetail;
     const beforeValues = new Map(before.params.map((p) => [p.name, p.value]));
 
-    // "Osc-A Corase" is a typo for "Osc-A Coarse" — must NOT silently no-op
-    // that one param while writing the rest; the whole apply is refused.
+    // "Osc-A Corase" is a typo for "Osc-A Coarse". Instead of skipping that
+    // one param while writing the rest, the whole apply is refused.
     const recipe: OperatorRecipe = {
       name: "typo-recipe",
       device: "Operator",
@@ -127,8 +127,8 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
     const plan = planRecipeApply(before, recipe, devicePath);
     expect(plan.moves).toEqual([{ param: "Volume", from: beforeVolume, to: beforeVolume + 0.05 }]);
 
-    // dry-run never calls applyRecipePlan — confirm the live value is
-    // genuinely untouched.
+    // dry-run never calls applyRecipePlan; confirm the live value is
+    // untouched.
     const after = (await caller("device.get", { path: devicePath })) as DeviceDetail;
     expect(after.params.find((p) => p.name === "Volume")!.value).toBe(beforeVolume);
   });

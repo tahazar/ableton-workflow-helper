@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * awh — Ableton Workflow Helper CLI.
+ * awh: Ableton Workflow Helper CLI.
  *
  * Every command is a deterministic operation against the gateway (the
  * extension running inside Live, or `awh serve-fake` for offline dev).
- * The same commands are what a Claude Code skill drives — no AI-only paths.
+ * An agent skill drives these same commands; there are no agent-only paths.
  */
 import { copyFile, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync, readFileSync } from "node:fs";
@@ -135,7 +135,6 @@ import {
   listPhraseStyles,
   listPhraseVariants,
   parsePhraseSpec,
-  parseOperatorRecipe,
   parsePath,
   formatPath,
   sortNotes,
@@ -460,7 +459,7 @@ clip
   .command("from-audio <audioFile> <target>")
   .description(
     "Transcribe melodic audio to a MIDI clip via Basic Pitch (polyphonic pitch " +
-      "estimate to audition and correct — NOT ground truth; for drums use " +
+      "estimate to audition and correct, not ground truth; for drums use " +
       "`awh drums detect-onsets` instead). Target: a track path (auto-picks an " +
       "empty session slot) or an explicit slot (track:0/slot:2) — an existing " +
       "clip there is overwritten with the transcription (same occupied-target " +
@@ -515,7 +514,7 @@ clip
         (p.min_freq !== null ? ` minFreq=${p.min_freq}Hz` : "") +
         (p.max_freq !== null ? ` maxFreq=${p.max_freq}Hz` : "");
 
-      // Zero notes is a STATE, not an error (docs/lessons-learned.md #5):
+      // Zero notes is a state, not an error (docs/lessons-learned.md #5):
       // no clip is created, exit 0.
       if (transcription.n_notes === 0) {
         output(opts, transcription, () =>
@@ -545,10 +544,10 @@ clip
         `${lengthBeats / beatsPerBar} bars @ ${bpm} BPM — ${paramsLine} (${transcription.model})`;
       const estimateNote = "estimate only — audition and correct in Live.";
 
-      // Resolve the target (reads only — clip.get/set.summary) even in
-      // --dry-run, same as `sections apply`: a dry run should still catch
-      // "no such track"/"no empty slot" instead of only surfacing that on
-      // the real run. Only the WRITE ops below are skipped for --dry-run.
+      // Resolve the target (reads only: clip.get/set.summary) even in
+      // --dry-run, as `sections apply` does, so a dry run still catches
+      // "no such track"/"no empty slot". Only the write ops below are
+      // skipped for --dry-run.
       const name = cmdOpts.name ?? basename(audioFile).replace(/\.[^./]+$/, "");
       const isSlot = /\/slot:\d+$/.test(target);
 
@@ -605,7 +604,7 @@ clip
         // Occupied target: overwrite in place (same convention as `awh lib
         // place`). The gateway has no clip-resize op, so a transcription
         // longer than the existing clip is clamped to fit rather than
-        // silently sending notes Live would never play.
+        // sending notes Live would never play.
         placedNotes = clampNotesToLength(notes, existing.lengthBeats);
         await op(opts, "clip.notes", { path: existing.path, notes: placedNotes });
         await op(opts, "clip.update", { path: existing.path, name });
@@ -793,8 +792,8 @@ program
   .option("--all", "allow an empty --prefix (matches EVERY clip on the track)")
   .action(async (trackPath: string, cmdOpts: { prefix: string; all?: boolean }) => {
     const opts = program.opts<GlobalOpts>();
-    // An empty prefix matches every clip name — a validation pass lost a
-    // placeholder clip to it. Deleting everything must be said out loud.
+    // An empty prefix matches every clip name, so deleting everything must
+    // be requested explicitly.
     if (cmdOpts.prefix === "" && !cmdOpts.all) {
       throw new Error(
         `--prefix "" matches EVERY clip on ${trackPath} — pass --all if you really mean that`,
@@ -807,7 +806,7 @@ program
     ).result;
     const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === trackPath);
     if (!track) throw new Error(`track not found: ${trackPath}`);
-    // Session AND arrangement clips; delete in DESCENDING index order so
+    // Session and arrangement clips; delete in descending index order so
     // earlier deletions can't shift the paths of later ones.
     const doomed = [...track.sessionClips, ...track.arrangementClips].filter((c) =>
       c.name.startsWith(cmdOpts.prefix),
@@ -831,7 +830,7 @@ program
   });
 
 // ---------------------------------------------------------------------------
-// AWH Remote (M12, m4l/): transport + clip launch over OSC — the SDK has no
+// AWH Remote (m4l/): transport + clip launch over OSC. The SDK has no
 // play/stop/position or session-clip-launch API (docs/sdk-feedback.md), so
 // this device (which supersedes the AWH Capture Tap: same 9720/9721 ports,
 // superset protocol) is the only way `awh` can press play. Wire logic lives
@@ -934,10 +933,10 @@ addRemotePortOptions(
 
 // ---------------------------------------------------------------------------
 // `awh lib audition` state: which auditioned clip (if any) is still pending
-// a sweep — persisted between CLI invocations (this is the ONLY CLI command
-// with cross-invocation state; docs/design/live-remote.md). AWH_AUDITION_STATE
-// overrides the file location (used by tests to avoid touching the real
-// repo's .dev/); default lives under .dev/ (gitignored), same scratch
+// a sweep, persisted between CLI invocations (the only CLI command with
+// cross-invocation state; docs/design/live-remote.md). AWH_AUDITION_STATE
+// overrides the file location so tests avoid touching the real repo's
+// .dev/. The default lives under .dev/ (gitignored), the same scratch
 // convention as `op verify`'s capture files.
 // ---------------------------------------------------------------------------
 
@@ -1145,7 +1144,7 @@ sections
   );
 
 // ---------------------------------------------------------------------------
-// Drums (M5): pad-aware pattern generation and drum-specialized rework.
+// Drums: pad-aware pattern generation and drum-specialized rework.
 // ---------------------------------------------------------------------------
 
 /** Find the drum-rack pads on a track (first device that has any). */
@@ -1522,10 +1521,10 @@ drums
   );
 
 // ---------------------------------------------------------------------------
-// Drum-loop rhythm-statistics mining (owner request): band-split onset
-// mining across a folder of drum loops, reported for comparison against the
-// built-in style specs — never auto-applied to them (grammars.ts/styleSpec.ts
-// stay hand-authored and locked).
+// Drum-loop rhythm-statistics mining: band-split onset mining across a
+// folder of drum loops, reported for comparison against the built-in style
+// specs. Never auto-applied to them (grammars.ts/styleSpec.ts stay
+// hand-authored and locked).
 // ---------------------------------------------------------------------------
 
 interface DrumStatsBand {
@@ -1719,7 +1718,7 @@ drums
 
       const result = (await runAnalysisJson(args)) as unknown as DrumStatsResult;
 
-      // Zero audio files found is a STATE, not an error (docs/lessons-learned.md #5).
+      // Zero audio files found is a state, not an error (docs/lessons-learned.md #5).
       if (result.n_loops === 0) {
         output(opts, result, () =>
           `no audio files found in: ${dirs.join(", ")} (looked for .mp3/.wav/.aif/.aiff/.flac/.ogg)`,
@@ -1732,13 +1731,13 @@ drums
   );
 
 // ---------------------------------------------------------------------------
-// Phrase engine (M9): call-and-response drop writing.
+// Phrase engine: call-and-response drop writing.
 // ---------------------------------------------------------------------------
 
 const PHRASE_BEATS_PER_BAR = 4;
 
 /** Resolve --style: built-in first, else a `phrase-style-<name>` knowledge
- *  entry's ```awh-phrase-spec``` block — same convention as `drums gen`. */
+ *  entry's ```awh-phrase-spec``` block (same convention as `drums gen`). */
 async function resolvePhraseSpec(style: string): Promise<{ spec: PhraseSpec; styleTier?: string }> {
   if (listPhraseStyles().includes(style)) {
     return { spec: BASS_MUSIC_CR_SPEC };
@@ -1760,9 +1759,9 @@ async function resolvePhraseSpec(style: string): Promise<{ spec: PhraseSpec; sty
 }
 
 /** Resolve a `drop phrase` target: explicit slot/arr path, track + --at-bar,
- *  or a bare track path (auto-picks an empty session slot) — same
+ *  or a bare track path (auto-picks an empty session slot), with the same
  *  conventions as `drums gen`/`lib place`/`clip from-audio`. An existing
- *  clip at the target is filled in place (same occupied-target convention). */
+ *  clip at the target is filled in place. */
 async function resolvePhraseTarget(
   opts: GlobalOpts,
   summary: SetSummary,
@@ -1832,7 +1831,7 @@ async function writePhraseClip(
 const drop = program
   .command("drop")
   .description(
-    "Call-and-response phrase engine (M9): answer an existing call clip, or " +
+    "Call-and-response phrase engine: answer an existing call clip, or " +
       "cold-start a call/response skeleton from a spec",
   );
 
@@ -1873,7 +1872,7 @@ drop
         throw new Error(`${callClip} is not a MIDI clip`);
       }
 
-      // Zero notes is a STATE, not an error (docs/lessons-learned.md #5):
+      // Zero notes is a state, not an error (docs/lessons-learned.md #5):
       // nothing to respond to, nothing written, exit 0.
       if (detail.notes.length === 0) {
         output(opts, { callClip, created: [] }, () =>
@@ -2086,7 +2085,7 @@ drop
   );
 
 // ---------------------------------------------------------------------------
-// Library (B3): save clips from the Set, browse, place back, mirror to Live.
+// Library: save clips from the Set, browse, place back, mirror to Live.
 // ---------------------------------------------------------------------------
 
 const PITCH_CLASSES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -2246,7 +2245,7 @@ lib
           const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
           existing = { path: target, lengthBeats: detail.duration };
         } catch {
-          // no clip there yet — fall through to create (slot paths only; an
+          // No clip there yet: fall through to create (slot paths only; an
           // arr path with nothing at it isn't a valid create target).
           if (isArrPath) {
             throw new Error(
@@ -2451,7 +2450,7 @@ lib
     );
   });
 
-// --- B3d: Live browser mirror ------------------------------------------
+// --- Live browser mirror -----------------------------------------------
 
 const TEMPLATE_REL = join("templates", "midi-clip.xml");
 
@@ -2528,8 +2527,8 @@ lib
     )).filter((e) => e.kind === "midi" && e.notation);
     // Proceed even with 0 entries: writePack wipes stale content from a
     // pack it owns, so this is what keeps the mirror in sync if the
-    // library (or the --category slice of it) goes back to empty —
-    // erroring out here would silently leave old clips in Live's browser.
+    // library (or the --category slice of it) goes back to empty. Erroring
+    // out here would leave old clips in Live's browser.
 
     const config = await loadMirrorConfig(store);
     config.revision += 1;
@@ -2629,7 +2628,7 @@ lib
   );
 
 // ---------------------------------------------------------------------------
-// Knowledge base (B4): tiered, executable-first entries; open-ended topics;
+// Knowledge base: tiered, executable-first entries; open-ended topics;
 // measurement records surfaced alongside. See knowledge/README.md.
 // ---------------------------------------------------------------------------
 
@@ -2785,11 +2784,11 @@ program
   });
 
 // ---------------------------------------------------------------------------
-// Mix analysis (M6): measurement engine (Python) + M4L capture tap driver.
+// Mix analysis: measurement engine (Python) + M4L capture tap driver.
 // ---------------------------------------------------------------------------
 
 function repoRoot(): string {
-  // library root is <repo>/library (findLibraryRoot walks up) — its parent.
+  // The library root is <repo>/library (findLibraryRoot walks up); return its parent.
   return dirname(findLibraryRoot());
 }
 
@@ -2890,7 +2889,7 @@ mix
 mix
   .command("target <files...>")
   .description(
-    "Measure YOUR reference tracks into a genre target profile (also records " +
+    "Measure your reference tracks into a genre target profile (also records " +
       "each reference into library/measurements/ for future retrieval)",
   )
   .requiredOption("--save <name>", "target name (stored in library/targets/<name>.json)")
@@ -2920,10 +2919,10 @@ mix
 
     // Record "kinds" sharing library/measurements/: single-file mix reports
     // (report.save_record, `kind` field absent), multi-file drumstats
-    // records (`kind: "drumstats"`), M13's `mix layers --save`
-    // (`kind: "layers"`), `mix advise --save` (`kind: "advice"`), and M15's
-    // `awh breaks chop --save` (`kind: "chopmap"`) — ALL must render (not
-    // crash) in `mix records`/`mix records <name>`.
+    // records (`kind: "drumstats"`), `mix layers --save`
+    // (`kind: "layers"`), `mix advise --save` (`kind: "advice"`), and
+    // `awh breaks chop --save` (`kind: "chopmap"`). All must render without
+    // crashing in `mix records`/`mix records <name>`.
     interface DrumStatsRecordFile {
       kind: "drumstats";
       saved: string;
@@ -3112,7 +3111,7 @@ mix
   });
 
 // ---------------------------------------------------------------------------
-// M11: sample library — local index, search, similarity
+// Sample library: local index, search, similarity
 // (docs/design/sample-library.md; logic lives in samples.ts)
 // ---------------------------------------------------------------------------
 
@@ -3174,8 +3173,8 @@ samplesCmd
 samplesCmd
   .command("embed")
   .description(
-    "Compute missing/stale CLAP embeddings for the whole index (M11b, docs/design/" +
-      "sample-semantic.md) — enables `search --semantic`/`similar --semantic`; " +
+    "Compute missing/stale CLAP embeddings for the whole index (docs/design/" +
+      "sample-semantic.md). Enables `search --semantic`/`similar --semantic`; " +
       "incremental (already-embedded files are skipped), and a model switch re-embeds",
   )
   .option("--model <model>", "music (default, music-tuned) | general (AudioSet)", DEFAULT_CLAP_MODEL)
@@ -3229,7 +3228,7 @@ samplesCmd
 samplesCmd
   .command("pitch-tag")
   .description(
-    "Pitch-tag eligible kick/sub/808 one-shots (M11c) with a periodicity-tracked f0/note " +
+    "Pitch-tag eligible kick/sub/808 one-shots with a periodicity-tracked f0/note " +
       "(mix pitch, never a naive FFT-peak pick) — enables `search --near-note`; incremental " +
       "(already-tagged files are skipped), only one-shots whose energy is low-band-dominated " +
       "are eligible (hats/vocals/melodic loops are never candidates)",
@@ -3290,14 +3289,14 @@ samplesCmd
   .option("--band <band>", "filter: low | mid | high (dominant band)")
   .option(
     "--near-note <note>",
-    "filter: pitch-tagged kick/sub one-shots near this note (M11c, Ableton convention " +
+    "filter: pitch-tagged kick/sub one-shots near this note (Ableton convention " +
       'e.g. "F1") — needs `awh samples pitch-tag` first; composes with every other filter',
   )
   .option("--cents <n>", "cents tolerance for --near-note", String(DEFAULT_CENTS_TOL))
   .option(
     "--semantic <phrase>",
-    "rank by CLAP semantic similarity to this phrase instead of path tokens " +
-      "(M11b) — composes with the trait filters above, not with plain query terms",
+    "rank by CLAP semantic similarity to this phrase instead of path tokens; " +
+      "composes with the trait filters above, not with plain query terms",
   )
   .action(
     async (
@@ -3430,7 +3429,7 @@ samplesCmd
       "--traits forces the v1 MFCC/spectral/band-split feature vector",
   )
   .option("--count <n>", "how many results to show", "10")
-  .option("--semantic", "force CLAP semantic ranking (M11b)")
+  .option("--semantic", "force CLAP semantic ranking")
   .option("--traits", "force the v1 MFCC/spectral/band-split vector, even if embeddings exist")
   .action(async (file: string, cmdOpts: { count: string; semantic?: boolean; traits?: boolean }) => {
     const opts = program.opts<GlobalOpts>();
@@ -3556,12 +3555,11 @@ samplesCmd
   });
 
 /**
- * Typed wrapper for device.param — op() args are `unknown`, so a wrong field
- * name compiles fine and only fails at runtime inside Live (the {name} vs
- * {param} bug found in live verification). Repeat-use ops get typed wrappers;
- * see docs/lessons-learned.md. Delegates to op.ts's caller-based version
- * (packages/cli/src/op.ts) — the SAME wrapper the `awh op` (B2) engine uses,
- * just bound to this file's opts-based `op()` gateway caller.
+ * Typed wrapper for device.param. op() args are `unknown`, so a wrong field
+ * name (e.g. {name} vs {param}) compiles fine and only fails at runtime
+ * inside Live. Repeat-use ops get typed wrappers; see
+ * docs/lessons-learned.md. Delegates to the wrapper in op.ts that the
+ * `awh op` engine uses, bound to this file's opts-based `op()` caller.
  */
 async function setDeviceParam(
   opts: GlobalOpts,
@@ -3607,8 +3605,8 @@ function triggerArgs(t: { seconds: number[]; cycle?: number }): string[] {
 }
 
 /**
- * Resolve trigger positions in raw BEATS (not seconds) plus the pattern's
- * loop length in beats — what the M4L Ducker needs (it runs its own
+ * Resolve trigger positions in raw beats (not seconds) plus the pattern's
+ * loop length in beats, which the M4L Ducker needs (it runs its own
  * transport-beat math, see m4l/README.md). Distinct from
  * resolveTriggerSeconds, which the analysis-engine flows use instead.
  */
@@ -3674,10 +3672,10 @@ async function captureSpan(
   await new Promise((r) => setTimeout(r, seconds * 1000));
   await sendToTap("/awh/play", [0], spec.tapPort);
   await sendToTap("/awh/stop", [], spec.tapPort);
-  // sfrecord~ has no completion ack over OSC — give it a moment to flush
+  // sfrecord~ has no completion ack over OSC, so give it a moment to flush
   // and close the WAV header before anything reads the file. Without this,
   // an immediate read can see a file that `existsSync` but whose header
-  // still reports 0 frames (found live: intermittent "selection is 0.000s"
+  // still reports 0 frames (observed as intermittent "selection is 0.000s"
   // analysis failures on files that were valid moments later).
   await new Promise((r) => setTimeout(r, 400));
   if (!existsSync(spec.out)) {
@@ -3714,7 +3712,7 @@ const duckCmd = mix
 duckCmd
   .command("fit <drumsFile>")
   .description(
-    "Fit the duck envelope to YOUR drums: trigger-aligned low-band decay -> " +
+    "Fit the duck envelope to your drums: trigger-aligned low-band decay -> " +
       "depth/hold/release + exact Volume Shaper points to draw",
   )
   .option(
@@ -3765,9 +3763,9 @@ duckCmd
       await setDeviceParam(opts, inserted.path, name, value);
       return `  ok ${name} -> ${value} (raw range ${p.min}..${p.max})`;
     };
-    // "Sidechain On" is a normal automatable param (live-verified) — only
-    // the Audio From ROUTING is genuinely outside the SDK. Live's exact
-    // param name varies, so match candidates.
+    // "Sidechain On" is a normal automatable param (verified in Live). Only
+    // the Audio From routing is outside the SDK. Live's exact param name
+    // varies, so match candidates.
     const scOn = ["S/C On", "Sidechain On", "SideChain On", "SC On"]
       .map((n) => byName.get(n))
       .find((q) => q !== undefined);
@@ -3884,7 +3882,7 @@ duckCmd
       const d25 = Math.max(0, (await measureAt("probe25", lo25)) - baseline);
       const d75 = Math.max(0, (await measureAt("probe75", hi75)) - baseline);
       process.stderr.write(`probes: raw ${lo25.toFixed(3)} -> ${d25.toFixed(2)} dB, raw ${hi75.toFixed(3)} -> ${d75.toFixed(2)} dB\n`);
-      // deeperRaw = the end of the range that gives MORE ducking
+      // deeperRaw = the end of the range that gives more ducking
       let deepRaw = d25 > d75 ? param.min : param.max;
       let shallowRaw = d25 > d75 ? param.max : param.min;
       let best = { raw: d25 > d75 ? lo25 : hi75, depth: Math.max(d25, d75) };
@@ -3909,7 +3907,7 @@ duckCmd
             `${best.depth.toFixed(2)} dB duck (target ${target} ±${tolerance})`,
           Math.abs(best.depth - target) <= tolerance
             ? "within tolerance — audition it"
-            : "NOT within tolerance — the compressor may not reach this depth on this material; " +
+            : "not within tolerance: the compressor may not reach this depth on this material; " +
               "consider the ShaperBox strategy or a louder trigger source",
         ].join("\n"),
       );
@@ -3968,8 +3966,8 @@ duckCmd
       const shape = resolveDuckShape(cmdOpts);
       const triggers = await resolveDuckTriggerBeats(opts, cmdOpts);
 
-      // Zero triggers is a STATE, not an error (docs/lessons-learned.md rule
-      // 5): a duck with nothing to trigger on is a documented no-op — say
+      // Zero triggers is a state, not an error (docs/lessons-learned.md rule
+      // 5): a duck with nothing to trigger on is a documented no-op. Say
       // so, send nothing (not even a ping), exit 0.
       if (triggers.beats.length === 0) {
         output(opts, { sent: false, reason: "no triggers" }, () =>
@@ -4056,9 +4054,9 @@ mix
   );
 
 // ---------------------------------------------------------------------------
-// M6b masking toolkit (docs/design/analysis-engine.md's 2026-08-23 gap
-// report): periodicity-tracked pitch, calibrated narrowband energy, and
-// the solo->capture->unsolo choreography — packages/cli/src/layers.ts.
+// Masking toolkit (docs/design/analysis-engine.md): periodicity-tracked
+// pitch, calibrated narrowband energy, and the solo->capture->unsolo
+// sequence in packages/cli/src/layers.ts.
 // ---------------------------------------------------------------------------
 
 mix
@@ -4155,8 +4153,8 @@ mix
     ) => {
       const opts = program.opts<GlobalOpts>();
 
-      // Zero tracks is a STATE, not an error (docs/lessons-learned.md rule
-      // 5) — nothing to solo/capture/compare, say so plainly, exit 0.
+      // Zero tracks is a state, not an error (docs/lessons-learned.md rule
+      // 5): nothing to solo/capture/compare, so say so and exit 0.
       if (tracks.length === 0) {
         output(opts, { ran: false, reason: "no tracks" }, () =>
           "no tracks given — nothing to solo/capture/compare " +
@@ -4222,7 +4220,7 @@ mix
             ? cmdOpts.save
             : slugify(tracks.join("-")) || "layers";
         savedRecordPath = join(findLibraryRoot(), "measurements", `${name}.json`);
-        // `file` here matches EXACTLY what was passed to `bands` (results[].outPath)
+        // `file` here matches exactly what was passed to `bands` (results[].outPath)
         // so `awh mix advise`'s masking rule can map compareResult's per-file band
         // levels back to track names.
         const record = {
@@ -4262,7 +4260,7 @@ mix
           )}\n`,
         );
       } else {
-        // Same bands table `awh mix bands` itself prints — no separate
+        // Same bands table `awh mix bands` prints, so there is no separate
         // rendering to keep in sync.
         await runAnalysis(bandsArgs);
         if (!cmdOpts.keep) await rm(outDir, { recursive: true, force: true });
@@ -4271,11 +4269,11 @@ mix
   );
 
 // ---------------------------------------------------------------------------
-// M13: the mix advisor — a deterministic rule engine over the SAME
-// measurement pipeline `mix report` uses (docs/design/mix-advisor.md). The
-// rule table lives in analysis/awh_analysis/advise.py; this command only
-// resolves CLI inputs to file paths, optionally enriches action text with
-// real master-chain device names (--set, additive/offline-safe — see
+// Mix advisor: a deterministic rule engine over the same measurement
+// pipeline `mix report` uses (docs/design/mix-advisor.md). The rule table
+// lives in analysis/awh_analysis/advise.py. This command only resolves CLI
+// inputs to file paths, optionally enriches action text with real
+// master-chain device names (--set, additive and offline-safe; see
 // advise.ts), and renders the ranked plan.
 // ---------------------------------------------------------------------------
 
@@ -4431,7 +4429,7 @@ mix
 
       // --set is additive and offline-safe: any gateway failure (not up,
       // wrong port, etc.) just leaves masterDevices empty rather than
-      // failing the whole plan. Enrichment is display-only — it never
+      // failing the whole plan. Enrichment is display-only: it never
       // touches the record --save already wrote (device indices on the
       // master chain aren't stable enough to bake into a saved plan).
       if (cmdOpts.set) {
@@ -4439,7 +4437,7 @@ mix
         try {
           masterDevices = await readMasterChainDevices((name, a) => op(opts, name, a));
         } catch {
-          // additive only — see comment above
+          // additive only; see comment above
         }
         result.items = enrichActionsWithDevices(result.items, masterDevices);
       }
@@ -4451,7 +4449,7 @@ mix
   );
 
 // ---------------------------------------------------------------------------
-// Operator assistant (B2): recipe knowledge base + audio-sample sound
+// Operator assistant: recipe knowledge base + audio-sample sound
 // matching. docs/design/operator-assistant.md. Engine lives in op.ts
 // (validate-first apply flow) + analysis/awh_analysis/opmatch.py.
 // ---------------------------------------------------------------------------
@@ -4578,7 +4576,7 @@ function renderOpMatchText(result: OpMatchResult): string {
 
 const opGroup = program
   .command("op")
-  .description("Operator assistant (B2): recipes + audio-sample sound matching");
+  .description("Operator assistant: recipes + audio-sample sound matching");
 
 opGroup
   .command("recipes")
@@ -4757,7 +4755,7 @@ opGroup
     "Closed-loop verification: writes an audition note (at the reference's " +
       "own detected pitch) onto the device's track, captures it via the M4L " +
       "tap, and reports a spectral-distance score against the reference. " +
-      "Requires the AWH Capture Tap device (m4l/README.md) — NOT auto-iterated: " +
+      "Requires the AWH Capture Tap device (m4l/README.md). Not auto-iterated: " +
       "report, owner tweaks, re-verify.",
   )
   .option("--from-bar <bar>", "arrangement position to write/play the audition note", "1")
@@ -4858,7 +4856,7 @@ opGroup
   );
 
 // ---------------------------------------------------------------------------
-// Scaffolding + harmony (M7): new projects from the owner's template,
+// Scaffolding + harmony: new projects from the owner's template,
 // declarative populate, chord progressions in-scale.
 // ---------------------------------------------------------------------------
 
@@ -4895,7 +4893,7 @@ function resolveKey(
 
 const newCmd = program
   .command("new")
-  .description("Start a track the way you actually start: from YOUR template");
+  .description("Start a track from your own template");
 
 newCmd
   .command("project <name>")
@@ -5137,9 +5135,9 @@ program
   );
 
 // ---------------------------------------------------------------------------
-// Arp & rhythm engine (M14): our own MIDI arp generation, so vary/library/
-// phrases/seeds/notation can all touch the output — the stock Arpeggiator
-// stays the JAMMING tool, `awh arp` is the COMMITTING tool. See
+// Arp & rhythm engine: MIDI arp generation as written notes, so vary/
+// library/phrases/seeds/notation can all touch the output. The stock
+// Arpeggiator stays the jamming tool; `awh arp` is the committing tool. See
 // docs/design/arp-engine.md.
 // ---------------------------------------------------------------------------
 
@@ -5149,8 +5147,8 @@ const ARP_BUILTIN_SPECS: Record<string, ArpSpec> = {
 };
 
 /** Resolve --style: built-in first, else an `arp-style-<name>` knowledge
- *  entry's ```awh-arp-spec``` block — same convention as `drums gen` /
- *  `drop phrase`. */
+ *  entry's ```awh-arp-spec``` block (same convention as `drums gen` /
+ *  `drop phrase`). */
 async function resolveArpSpec(style: string): Promise<{ spec: ArpSpec; styleTier?: string }> {
   const builtin = ARP_BUILTIN_SPECS[style];
   if (builtin) return { spec: builtin };
@@ -5256,8 +5254,8 @@ program
           throw new Error(`${chordClipPath} is not a MIDI clip`);
         }
         const result = chordsFromNotes(detail.notes);
-        // NEGATIVE CONTROL: a melody (no simultaneities) is a state, not
-        // garbage 1-note-chord output (docs/lessons-learned.md #5).
+        // A melody (no simultaneities) is a state to report, not input for
+        // 1-note-chord output (docs/lessons-learned.md #5).
         if (result.kind === "melody") {
           output(opts, { chordClipPath, created: false }, () =>
             `${chordClipPath} has no chords (no simultaneous notes) — this looks like a melody, ` +
@@ -5336,7 +5334,7 @@ program
   );
 
 // ---------------------------------------------------------------------------
-// Break engine (M15): chop a break sample into a labeled slice map (Python),
+// Break engine: chop a break sample into a labeled slice map (Python),
 // then re-sequence it (pattern/fill, pure core) or place a canonical
 // knowledge break-pattern. See docs/design/break-engine.md.
 // ---------------------------------------------------------------------------
@@ -5347,8 +5345,8 @@ const BREAK_BUILTIN_SPECS: Record<string, BreakSpec> = {
 };
 
 /** Resolve --style: built-in first, else a `break-style-<name>` knowledge
- *  entry's ```awh-break-spec``` block — same convention as `drums gen`/
- *  `awh arp`/`drop phrase`. */
+ *  entry's ```awh-break-spec``` block (same convention as `drums gen`/
+ *  `awh arp`/`drop phrase`). */
 async function resolveBreakSpec(style: string): Promise<{ spec: BreakSpec; styleTier?: string }> {
   const builtin = BREAK_BUILTIN_SPECS[style];
   if (builtin) return { spec: builtin };
@@ -5369,7 +5367,7 @@ async function resolveBreakSpec(style: string): Promise<{ spec: BreakSpec; style
 }
 
 /** Resolve --map <name> to a saved chop-map record (library/measurements/,
- *  kind "chopmap" — see `awh breaks chop --save`). */
+ *  kind "chopmap"; see `awh breaks chop --save`). */
 function loadChopMapRecord(name: string): { map: ChopMap; recordPath: string } {
   const file = join(findLibraryRoot(), "measurements", `${name}.json`);
   if (!existsSync(file)) {
@@ -5552,7 +5550,7 @@ breaksCmd
       const { candidates, warnings } = generateBreakFill(map, { seed: Number(cmdOpts.seed), beats, count });
 
       if (candidates.length === 0) {
-        // Zero-slices map is a STATE, not an error (docs/lessons-learned.md #5).
+        // Zero-slices map is a state, not an error (docs/lessons-learned.md #5).
         output(opts, { candidates: [], warnings }, () => warnings.join("\n") || "no fill candidates generated");
         return;
       }
@@ -5715,9 +5713,9 @@ breaksCmd
   );
 
 // ---------------------------------------------------------------------------
-// 808 bass engine (M16): melodic-rhythmic 808 BASSLINE patterns — long holds,
-// syncopated pickups, slides, triplet flows. NOT TR-808 drum patterns (the
-// trap drum styles own those, see `awh drums`). See docs/design/bass-808.md.
+// 808 bass engine: melodic-rhythmic 808 bassline patterns (long holds,
+// syncopated pickups, slides, triplet flows). Not TR-808 drum patterns; the
+// trap drum styles own those (see `awh drums`). See docs/design/bass-808.md.
 // ---------------------------------------------------------------------------
 
 const BASS808_BUILTIN_SPECS: Record<string, Bass808Spec> = {
@@ -5727,8 +5725,8 @@ const BASS808_BUILTIN_SPECS: Record<string, Bass808Spec> = {
 };
 
 /** Resolve --style: built-in first, else an `808-style-<name>` knowledge
- *  entry's ```awh-808-spec``` block — same convention as `drums gen`/
- *  `awh arp`/`drop phrase`/`breaks pattern`. */
+ *  entry's ```awh-808-spec``` block (same convention as `drums gen`/
+ *  `awh arp`/`drop phrase`/`breaks pattern`). */
 async function resolveBass808Spec(style: string): Promise<{ spec: Bass808Spec; styleTier?: string }> {
   const builtin = BASS808_BUILTIN_SPECS[style];
   if (builtin) return { spec: builtin };
@@ -5860,7 +5858,7 @@ bassCmd
   );
 
 // ---------------------------------------------------------------------------
-// Reference deconstruction (M8): tempo/grid/energy/sections from a reference
+// Reference deconstruction: tempo/grid/energy/sections from a reference
 // audio file, draft section map as marker clips, corrections read back.
 // ---------------------------------------------------------------------------
 
@@ -6026,7 +6024,7 @@ refSections
       .slice()
       .sort((a, b) => (a.startTime ?? 0) - (b.startTime ?? 0))
       .map((c) => {
-        // lenient parse of "<name> <len>b [c=0.82]" — corrections may drop parts
+        // lenient parse of "<name> <len>b [c=0.82]"; corrections may drop parts
         const m = c.name.match(/^(.*?)(?:\s+\d+b)?(?:\s+\[c=([\d.]+)\])?\s*$/);
         return {
           name: (m?.[1] ?? c.name).trim() || "section",
@@ -6068,7 +6066,7 @@ refSections
 const endless = program
   .command("endless")
   .description(
-    "Endless player (M10): seeded, ever-different arrangements built from YOUR own " +
+    "Endless player: seeded, ever-different arrangements built from your own " +
       "produced/mixed stems — see docs/design/endless-player.md",
   );
 
@@ -6076,7 +6074,7 @@ endless
   .command("plan")
   .description(
     "Emit a fully-commented endless.yaml starter scaffold — from --sections \"id:bars,...\" " +
-      "or --from-ref <name> (reuses a saved reference's corrected section map, M8)",
+      "or --from-ref <name> (reuses a saved reference's corrected section map)",
   )
   .option("--sections <spec>", 'section list, e.g. "intro:8,build:8,drop:16,break:8"')
   .option(

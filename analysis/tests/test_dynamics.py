@@ -72,7 +72,7 @@ def test_pump_requires_bpm():
 
 
 def _make_decaying_retrigger_signal(sr: int, bpm: float, duration_s: float, depth_db: float):
-    """NEGATIVE CONTROL: no sidechain anywhere — a bass note retriggered on
+    """Negative control: no sidechain anywhere. A bass note retriggered on
     each beat whose own decay produces a beat-synced RMS trough. A naive
     periodicity detector reads this as 'pumping'; the shape features must
     not call it ducking.
@@ -88,8 +88,8 @@ def _make_decaying_retrigger_signal(sr: int, bpm: float, duration_s: float, dept
 
 
 def test_pump_shape_distinguishes_ducking_from_natural_decay():
-    """The live-verification lesson (M6): depth/periodicity alone can't tell
-    a sidechain from a decaying note. The SHAPE features must.
+    """Depth/periodicity alone can't tell a sidechain from a decaying note.
+    The shape features must.
     """
     bpm = 120.0
     ducked = dynamics.pump(_make_pumped_signal(SR, bpm, 8.0, 8.0), SR, bpm)
@@ -108,7 +108,7 @@ def test_pump_shape_distinguishes_ducking_from_natural_decay():
 
 def test_pump_ab_control_sidechain_on_vs_off():
     """The definitive verification path: same material with and without
-    ducking — the depth delta is the evidence."""
+    ducking; the depth delta is the evidence."""
     bpm = 120.0
     t = 8.0
     on = dynamics.pump(_make_pumped_signal(SR, bpm, t, 8.0), SR, bpm)

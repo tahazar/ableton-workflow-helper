@@ -1,6 +1,6 @@
 /**
- * M15 break-chop pattern/fill generation — PURE (chop map in, notes out;
- * see chopmap.ts's parseChopMap for the JSON adapter), so it tests without
+ * Break-chop pattern/fill generation. Pure: chop map in, notes out (see
+ * chopmap.ts's parseChopMap for the JSON adapter), so it tests without
  * Python and without a real chop ever having been run. Pinned semantics:
  * docs/design/break-engine.md.
  *
@@ -20,15 +20,14 @@ import type { BreakSpec } from "./spec.js";
 import { type ChopMap, type ChopMapSlice, type ChopRole, type SliceNoteMode, sliceNote } from "./chopmap.js";
 
 /** Below this per-slice confidence, the map's role guesses are too shaky to
- *  trust for a CROSS-slice substitution — see the design's negative
- *  control ("a chop map with all-low-confidence roles -> pattern
- *  generation WARNS and restricts substitutions to same-slice tricks").
- *  Checked as "every slice is at/under this", not an average — one
- *  confidently-labeled slice is enough to keep substitution honest for
- *  its own role. */
+ *  trust for a cross-slice substitution. A chop map with all-low-confidence
+ *  roles makes pattern generation warn and restrict substitutions to
+ *  same-slice tricks (see docs/design/break-engine.md). Checked as "every
+ *  slice is under this", not an average: one confidently-labeled slice is
+ *  enough to keep substitution trustworthy for its own role. */
 export const LOW_CONFIDENCE_THRESHOLD = 0.4;
 
-const GATE = 0.85; // fraction of a grid step a note holds — leaves a hair
+const GATE = 0.85; // fraction of a grid step a note holds; leaves a hair
 // of silence so consecutive same-pitch retriggers (stutters) still
 // articulate as separate notes rather than one held note in most hosts.
 
@@ -39,9 +38,9 @@ const VELOCITY_STUTTER_TAIL = 82;
 export interface GenerateBreakPatternOptions {
   seed: number;
   bars: number;
-  /** Numeric seed offset only — BreakSpec has no cell/recipe table to draw
-   *  a named variant from (unlike drums/arp/phrase; see the design doc's
-   *  open details). Folded in via variantSeed. */
+  /** Numeric seed offset only. BreakSpec has no cell/recipe table to draw
+   *  a named variant from (unlike drums/arp/phrase). Folded into the rng
+   *  seed. */
   variant?: number;
   mode: SliceNoteMode;
 }
@@ -59,7 +58,7 @@ export interface GeneratedBreakPattern {
 }
 
 interface CanonicalTimeline {
-  /** gridStep -> slice, only for steps where the map actually has an onset. */
+  /** gridStep -> slice, only for steps where the map has an onset. */
   byStep: Map<number, ChopMapSlice>;
   /** One loop through the chop map's own material, in grid steps. */
   sourceLen: number;
@@ -151,9 +150,9 @@ export function generateBreakPattern(
       continue;
     }
 
-    // Snare displacement: decided BEFORE the trick roll, and exclusive of
-    // it (a displaced snare doesn't also stutter/substitute in place —
-    // keeps one rng draw sequence per step, deterministic and simple).
+    // Snare displacement is decided before the trick roll and excludes it
+    // (a displaced snare doesn't also stutter or substitute in place), which
+    // keeps one rng draw sequence per step.
     if (canonical.role === "snare" && spec.snareDisplacement.length > 0 && rng() < spec.turnaroundDensity) {
       const delta = pick(spec.snareDisplacement, rng);
       const target = Math.min(Math.max(step + delta, statementSteps), totalSteps - 1);
@@ -167,7 +166,7 @@ export function generateBreakPattern(
       const chosen = pick(pool, rng);
       events.push({ step, index: chosen.index, velocity: VELOCITY_DEFAULT });
     } else if (roll < spec.turnaroundDensity) {
-      // stutter: the SAME canonical slice retriggered at double rate within
+      // stutter: the same canonical slice retriggered at double rate within
       // this one grid step (a 32nd-note repeat).
       events.push({ step, index: canonical.index, velocity: VELOCITY_DEFAULT });
       events.push({ step: step + 0.5, index: canonical.index, velocity: VELOCITY_STUTTER_TAIL });
@@ -197,16 +196,16 @@ export function generateBreakPattern(
 }
 
 // ---------------------------------------------------------------------------
-// Fill grammar (awh breaks fill) — a fixed built-in grammar, not knowledge-
-// authorable in v1 (see docs/design/break-engine.md: the CLI signature has
-// no --style for `fill`). The restraint rule (maxDevices) IS a spec field,
-// per the design, so it's modeled as one even though only one built-in
-// value exists today.
+// Fill grammar (awh breaks fill): a fixed built-in grammar, not
+// knowledge-authorable (the CLI has no --style for `fill`; see
+// docs/design/break-engine.md). The restraint rule (maxDevices) is a spec
+// field per the design, so it's modeled as one even though only one
+// built-in value exists.
 // ---------------------------------------------------------------------------
 
 export interface BreakFillSpec {
-  /** A fill candidate uses at most this many DISTINCT device types
-   *  (sourced restraint — see docs/design/break-engine.md's Fill section).
+  /** A fill candidate uses at most this many distinct device types
+   *  (sourced restraint; see docs/design/break-engine.md's Fill section).
    *  Default 2. */
   maxDevices: number;
 }
@@ -220,7 +219,7 @@ export interface GenerateBreakFillOptions {
   seed: number;
   /** Fill length in beats (design default 2). */
   beats: number;
-  /** Number of seeded candidates to generate (drop-respond convention —
+  /** Number of seeded candidates to generate (drop-respond convention,
    *  same as `awh vary`'s -n). */
   count: number;
   fillSpec?: BreakFillSpec;
@@ -230,7 +229,7 @@ export interface GeneratedBreakFillCandidate {
   seed: number;
   devicesUsed: FillDevice[];
   notes: NoteSpec[];
-  /** "fill <devices> s<seed>" — the drop-respond clip-naming convention. */
+  /** "fill <devices> s<seed>": the drop-respond clip-naming convention. */
   name: string;
 }
 
@@ -239,7 +238,7 @@ export interface GeneratedBreakFill {
   warnings: string[];
 }
 
-/** Fisher-Yates shuffle driven by a seeded rng (deterministic). */
+/** Fisher-Yates shuffle driven by a seeded rng. */
 function shuffled<T>(items: readonly T[], rng: () => number): T[] {
   const out = [...items];
   for (let i = out.length - 1; i > 0; i--) {
@@ -267,7 +266,7 @@ function ratchetEvents(
 
 /**
  * Generate `opts.count` seeded fill candidates over `map`, each combining
- * at most `fillSpec.maxDevices` distinct device types (the restraint rule —
+ * at most `fillSpec.maxDevices` distinct device types (the restraint rule,
  * property tested). Zero slices is a state, not an error. Every candidate's
  * notes reference only real slice indices in `map`.
  */
@@ -307,12 +306,10 @@ export function generateBreakFill(map: ChopMap, opts: GenerateBreakFillOptions):
       if (chunkSpan <= 0) return;
 
       if (device === "snare-rush") {
-        // Escalating ratchet (2 -> 3 -> 4-way) across the chunk — the
-        // classic build-up snare roll (M14 ratchet mechanics: an equal
-        // subdivision of a step, same mechanic as arp/engine.ts's
-        // `ratchets` field, reimplemented locally here since arp/engine.ts
-        // exports no standalone ratchet utility to import without
-        // touching that import-only module).
+        // Escalating ratchet (2 -> 3 -> 4-way) across the chunk: the
+        // classic build-up snare roll. Each ratchet is an equal subdivision
+        // of a step, the same mechanic as arp/engine.ts's `ratchets` field,
+        // which exports no standalone ratchet utility.
         for (let s = 0; s < chunkSpan; s++) {
           const subdivision = 2 + Math.min(2, s);
           for (const e of ratchetEvents(rushSlice.index, chunkStart + s, 1, subdivision)) {

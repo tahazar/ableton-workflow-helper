@@ -46,7 +46,6 @@ def test_to_mono():
 
 def test_sanitize_json_strips_non_finite():
     import json
-    import math
 
     from awh_analysis.audio import sanitize_json
 

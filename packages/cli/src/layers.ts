@@ -1,14 +1,12 @@
 /**
- * `awh mix layers`: the solo -> capture -> unsolo choreography the gap
- * report found being done entirely by hand during a real masking-analysis
- * session (docs/design/analysis-engine.md, "Future work" section,
- * 2026-08-23) — "real risk of leaving a track soloed by mistake between
- * steps." `runLayers` isolates that risky bookkeeping (read/restore solo
- * state) from the CLI's I/O (the gateway, the M4L capture tap) so it's
- * unit-testable against a fake gateway AND against an injected FAILING
- * capture — the negative control that proves solo state comes back exactly
- * as it was even when a step throws mid-run. Split out of index.ts, same
- * spirit as duck.ts/op.ts.
+ * `awh mix layers`: automates the solo -> capture -> unsolo sequence that
+ * masking analysis otherwise needs by hand, where it is easy to leave a
+ * track soloed by mistake (docs/design/analysis-engine.md, "Future work").
+ * `runLayers` isolates the solo-state bookkeeping from the CLI's I/O (the
+ * gateway, the M4L capture tap) so it's unit-testable against a fake
+ * gateway and against an injected failing capture. The failing capture is
+ * the negative control proving solo state comes back exactly as it was
+ * even when a step throws mid-run.
  */
 import { join } from "node:path";
 import type { SetSummary, TrackSummary } from "@awh/core";
@@ -25,14 +23,14 @@ export interface LayerResult {
   outPath: string;
   seconds: number;
   /** True when the first capture attempt aborted and the retry succeeded
-   *  (the known intermittent race in rapid back-to-back sfrecord~ cycles —
+   *  (the known intermittent race in rapid back-to-back sfrecord~ cycles;
    *  see the 2026-08-24 live-validation note in docs/dev-loop.md). */
   retried?: boolean;
 }
 
 export interface RunLayersOptions {
   /** Pause between one track's restore and the next track's solo, letting
-   *  sfrecord~ fully close out — the live-observed race is specific to
+   *  sfrecord~ fully close out. The live-observed race is specific to
    *  rapid back-to-back record cycles, not single captures. */
   interTrackSettleMs?: number;
   /** Extra attempts per track after a failed capture (default 1). */
@@ -57,19 +55,16 @@ export function layerFileName(trackPath: string, index: number): string {
 }
 
 /**
- * For each track in `tracks`, in order: read the CURRENT solo state of
- * every track, solo ONLY this one (any other currently-soloed track is
- * un-soloed for the duration — "solo ONLY that track", not "also solo
- * this one"), capture, then restore EVERY track's solo state to exactly
+ * For each track in `tracks`, in order: read the current solo state of
+ * every track, solo only this one (any other soloed track is un-soloed for
+ * the duration), capture, then restore every track's solo state to exactly
  * what it was before this step. The restore runs in a `finally`, so a
  * capture that throws (e.g. the AWH Capture Tap device isn't loaded) still
- * leaves the Set's solo state exactly as this step found it — the critical
- * property, tested against a deliberately-failing capture in
- * test/layers.test.ts.
+ * leaves the Set's solo state as this step found it. test/layers.test.ts
+ * pins this with a deliberately failing capture.
  *
- * Zero tracks is a valid input here (returns `[]` immediately, no gateway
- * calls) — the CLI layer is the one that decides to treat that as a
- * printed state rather than silently doing nothing.
+ * Zero tracks is a valid input (returns `[]` with no gateway calls). The
+ * CLI layer decides how to report that state.
  */
 export async function runLayers(
   caller: OpCaller,

@@ -1,14 +1,14 @@
 /**
- * B4 StyleSpec: data-driven drum-family styles. A DrumStyleSpec is plain data
+ * StyleSpec: data-driven drum-family styles. A DrumStyleSpec is plain data
  * (parsed from YAML, typically embedded in a knowledge-base entry) that
- * drives the same generator code path as a built-in style — new grooves can
+ * drives the same generator code path as a built-in style, so new grooves can
  * be authored without touching code.
  *
- * Two families exist today:
- *  - "trap": half-time, pattern-CELL kick model (see grammars.ts#trapFamilyPlan).
+ * Two families exist:
+ *  - "trap": half-time, pattern-cell kick model (see grammars.ts#trapFamilyPlan).
  *  - "house": four-on-the-floor, house/techno/garage-adjacent styles (see
  *    grammars.ts#houseFamilyPlan). The built-in "house" and "techno" styles
- *    are themselves just houseFamilyPlan(HOUSE_STYLE_SPEC) /
+ *    are houseFamilyPlan(HOUSE_STYLE_SPEC) /
  *    houseFamilyPlan(TECHNO_STYLE_SPEC).
  */
 import { parse as parseYaml } from "yaml";
@@ -23,7 +23,7 @@ export interface TrapFamilyKickCell {
 
 export interface TrapFamilyStyleSpec {
   name: string;
-  /** Only "trap" is supported today; validated literally. */
+  /** Only "trap" is supported; validated literally. */
   family: "trap";
   /** 1-based beat of the half-time backbeat. Default 3. */
   snareBeat?: number;
@@ -44,7 +44,7 @@ export interface TrapFamilyStyleSpec {
 /**
  * Closed-hat base grid below/at-or-above `hatGrid.threshold` density.
  *  - "8ths": every-half-beat grid (or, at `high`, every-16th grid with a
- *    single uniform velocity band — no on-8th/off-16th split).
+ *    single uniform velocity band, no on-8th/off-16th split).
  *  - "16ths": every-16th grid with the on-8th/off-16th velocity split
  *    (off-16ths optionally delayed by `swingDelay`).
  *  - "offbeat-8ths" (low only): only the "and" of each beat.
@@ -74,7 +74,7 @@ export interface HouseRumbleKicksConfig {
 export interface HouseFamilyStyleSpec {
   name: string;
   family: "house";
-  /** Only "four-floor" is supported today; validated literally. Default. */
+  /** Only "four-floor" is supported; validated literally. Default. */
   kickBeats?: "four-floor";
   /** Roles hit on beats 2 & 4. Default ["clap", "snare"]; [] = none. */
   backbeat?: ("clap" | "snare")[];

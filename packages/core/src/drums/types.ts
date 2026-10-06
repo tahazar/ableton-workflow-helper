@@ -1,8 +1,8 @@
 /**
- * Drum tools (M5): pattern generation, fills and per-role variation over a
- * drum-rack kit. Everything here is PURE and seeded the same way as the
- * transforms module (M3) — same kit + ctx + rng sequence always reproduces
- * the same notes, and only ctx.rng ever introduces randomness.
+ * Drum tools: pattern generation, fills and per-role variation over a
+ * drum-rack kit. Everything here is pure and seeded the same way as the
+ * transforms module: the same kit + ctx + rng sequence always reproduces the
+ * same notes, and only ctx.rng introduces randomness.
  */
 
 export type DrumRole =
@@ -25,7 +25,7 @@ export interface DrumContext {
   bars: number;
   /** Beats per bar, usually 4. */
   beatsPerBar: number;
-  /** 0..1, default 0.5 — scales optional-hit probability & subdivision density. */
+  /** 0..1, default 0.5. Scales optional-hit probability & subdivision density. */
   density: number;
   /** Seeded PRNG in [0, 1), from makeRng(seed). */
   rng: () => number;

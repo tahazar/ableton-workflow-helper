@@ -1,15 +1,15 @@
-"""M13 mix advisor rule-engine tests (docs/design/mix-advisor.md).
+"""Mix advisor rule-engine tests (docs/design/mix-advisor.md).
 
 Per-rule fixtures are real synthetic audio through the real `report.analyze`
 pipeline for the rules the design doc names explicitly (clipped sine ->
 integrity, decorrelated low band -> phase, band-boosted noise vs a flat
-saved target -> capped EQ, quiet clean mix -> healthy state) — each paired
-with a negative control that must NOT trip it (docs/lessons-learned.md rule
+saved target -> capped EQ, quiet clean mix -> healthy state), each paired
+with a negative control that must not trip it (docs/lessons-learned.md rule
 2). Rules that don't need audio synthesis to exercise meaningfully (masking
 over a hand-assembled layers record, dependency-ordering/blockedBy,
 tilt-vs-bands exclusivity, determinism, --compare) construct the
-measurement dict directly — `advise()` is a pure function of that dict, so
-this is a faithful, much faster test of the same code path.
+measurement dict directly. `advise()` is a pure function of that dict, so
+this is an equivalent, much faster test of the same code path.
 """
 
 from __future__ import annotations
@@ -177,7 +177,7 @@ def test_tonal_eq_band_capped_amount(tmp_path):
     item = next(it for it in result["items"] if it["id"].startswith("eq-band-"))
     delta = item["evidence"]["delta_db"]
     capped = item["evidence"]["capped_amount_db"]
-    assert abs(delta) > advise.EQ_CAP_DB  # the raw delta genuinely exceeds the cap...
+    assert abs(delta) > advise.EQ_CAP_DB  # the raw delta exceeds the cap...
     assert capped == pytest.approx(advise.EQ_CAP_DB)  # ...but the action amount never does
     assert f"{capped:.1f} dB" in item["action"]
 
@@ -197,7 +197,7 @@ def test_tonal_eq_band_negative_control(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# Tilt-vs-bands exclusivity: a broadly-mistilted capture picks ONE
+# Tilt-vs-bands exclusivity: a broadly-mistilted capture picks one
 # ---------------------------------------------------------------------------
 
 

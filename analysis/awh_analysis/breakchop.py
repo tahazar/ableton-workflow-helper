@@ -1,36 +1,35 @@
-"""Break-sample chop analyzer (M15 — `awh breaks chop`): onset-slice a break
-sample (amen, think, funky drummer, ...) into a labeled CHOP MAP — slice
+"""Break-sample chop analyzer (`awh breaks chop`): onset-slice a break
+sample (amen, think, funky drummer, ...) into a labeled chop map: slice
 spans, a per-slice role guess (kick/snare/hat/ghost) with confidence, BPM,
-and grid position with the offset error MEASURED (never silently snapped).
+and grid position with the offset error measured (never silently snapped).
 
-Reuses existing machinery rather than inventing new DSP, per the design
-(docs/design/break-engine.md):
+Reuses existing machinery rather than new DSP (docs/design/break-engine.md):
   - onset detection: `duck.detect_onsets` (spectral flux + MAD threshold).
   - BPM: `ref.onset_and_subband` + `ref.estimate_tempo` (same autocorrelation
     + harmonic-scoring estimator `awh ref analyze` uses, confidence carried).
-  - role guess: the SAME low/mid/high band-split proxy `drumstats.py` mines
-    across a whole loop (`drumstats._band_split` — kick/snare-clap/hat
-    proxy, NOT source separation), applied per-slice instead of per-loop.
+  - role guess: the same low/mid/high band-split proxy `drumstats.py` mines
+    across a whole loop (`drumstats._band_split`, a kick/snare-clap/hat
+    proxy, not source separation), applied per-slice instead of per-loop.
 
-Slicing convention (pure `soundfile` read + slice + write — no Simpler
+Slicing convention (plain `soundfile` read + slice + write, no Simpler
 dependency, sample-accurate at slice boundaries):
   - slice i spans [onset[i], onset[i+1]) for i < n-1.
-  - the FINAL slice's `end_s` is always the file's own end (byte-exact,
-    lossless cut) — never truncated at a decayed-below-floor point, so
+  - the final slice's `end_s` is always the file's own end (byte-exact,
+    lossless cut), never truncated at a decayed-below-floor point, so
     `--export` byte lengths always match the reported spans exactly. Where
-    the last slice's energy actually decays below a floor (informational
+    the last slice's energy decays below a floor (informational
     only, does not change the cut) is separately reported as
     `tail_decay_s` when detectable.
-  - material before the FIRST onset (a pre-roll/lead-in) is not part of any
-    slice — onset detection defines where slices start, by construction.
+  - material before the first onset (a pre-roll/lead-in) is not part of any
+    slice: onset detection defines where slices start, by construction.
 
 Grid convention: 16 steps/bar (16th notes), 4/4 assumed (same defaults as
-`drumstats.py`/the drum/arp engines) — the file's downbeat is ASSUMED at
-t=0s (checked, not asserted: see `downbeat_check`, same honesty convention
-as `drumstats.mine_drum_loops`). Each slice's onset time is folded onto that
-grid; `offset_ms` is the SIGNED measured distance from the nearest grid
-line — a sloppy/swung break reports a nonzero offset, it is never snapped
-silently onto the grid.
+`drumstats.py`/the drum/arp engines). The file's downbeat is assumed at
+t=0s (checked, not asserted: see `downbeat_check`, same convention as
+`drumstats.mine_drum_loops`). Each slice's onset time is folded onto that
+grid; `offset_ms` is the signed measured distance from the nearest grid
+line. A sloppy/swung break reports a nonzero offset and is never snapped
+onto the grid.
 """
 
 from __future__ import annotations
@@ -51,19 +50,19 @@ BEATS_PER_BAR = 4
 GRID_STEPS_PER_BAR = 16
 
 DEFAULT_MIN_GAP_S = 0.025  # breaks pack hits much tighter than a generic
-# drum loop (32nd-note ghost snares are routine) — this is finer than
+# drum loop (32nd-note ghost snares are routine). This is finer than
 # duck.detect_onsets' own 0.08s default, floored at a plausible minimum
 # separable-transient gap rather than tied to the (not-yet-known) BPM.
 
-# A slice whose broadband peak sits this many dB below the LOUDEST slice in
+# A slice whose broadband peak sits this many dB below the loudest slice in
 # the file is a "ghost" hit (a quiet/grace-note-style hit) regardless of its
-# spectral balance — measured relative to the file's own loudest transient,
+# spectral balance. Measured relative to the file's own loudest transient,
 # never an absolute dBFS number (a quietly-recorded break should not read as
-# "all ghosts"). 18 dB is deliberately generous: real ghost snares in break
+# "all ghosts"). 18 dB is generous: ghost snares in break
 # breaks typically sit 10-25 dB under the main backbeat.
 GHOST_RELATIVE_PEAK_DB = -18.0
 GHOST_CONFIDENCE_SPAN_DB = 12.0  # ghost confidence saturates to 1.0 this far
-# past the threshold — i.e. a hit right at the threshold reads as barely-
+# past the threshold: a hit right at the threshold reads as barely-
 # confident-ghost (0.0), one 12dB quieter reads as fully confident (1.0).
 
 TAIL_DECAY_ABOVE_FLOOR_DB = 3.0  # same convention as duck.py's
@@ -93,9 +92,9 @@ def analyze_break(
 ) -> dict[str, Any]:
     """Chop a break sample into a labeled slice map. See module docstring
     for the slicing/grid conventions. Raises ValueError if the file is too
-    short to analyze (same floor as `audio.load`) — zero ONSETS detected is
-    NOT an error (a near-silent or already-atomized file): it comes back as
-    a zero-slice map (a state, not an error — docs/lessons-learned.md #5),
+    short to analyze (same floor as `audio.load`). Zero onsets detected is
+    not an error (a near-silent or already-atomized file): it comes back as
+    a zero-slice map (a state, not an error; docs/lessons-learned.md #5),
     left to the caller (the CLI) to report plainly.
     """
     x, sr = audio.load(path)
@@ -203,7 +202,7 @@ def analyze_break(
         else:
             # totally silent slice (shouldn't normally happen post-onset-
             # detection, but a degenerate 1-sample slice at file end could
-            # produce this) — an honest 3-way tie, not a guessed role.
+            # produce this): an even 3-way split, not a guessed role.
             band_fractions = {k: 1.0 / len(band_energy) for k in band_energy}
             role = "ghost"
             confidence = 0.0
@@ -235,8 +234,8 @@ def analyze_break(
             }
         )
 
-    # Tail-decay diagnostic (informational only — see module docstring: the
-    # last slice's `end_s` above is ALWAYS the file end, never truncated).
+    # Tail-decay diagnostic (informational only; see module docstring: the
+    # last slice's `end_s` above is always the file end, never truncated).
     last = slices[-1]
     tail_decay_s = None
     i0 = int(round(last["start_s"] * sr))
@@ -268,12 +267,11 @@ def analyze_break(
 
 
 def export_slices(path: str, chopmap: dict[str, Any], export_dir: str) -> dict[str, Any]:
-    """Cut each slice to its own WAV (`<nn>-<role>.wav`, pure soundfile
+    """Cut each slice to its own WAV (`<nn>-<role>.wav`, plain soundfile
     read/slice/write, sample-accurate at the reported spans) plus a
-    README.md mapping table — the zero-friction "drag into a Drum Rack"
-    path. Returns the list of exported files (with byte lengths, so the
-    verification bar's "export byte-lengths match slice spans" is directly
-    checkable from the return value).
+    README.md mapping table for dragging into a Drum Rack. Returns the
+    list of exported files with byte lengths, so "export byte-lengths
+    match slice spans" is checkable from the return value.
     """
     os.makedirs(export_dir, exist_ok=True)
     info = sf.info(path)
@@ -327,10 +325,10 @@ def export_slices(path: str, chopmap: dict[str, Any], export_dir: str) -> dict[s
 
 
 def save_chopmap_record(record_path: str, source_path: str, chopmap: dict[str, Any]) -> None:
-    """Write a self-contained chop-map record — library/measurements/
+    """Write a self-contained chop-map record in the library/measurements/
     convention (kind "chopmap"), same schema/saved/sha256 shape as
-    `report.save_record`/`drumstats.save_record` (see docs/design/
-    break-engine.md: "mix records/kb index must render the new kind")."""
+    `report.save_record`/`drumstats.save_record`. `mix records` and the kb
+    index render this kind."""
     with open(source_path, "rb") as f:
         sha = hashlib.sha256(f.read()).hexdigest()
     record = {

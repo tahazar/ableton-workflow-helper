@@ -1,13 +1,13 @@
-"""M11 sample-library scanning: per-file feature extraction for `awh samples
+"""Sample-library scanning: per-file feature extraction for `awh samples
 index`/`search`/`similar` (see `docs/design/sample-library.md`).
 
 `scan_file(path)` is the whole contract: load a sample (wav/aiff/flac/mp3,
-any length — one-shots are legitimately much shorter than `audio.load`'s
+any length; one-shots are legitimately much shorter than `audio.load`'s
 1 s analysis floor, so this module reads raw rather than going through
 `audio.load`), and return one deterministic, JSON-safe feature record.
 A per-file decode failure (corrupt/truncated file, unsupported codec, an
-mp3 with no ffmpeg fallback available) is caught HERE and turned into an
-`{"unreadable": true, "error": ...}` record — never an exception the
+mp3 with no ffmpeg fallback available) is caught here and turned into an
+`{"unreadable": true, "error": ...}` record, never an exception the
 caller has to guard against (docs/lessons-learned.md: "zero items is a
 state, not an error" generalizes to "one bad file in a big scan is a
 state, not a crash").
@@ -15,22 +15,21 @@ state, not a crash").
 Reused rather than re-derived, per the design doc:
 - `duck.detect_onsets` for onset count/density (same spectral-flux + MAD
   threshold machinery `awh drums mine`/`awh mix duck` already rely on).
-- `ref.onset_and_subband` + `ref.estimate_tempo` for loop BPM — the exact
+- `ref.onset_and_subband` + `ref.estimate_tempo` for loop BPM: the exact
   autocorrelation-with-harmonic-scoring tempo engine `awh ref analyze`
   uses, run here on the whole (short) file instead of a reference-length
   excerpt.
 - `drumstats`'s low/<120 Hz>/mid/high(>2kHz) band split (same Butterworth
-  family/order as `duck.py`/`ref.py`) for the band-energy split — "the
-  drum-mining bands", per the design doc.
+  family/order as `duck.py`/`ref.py`) for the band-energy split ("the
+  drum-mining bands", per the design doc).
 
 Spectral centroid/rolloff/flatness + 13 MFCCs come from librosa (already a
-project dependency, see analysis/README.md) — hand-rolling a mel filterbank
-+ DCT here would just be a worse reimplementation of the same standard
-algorithm librosa already provides deterministically.
+project dependency, see analysis/README.md) rather than a hand-rolled mel
+filterbank + DCT; librosa provides the standard algorithm deterministically.
 
 Everything in the record is either a direct measurement or an explicitly
-labeled GUESS (`type_guess`, with its basis spelled out in
-`type_guess_basis`) — never presented with false certainty.
+labeled guess (`type_guess`, with its basis spelled out in
+`type_guess_basis`), never presented with false certainty.
 """
 
 from __future__ import annotations
@@ -52,10 +51,10 @@ from .drumstats import HIGH_BAND_HZ, LOW_BAND_HZ, _band_split
 _DB_FLOOR = 1e-12
 
 # --- type-guess heuristic (onsets + duration; see module docstring) -------
-# A file needs to be BOTH long enough and busy enough to plausibly be a
+# A file needs to be both long enough and busy enough to plausibly be a
 # rhythmic loop rather than a single hit/note. Tuned against the design's
 # own synthetic verification corpus (a several-second kick loop with
-# several hits vs. sub-2s one-shots) — deliberately conservative so short
+# several hits vs. sub-2s one-shots). Conservative so short
 # multi-hit fills don't get misread as loops.
 LOOP_MIN_DURATION_S = 1.2
 LOOP_MIN_ONSETS = 3
@@ -63,14 +62,14 @@ LOOP_MIN_ONSETS = 3
 ONSET_MIN_GAP_S = 0.08  # same default as the `onsets` CLI subcommand
 
 # Similarity-vector field order (mfcc[0..12], centroid, rolloff, flatness,
-# band_low, band_mid, band_high) — `awh samples similar` depends on every
+# band_low, band_mid, band_high). `awh samples similar` depends on every
 # record in the index using this exact order.
 SIMILARITY_VECTOR_LEN = 13 + 3 + 3
 
 
 def _read_raw(path: str) -> tuple[np.ndarray, int]:
-    """Read a file's raw samples with NO minimum-duration floor (unlike
-    `audio.load`) — a one-shot sample can legitimately be well under 1 s."""
+    """Read a file's raw samples with no minimum-duration floor (unlike
+    `audio.load`): a one-shot sample can legitimately be well under 1 s."""
     samples, sr = sf.read(path, dtype="float64", always_2d=True)
     return samples, sr
 
@@ -103,8 +102,8 @@ def _decode_mp3_via_ffmpeg(path: str) -> tuple[np.ndarray, int]:
 def load_for_scan(path: str) -> tuple[np.ndarray, int]:
     """Load one sample file. Mirrors `drumstats.load_loop`'s soundfile-
     first / ffmpeg-fallback MP3 path, but reads raw (no `audio.load`
-    1 s-minimum floor) — a one-shot can legitimately be well under 1 s.
-    Public (not `_`-prefixed): reused by `samplepitch.py` (M11c) so pitch
+    1 s-minimum floor), since a one-shot can legitimately be well under 1 s.
+    Public (not `_`-prefixed): reused by `samplepitch.py` so pitch
     tagging loads short one-shots the same correct way `scan_file` does,
     rather than going through `pitch.pitch()`'s `audio.load`-based path
     (which has the 1 s floor this function exists to avoid)."""
@@ -121,7 +120,7 @@ def _db(value: float) -> float:
 
 
 def _n_fft_for(n_samples: int) -> int:
-    """Largest power of two <= min(2048, n_samples), floored at 32 — keeps
+    """Largest power of two <= min(2048, n_samples), floored at 32. Keeps
     librosa's frame-based spectral features well-defined on very short
     one-shots (a hi-hat burst can be well under the usual 2048-sample
     analysis window)."""
@@ -153,7 +152,7 @@ def _spectral_features(mono: np.ndarray, sr: int) -> dict[str, Any]:
 
 def _band_energy(mono: np.ndarray, sr: int) -> dict[str, Any]:
     """Low(<120Hz)/mid(120Hz-2kHz)/high(>2kHz) energy split as fractions of
-    total band power (sums to 1) — the same Butterworth band split
+    total band power (sums to 1), the same Butterworth band split
     `awh drums mine` uses, reused rather than re-derived."""
     bands = _band_split(mono, sr)
     powers = {name: float(np.mean(sig**2)) for name, sig in bands.items()}
@@ -169,7 +168,7 @@ def _band_energy(mono: np.ndarray, sr: int) -> dict[str, Any]:
 def _onset_stats(mono: np.ndarray, sr: int, duration_s: float) -> tuple[int, float]:
     """(onset_count, onset_density_per_s). A signal too short for the
     onset-envelope machinery (well under one STFT analysis window) is
-    treated as a single hit — the common case for a very short one-shot,
+    treated as a single hit: the common case for a very short one-shot,
     not a detection failure."""
     try:
         onsets = duck.detect_onsets(mono, sr, min_gap_s=ONSET_MIN_GAP_S)
@@ -184,7 +183,7 @@ def _bpm_estimate(mono: np.ndarray, sr: int) -> dict[str, Any]:
     """Loop BPM via the same autocorrelation-with-harmonic-scoring engine
     `awh ref analyze` uses (`ref.estimate_tempo`), run on the whole file.
     Returns bpm=None/confidence=None when the tempo machinery can't fire
-    (e.g. not enough onset-envelope frames) — a normal outcome for short
+    (e.g. not enough onset-envelope frames), a normal outcome for short
     or sparse loops, never a crash."""
     try:
         onset_env, _sub, hop_s = ref.onset_and_subband(mono, sr)
@@ -199,9 +198,9 @@ def _bpm_estimate(mono: np.ndarray, sr: int) -> dict[str, Any]:
 
 
 def scan_file(path: str) -> dict[str, Any]:
-    """Extract the full M11 feature record for one sample file.
+    """Extract the full feature record for one sample file.
 
-    Never raises — any failure (missing file, corrupt/unsupported codec,
+    Never raises: any failure (missing file, corrupt/unsupported codec,
     empty audio) is caught and returned as
     `{"path": path, "unreadable": True, "error": "..."}`.
     """

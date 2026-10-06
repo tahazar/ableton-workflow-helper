@@ -1,10 +1,10 @@
 import { BridgeError, type NoteSpec } from "../bridge/types.js";
 
 /**
- * Section specs (M4): the structure language for building an arrangement
+ * Section specs: the structure language for building an arrangement
  * skeleton from source clips. Parsed from YAML by the CLI; core only sees
- * plain objects. Rendering is PURE and seeded — same spec + sources + seed
- * always produces the same skeleton (spec R1 + determinism principle).
+ * plain objects. Rendering is pure and seeded: the same spec + sources +
+ * seed always produces the same skeleton.
  */
 
 /** What one track does during one section. */

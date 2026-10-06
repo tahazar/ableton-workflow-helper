@@ -129,7 +129,7 @@ describe("KnowledgeStore", () => {
   });
 
   it("indexes drum-stats records (awh drums mine --save) alongside mix reports without crashing", async () => {
-    // Regression: library/measurements/ holds two record shapes — a
+    // Regression: library/measurements/ holds several record shapes; a
     // drumstats record (`kind: "drumstats"`, no `measurements` field) sitting
     // next to an ordinary mix-report record must not throw reading either.
     await mkdir(measurements, { recursive: true });
@@ -191,7 +191,7 @@ describe("KnowledgeStore", () => {
     const chopMapRecords = await store.listChopMapRecords();
     expect(chopMapRecords).toEqual([{ name: "amen", saved: "2026-08-26", file: "/x/amen.wav", nSlices: 7, bpm: 138.5 }]);
     // a chopmap record must never show up in the plain measurement-record
-    // listing (same split as drumstats — see listMeasurementRecords).
+    // listing (same split as drumstats; see listMeasurementRecords).
     expect((await store.listMeasurementRecords()).map((r) => r.name)).not.toContain("amen");
 
     const index = await store.buildIndex();

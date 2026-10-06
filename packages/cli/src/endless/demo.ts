@@ -1,17 +1,14 @@
 /**
- * `awh endless demo` — a tiny synthetic 3-layer song (drums = kick+hat,
+ * `awh endless demo`: a tiny synthetic 3-layer song (drums = kick+hat,
  * bass, pads; see synth.ts) with a matching endless.yaml, so the engine is
- * listenable/CI-testable with zero owner assets (docs/design/
- * endless-player.md). Internally calls the SAME `buildEndlessPlayer` path
- * `awh endless build` uses — a demo that couldn't pass its own build
- * validation would be a broken example, not a demo.
+ * listenable and CI-testable with zero owner assets (docs/design/
+ * endless-player.md). It goes through the same `buildEndlessPlayer` path
+ * as `awh endless build`, so the demo also passes build validation.
  *
- * Note on layer count: the design doc's prose calls this a "4-layer song"
- * in passing (echoing the spec example's drums/bass/lead/pads), but its own
- * synthesis list only names three timbres — "kick/hat patterns, bass
- * notes, detuned-sine pads" — so this demo ships 3 layers (drums combines
- * kick+hat into one stem, matching how a real producer would bounce a
- * drum bus), not 4. Recorded here as the open-detail decision it is.
+ * Layer count: the design doc's prose mentions a "4-layer song", but its
+ * synthesis list names three timbres (kick/hat patterns, bass notes,
+ * detuned-sine pads). This demo ships 3 layers, with kick+hat combined
+ * into one drums stem the way a drum bus is usually bounced.
  */
 import { mkdir, mkdtemp, writeFile, copyFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -90,7 +87,7 @@ export interface DemoResult extends BuildResult {
 /** Synthesizes the demo song into a staging dir, writes its endless.yaml,
  * runs it through the real `buildEndlessPlayer`, then copies the spec (and
  * cleans up the staging dir) so `outDir` ends up looking like a normal
- * build output PLUS the source `endless.yaml` for reference/editing. */
+ * build output plus the source `endless.yaml` for reference/editing. */
 export async function buildEndlessDemo(outDir: string): Promise<DemoResult> {
   const staging = await mkdtemp(join(tmpdir(), "awh-endless-demo-"));
   try {

@@ -37,11 +37,11 @@ export async function activate(
     console.error(`[awh] context-menu registration failed:`, err);
   }
 
-  // B3b: right-click "save to library" on a MIDI clip. The MidiClip scope's
-  // command receives a Handle (api.md: object scopes pass a Handle); the
+  // Right-click "save to library" on a MIDI clip. The MidiClip scope's
+  // command receives a Handle (api.md: object scopes pass a Handle). The
   // bridge resolves it with the same verified note conversion as clip reads
-  // and buffers the capture in the storage outbox (the sandbox cannot write
-  // into the repo) — `awh lib import` drains it later.
+  // and buffers the capture in the storage outbox, because the sandbox cannot
+  // write into the repo. `awh lib import` drains it later.
   try {
     ctx.commands.registerCommand("awh.saveClipToLibrary", (...args: unknown[]) => {
       void bridge

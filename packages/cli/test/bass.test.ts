@@ -8,14 +8,14 @@ import { fileURLToPath } from "node:url";
 import { createGatewayServer, FakeLiveBridge, type ClipDetail, type GatewayServer } from "@awh/core";
 
 /**
- * M16 808 bass engine — CLI-level tests (docs/design/bass-808.md's
- * verification bar). The engine/spec property tests live in
- * packages/core/test/bass.test.ts; this file covers what's specific to the
+ * 808 bass engine CLI-level tests (docs/design/bass-808.md's verification
+ * bar). The engine/spec property tests live in
+ * packages/core/test/bass.test.ts. This file covers what's specific to the
  * CLI layer: end-to-end writes against a fake gateway, --dry-run, --slides
  * off, the knowledge-entry style fallback (tier printed) via an isolated
- * AWH_LIBRARY (sibling knowledge/ dir — same override `findLibraryRoot`
- * honors, see packages/core/src/library/store.ts), and the unknown-style
- * error. Same async-spawn-against-an-in-process-gateway pattern as
+ * AWH_LIBRARY (sibling knowledge/ dir, the same override `findLibraryRoot`
+ * honors; see packages/core/src/library/store.ts), and the unknown-style
+ * error. Uses the same async-spawn-against-an-in-process-gateway pattern as
  * arp.test.ts/advise.test.ts's `--set` test (spawnSync would deadlock the
  * gateway).
  */
@@ -166,7 +166,7 @@ describe.skipIf(!hasBuiltCli)("awh bass 808 — full CLI integration", () => {
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
       // style resolution fails before any gateway call is made, so no fake
-      // gateway is needed — the port is never actually dialed.
+      // gateway is needed; the port is never dialed.
       const result = await runCli(
         ["-p", "9", "bass", "808", "track:0", "--key", "A minor", "--style", "does-not-exist", "--at-bar", "1"],
         { AWH_LIBRARY: libraryRoot },

@@ -98,11 +98,11 @@ function makeTrack(kind: FakeTrack["kind"], name: string, slots: number): FakeTr
 }
 
 /**
- * B2 (Operator assistant): a representative ~25-param subset of Operator's
+ * Operator assistant support: a representative ~25-param subset of Operator's
  * real 195-param surface (knowledge/setup/device-parameter-surface.md),
  * matching its real naming style ("Osc-A Coarse", "Ae Attack", "Algorithm")
  * so `awh op apply`/`op match --apply` are exercised offline against real
- * names, not invented placeholders. Not exhaustive — enough to validate the
+ * names, not invented placeholders. Not exhaustive; enough to validate the
  * name-matching, write, and read-back flow.
  */
 function makeOperatorDevice(name: string): FakeDevice {
@@ -440,7 +440,7 @@ export class FakeLiveBridge implements LiveBridge {
     if (track.kind !== "audio") {
       throw new BridgeError("bad_request", `renderPreFxAudio: not an audio track: ${trackPath}`);
     }
-    // Emit a REAL (silent) 16-bit mono 44.1kHz WAV sized to the beat range at
+    // Emit a real (silent) 16-bit mono 44.1kHz WAV sized to the beat range at
     // the current tempo, so downstream analysis code is testable offline.
     const os = await import("node:os");
     const fs = await import("node:fs/promises");

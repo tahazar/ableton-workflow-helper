@@ -1,7 +1,7 @@
-"""Tests for the M8 reference-track analysis module (awh_analysis.ref).
+"""Tests for the reference-track analysis module (awh_analysis.ref).
 
 All fixtures are synthetic references built with numpy + soundfile in
-pytest's tmp_path — no committed audio. Constructions are built with KNOWN
+pytest's tmp_path; no committed audio. Constructions are built with known
 structure (exact BPM, exact section boundaries) so tempo/grid/section
 results can be checked against ground truth, per
 docs/design/reference-deconstruction.md's verification section.
@@ -13,7 +13,6 @@ import numpy as np
 import pytest
 
 from awh_analysis import ref
-from awh_analysis.audio import to_mono
 
 from conftest import to_stereo, write_wav
 
@@ -117,8 +116,8 @@ TRAP_HAT_AMP = 0.25
 
 def _build_trap_track(sr: int = SR) -> np.ndarray:
     """Half-time 140 BPM trap construction: 808 kick on beat 1 and the
-    "and" of 3 (beat 3.5) only, snare on beat 3, 8th-note hats — the
-    classic half-time pattern that's genuinely ambiguous between its
+    "and" of 3 (beat 3.5) only, snare on beat 3, 8th-note hats: the
+    classic half-time pattern that's ambiguous between its
     production tempo (140) and its half-time feel (70)."""
     beat = 60.0 / TRAP_BPM
     bar = 4 * beat
@@ -159,7 +158,7 @@ DOWNBEAT_BARS = 40
 
 
 def _build_downbeat_grid(sr: int = SR) -> np.ndarray:
-    """Kick ONLY on bar starts, hats on beats 2-4 — an unambiguous grid
+    """Kick only on bar starts, hats on beats 2-4: an unambiguous grid
     for testing downbeat identification specifically."""
     beat = 60.0 / DOWNBEAT_BPM
     bar = 4 * beat
@@ -205,7 +204,7 @@ def test_house_track_tempo_grid_and_sections(tmp_path):
             f"(detected: {detected_boundaries})"
         )
 
-    # Detected NAMED sections appear in the constructed order (unlabeled
+    # Detected named sections appear in the constructed order (unlabeled
     # 'section' spans are allowed anywhere).
     named_order = [s["name"] for s in sections if s["name"] != "section"]
     constructed_order = [b[2] for b in boundaries]
@@ -356,7 +355,7 @@ def test_detect_sections_likely_drop_below_confirmed_threshold():
     # produces holds steady at +2.25 dB (worked out bar-by-bar: 2.5, 2.775,
     # 2.825, 2.65, then a constant 2.5*0.9=2.25 dB once the trailing window
     # is fully past the transition), i.e. always inside (2.1, 3.0) --
-    # clears the RELAXED drop-jump threshold, never the confirmed one.
+    # clears the relaxed drop-jump threshold, never the confirmed one.
     baseline_bars = 8
     jump, slope = 2.5, 0.9
     full = [-3.0] * baseline_bars
@@ -387,7 +386,7 @@ def test_detect_sections_likely_drop_below_confirmed_threshold():
 
 def test_detect_sections_strong_drop_stays_confirmed_and_unaffected():
     # A drop with a large enough jump (+ steady climb) to sustain past the
-    # CONFIRMED 3 dB threshold for the full DROP_MIN_SUSTAIN_BARS window --
+    # confirmed 3 dB threshold for the full DROP_MIN_SUSTAIN_BARS window --
     # regression: the relaxed second pass must not change confirmed
     # boundaries, confidence, or name.
     baseline_bars = 8

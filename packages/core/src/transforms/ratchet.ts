@@ -2,14 +2,14 @@ import type { NoteSpec } from "../bridge/types.js";
 import { numParam, sortNotes, strParam, type TransformDef } from "./types.js";
 
 /**
- * M14 `ratchet` transform: subdivides selected notes into equal repeats
- * (same pitch/velocity, gate divided so subdivisions never overlap) — the
- * TRANSFORM-REGISTRY sibling of the arp engine's own ratchets field, so
- * `awh vary` can ratchet ANY clip, not just arp output.
+ * `ratchet` transform: subdivides selected notes into equal repeats (same
+ * pitch/velocity, gate divided so subdivisions never overlap). The
+ * transform-registry sibling of the arp engine's ratchets field, so
+ * `awh vary` can ratchet any clip, not just arp output.
  *
  * Params:
  *  - steps: which notes to ratchet, by their rounded position on a `grid`
- *    (beats, default 0.25 = 16th) — a "+"-separated list of step indices
+ *    (beats, default 0.25 = 16th): a "+"-separated list of step indices
  *    (commas already separate pipeline params, see registry.ts), or the
  *    string "all" (default) for every note.
  *  - count: subdivisions per selected note (2, 3, or 4; default 3).

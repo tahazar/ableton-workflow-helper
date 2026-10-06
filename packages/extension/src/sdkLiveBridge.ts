@@ -42,10 +42,10 @@ const LIVE_API_VERSION = "1.0.0";
 
 /**
  * LiveBridge adapter over the Ableton Extensions SDK. This file and main.ts
- * are the ONLY places the SDK may be touched (ADR-001).
+ * are the only places the SDK may be touched (ADR-001).
  *
  * Design rules (see docs/dev-loop.md guardrails):
- * - Paths are re-resolved from `application.song` on EVERY call — never cache
+ * - Paths are re-resolved from `application.song` on every call. Never cache
  *   SDK objects or handles across operations (they invalidate on move/delete).
  * - Each op wraps its mutations in one `withinTransaction`; async creates are
  *   grouped by returning the promise from the transaction callback. Ops that
@@ -135,7 +135,7 @@ export class SdkLiveBridge implements LiveBridge {
     const isMidi = clip instanceof MidiClip;
     // clip.duration is unreliable for session-slot clips (observed negative
     // and unstable across calls on a clip that was never placed in the
-    // arrangement — likely arrangement-relative under the hood). Session
+    // arrangement; likely arrangement-relative under the hood). Session
     // clips use endMarker - startMarker instead, matching the documented
     // "Session clips: loop length" contract; arrangement clips keep
     // clip.duration (verified stable/correct against real placements).
@@ -161,7 +161,7 @@ export class SdkLiveBridge implements LiveBridge {
       paramCount: device.parameters.length,
     };
     if (device instanceof DrumRack) {
-      // DrumChain has no name accessor in the real SDK — only receivingNote.
+      // DrumChain has no name accessor in the real SDK, only receivingNote.
       // Best-effort name from the pad's first device (Live typically names
       // the chain after its sampler/instrument).
       summary.drumPads = device.chains.map((chain, i) => ({
@@ -344,7 +344,7 @@ export class SdkLiveBridge implements LiveBridge {
     return { audioPath };
   }
 
-  // -- library outbox (B3b) -------------------------------------------------
+  // -- library outbox -------------------------------------------------------
   // Right-click captures are buffered in storageDirectory (the only place
   // the sandbox lets us persist); `awh lib import` drains via this op.
 
@@ -367,7 +367,7 @@ export class SdkLiveBridge implements LiveBridge {
   }
 
   /**
-   * Capture a right-clicked MIDI clip (by Handle) into the outbox — called
+   * Capture a right-clicked MIDI clip (by Handle) into the outbox. Called
    * by the context-menu command in main.ts. Uses the same verified
    * NoteDescription conversion as every other note read.
    */
@@ -497,7 +497,7 @@ export class SdkLiveBridge implements LiveBridge {
     if (!(track instanceof AudioTrack)) {
       throw new BridgeError("bad_request", `not an audio track: ${args.trackPath}`);
     }
-    // Bring the file under Live's management first — createAudioClip needs a
+    // Bring the file under Live's management first: createAudioClip needs a
     // path Live manages; raw external paths fail or break later.
     const imported = await this.ctx.resources.importIntoProject(args.filePath);
     const clip = await this.ctx.withinTransaction(() =>

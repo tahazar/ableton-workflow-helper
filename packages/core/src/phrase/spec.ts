@@ -1,8 +1,8 @@
 /**
- * M9 PhraseSpec: data-driven call-and-response phrase styles, sibling to B4's
- * DrumStyleSpec (see ../drums/styleSpec.ts) — same parsing conventions
- * (typo-rejecting, unknown-key rejection, sensible defaults so a knowledge
- * entry only needs to state what it changes).
+ * PhraseSpec: data-driven call-and-response phrase styles, sibling to
+ * DrumStyleSpec (../drums/styleSpec.ts) with the same parsing conventions:
+ * unknown keys are rejected, and defaults let a knowledge entry state only
+ * what it changes.
  *
  * Craft ground truth for the shape below: knowledge/arrangement/
  * call-response-drop-grammar.md, call-response-rest-placement.md,
@@ -46,7 +46,7 @@ export interface EvolutionStep {
 
 export interface PhraseSpec {
   name: string;
-  /** Only "call-response" is supported today; validated literally (field reserved). */
+  /** Only "call-response" is supported; validated literally (field reserved). */
   family: "call-response";
   /** One phrase unit; a drop = 1-2+ units. The evolution plan repeats every phraseBars. */
   phraseBars: number;
@@ -54,7 +54,7 @@ export interface PhraseSpec {
   cellBars: number;
   /** MIDI range [lo, hi] the call is fitted into. */
   callRegister: [number, number];
-  /** MIDI range [lo, hi] the response is fitted into — low, dominant. */
+  /** MIDI range [lo, hi] the response is fitted into: low, dominant. */
   responseRegister: [number, number];
   /** Onset-grid templates for the call, weighted. */
   callCells: CallCell[];
@@ -260,8 +260,8 @@ function parseEvolution(raw: unknown): EvolutionStep[] {
 /**
  * Parse and validate a PhraseSpec from a YAML document. Rejects unknown
  * top-level (and nested) keys so hand-written data catches typos instead of
- * silently ignoring a misspelled field — same discipline as
- * parseDrumStyleSpec (../drums/styleSpec.ts).
+ * silently ignoring a misspelled field, like parseDrumStyleSpec
+ * (../drums/styleSpec.ts).
  */
 export function parsePhraseSpec(yamlText: string): PhraseSpec {
   const doc = parseYaml(yamlText);
@@ -347,8 +347,8 @@ export function parsePhraseSpec(yamlText: string): PhraseSpec {
 }
 
 /**
- * The built-in "bass-music-cr" style — the design doc's own example spec,
- * verbatim (docs/design/phrase-engine.md).
+ * The built-in "bass-music-cr" style: the example spec from
+ * docs/design/phrase-engine.md, verbatim.
  */
 export const BASS_MUSIC_CR_SPEC: PhraseSpec = {
   name: "bass-music-cr",

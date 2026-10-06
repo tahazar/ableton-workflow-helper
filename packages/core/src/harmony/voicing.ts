@@ -2,7 +2,7 @@ import { BridgeError, type NoteSpec } from "../bridge/types.js";
 import { sortNotes } from "../transforms/types.js";
 import type { ChordSpec } from "./progression.js";
 
-/** A chord placed into actual MIDI register — pitches ascending. */
+/** A chord placed into actual MIDI register, pitches ascending. */
 export interface VoicedChord {
   symbol: string;
   pitches: number[];
@@ -37,7 +37,7 @@ function nearestPitchForPc(pc: number, center: number): number {
 
 /**
  * Stack `relativeIntervals` (relative to `basePitch`, first entry 0) into
- * ascending MIDI pitches — each voice placed in the nearest octave strictly
+ * ascending MIDI pitches, each voice placed in the nearest octave strictly
  * above the previous one.
  */
 function stackAscending(basePitch: number, relativeIntervals: number[]): number[] {
@@ -59,7 +59,7 @@ function rootPositionClose(chord: ChordSpec, center: number): number[] {
 }
 
 /** Re-express `intervals` (relative to the chord root) as pitch-class
- *  offsets (0-11) relative to the voice at rotation index `k` — i.e. the
+ *  offsets (0-11) relative to the voice at rotation index `k`, i.e. the
  *  inversion with that voice as the bass. */
 function rotateIntervals(intervals: number[], k: number): number[] {
   const n = intervals.length;
@@ -121,8 +121,8 @@ function spreadPitches(close: number[]): number[] {
   return dropped.sort((a, b) => a - b);
 }
 
-/** Voice a chord progression into actual MIDI registers. Deterministic —
- *  no rng involved. */
+/** Voice a chord progression into actual MIDI registers. Deterministic (no
+ *  rng involved). */
 export function voiceProgression(chords: ChordSpec[], opts: VoicingOptions = {}): VoicedChord[] {
   const style = opts.style ?? "close";
   const center = opts.center ?? 60;
@@ -137,8 +137,8 @@ export function voiceProgression(chords: ChordSpec[], opts: VoicingOptions = {})
     const pitches = style === "spread" ? spreadPitches(closeVoiced) : [...closeVoiced];
     pitches.sort((a, b) => a - b);
     out.push({ symbol: chord.symbol, pitches });
-    // Voice-lead the NEXT chord against this chord's CLOSE voicing, not its
-    // spread (widened, lower) output — otherwise each spread pass compounds
+    // Voice-lead the next chord against this chord's close voicing, not its
+    // spread (widened, lower) output. Otherwise each spread pass compounds
     // into the next chord's search target, and the whole progression sinks
     // by nearly an octave after the first transition and stays there.
     // `center` should govern the entire progression, not just chord 1.
@@ -148,7 +148,7 @@ export function voiceProgression(chords: ChordSpec[], opts: VoicingOptions = {})
 }
 
 // ---------------------------------------------------------------------------
-// render — turn voiced chords into NoteSpecs on a rhythm grid
+// render: turn voiced chords into NoteSpecs on a rhythm grid
 // ---------------------------------------------------------------------------
 
 export interface RenderChordsOptions {
@@ -207,7 +207,7 @@ function segmentHits(segStart: number, segEnd: number, rhythm: NonNullable<Rende
 
 /**
  * Render voiced chords onto a rhythm grid, one equal segment per chord
- * across the total span. Deterministic — no rng involved.
+ * across the total span. Deterministic (no rng involved).
  */
 export function renderChords(voiced: VoicedChord[], opts: RenderChordsOptions = {}): NoteSpec[] {
   const beatsPerBar = opts.beatsPerBar ?? 4;

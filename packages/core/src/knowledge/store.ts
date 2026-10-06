@@ -1,6 +1,6 @@
 /**
  * File-backed knowledge store: `knowledge/<topic-path>/<slug>.md`, topics
- * discovered from the directory tree (open-ended — owner requirement).
+ * discovered from the directory tree, so the topic set is open-ended.
  * Measurement records (library/measurements/*.json) are knowledge citizens:
  * indexed and listed alongside entries.
  */
@@ -62,7 +62,7 @@ export class KnowledgeStore {
   /**
    * @param root the knowledge/ directory
    * @param measurementsDir library/measurements (records surface); optional
-   * @param referencesDir library/references (M8 reference maps); optional
+   * @param referencesDir library/references (reference-track maps); optional
    */
   constructor(
     readonly root: string,
@@ -138,13 +138,14 @@ export class KnowledgeStore {
   }
 
   /**
-   * library/measurements/ holds TWO record kinds sharing one directory:
-   * single-file mix reports (`report.save_record`, no `kind` field) and
+   * library/measurements/ holds three record kinds sharing one directory:
+   * single-file mix reports (`report.save_record`, no `kind` field),
    * multi-file drum-stats records (`drumstats.save_record`, `kind:
-   * "drumstats"` — see `awh drums mine --save`). This lists only the
-   * mix-report kind (its own shape); drum-stats records are skipped here
-   * and surfaced separately by `listDrumStatsRecords`, so neither crashes
-   * trying to read fields the other kind doesn't have.
+   * "drumstats"`, from `awh drums mine --save`) and chop maps (`kind:
+   * "chopmap"`, from `awh breaks chop --save`). This lists only the
+   * mix-report kind; the others are surfaced by `listDrumStatsRecords` and
+   * `listChopMapRecords`, so no reader crashes on fields another kind
+   * doesn't have.
    */
   async listMeasurementRecords(): Promise<MeasurementRecordSummary[]> {
     if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
@@ -179,8 +180,8 @@ export class KnowledgeStore {
     return out;
   }
 
-  /** The `awh drums mine --save` half of library/measurements/ — see
-   * `listMeasurementRecords` for why the two kinds are split. */
+  /** The `awh drums mine --save` records in library/measurements/. See
+   * `listMeasurementRecords` for why the kinds are split. */
   async listDrumStatsRecords(): Promise<DrumStatsRecordSummary[]> {
     if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
     const out: DrumStatsRecordSummary[] = [];
@@ -207,9 +208,9 @@ export class KnowledgeStore {
     return out;
   }
 
-  /** The `awh breaks chop --save` half of library/measurements/ (M15,
-   *  `kind: "chopmap"`) — see `listMeasurementRecords` for why the shared
-   *  directory's kinds are split like this. */
+  /** The `awh breaks chop --save` records (`kind: "chopmap"`) in
+   *  library/measurements/. See `listMeasurementRecords` for why the kinds
+   *  are split. */
   async listChopMapRecords(): Promise<ChopMapRecordSummary[]> {
     if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
     const out: ChopMapRecordSummary[] = [];

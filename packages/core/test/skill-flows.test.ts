@@ -3,16 +3,14 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 /**
- * MECHANIZED RELEASE GATE (docs/lessons-learned.md rule 1).
+ * Release gate (docs/lessons-learned.md rule 1).
  *
- * Four separate times (vary/M3, sections/M4, lib place/B3, ref/M8) a feature
- * shipped with a good dedicated SKILL.md section but NO "Typical flows"
- * entry — and each time a fresh agent, answering "how do I do X" from the
- * flows playbook, bypassed the tool and hand-composed with older primitives.
- * The written definition-of-done did not stop the 4th occurrence, so the
- * gate is now a test: every feature section header that names `awh <cmd>`
- * commands must have each of those commands referenced in the Typical
- * flows region.
+ * An agent answering "how do I do X" works from the SKILL.md "Typical flows"
+ * playbook. A feature with a dedicated SKILL.md section but no Typical flows
+ * entry gets bypassed in favor of hand-composing older primitives (this
+ * happened for vary, sections, lib place and ref). So every feature section
+ * header that names `awh <cmd>` commands must have each of those commands
+ * referenced in the Typical flows region.
  */
 const SKILL_PATH = fileURLToPath(
   new URL("../../../.claude/skills/awh/SKILL.md", import.meta.url),

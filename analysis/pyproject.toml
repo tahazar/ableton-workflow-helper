@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "awh-analysis"
 version = "0.1.0"
-description = "M6 analysis engine: measurements + explanations for rendered audio (BS.1770 loudness, spectrum, stereo, dynamics)."
+description = "Analysis engine: measurements + explanations for rendered audio (BS.1770 loudness, spectrum, stereo, dynamics)."
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
@@ -13,15 +13,15 @@ dependencies = [
     "scipy",
     "soundfile",
     "pyloudnorm",
-    # M11 (`samplescan` — sample-library index/search/similarity): spectral
-    # centroid/rolloff/flatness + MFCCs. ISC license, already audited below
-    # (a2m pulled it in first) — promoted from the a2m extra to a base
-    # dependency since `awh samples index` is not an optional feature.
+    # Sample-library index/search/similarity (`samplescan`): spectral
+    # centroid/rolloff/flatness + MFCCs. ISC license, audited with the a2m
+    # extra. A base dependency because `awh samples index` is not an
+    # optional feature.
     "librosa",
 ]
 
-# B1 (audio-to-MIDI, `a2m`): the ONNX-backend runtime deps for basic-pitch,
-# WITHOUT basic-pitch itself — its own PyPI metadata unconditionally requires
+# Audio-to-MIDI (`a2m`): the ONNX-backend runtime deps for basic-pitch,
+# without basic-pitch itself. Its PyPI metadata unconditionally requires
 # tensorflow on Linux/py>=3.11 (not gated behind an extra), so it must be
 # installed separately with --no-deps. See analysis/README.md for the exact
 # two-step install command and the license audit of everything it pulls in.
@@ -35,11 +35,11 @@ a2m = [
     "typing_extensions",
 ]
 
-# M11b (`clapembed` — semantic sample search): LAION-CLAP, torch CPU (torch
-# is already a base install, see analysis/README.md). NOT installed in the
-# dev container (its checkpoint is unreachable there anyway — Hugging Face
-# is egress-blocked); AWH_CLAP_STUB=1 covers all container/CI testing
-# without ever importing this extra. See analysis/README.md for the
+# Semantic sample search (`clapembed`): LAION-CLAP, torch CPU (torch is
+# already a base install, see analysis/README.md). Not installed in the dev
+# container, where Hugging Face is egress-blocked and the checkpoint is
+# unreachable; AWH_CLAP_STUB=1 covers all container/CI testing without
+# importing this extra. See analysis/README.md for the
 # checkpoint download + license audit.
 clap = [
     "laion_clap",

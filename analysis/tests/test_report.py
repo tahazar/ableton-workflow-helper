@@ -1,4 +1,3 @@
-import numpy as np
 import pytest
 
 from awh_analysis import report

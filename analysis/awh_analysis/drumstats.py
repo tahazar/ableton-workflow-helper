@@ -1,17 +1,16 @@
-"""Drum-loop rhythm-statistics mining (owner request): band-split onset
+"""Drum-loop rhythm-statistics mining: band-split onset
 mining across a folder of drum loops -> per-band 16th-grid position-hit
 probability histograms, aggregated per dataset.
 
-This module MEASURES; it never compares against or writes to the built-in
-style specs (`packages/core/src/drums/grammars.ts` / `styleSpec.ts`) — those
+This module measures; it never compares against or writes to the built-in
+style specs (`packages/core/src/drums/grammars.ts` / `styleSpec.ts`), which
 stay hand-authored and locked. Comparisons happen in prose, in the CLI's
 pretty output and in knowledge-base entries that cite a saved record.
 
 Pipeline per loop (see `mine_drum_loops`):
 
 1. Load audio (mp3 or wav/aiff/flac/...). MP3 decode path: this repo's
-   soundfile/libsndfile build decodes MP3 directly (verified at
-   authoring time — libsndfile >= 1.1). `load_loop` tries that first and
+   soundfile/libsndfile build decodes MP3 directly (libsndfile >= 1.1). `load_loop` tries that first and
    only falls back to shelling out to `ffmpeg` (decoding to a temp WAV)
    if the direct read fails; the mode actually used for a given corpus is
    reported in the output's `mp3_decode_mode` field, and `ffmpeg -version`
@@ -20,28 +19,28 @@ Pipeline per loop (see `mine_drum_loops`):
 2. Mono downmix (`audio.to_mono`).
 3. Band-split into low (<120 Hz) / mid (120 Hz-2 kHz) / high (>2 kHz) via
    4th-order Butterworth filters (the same filter family/order as
-   `duck.py` and `ref.py` use). This is a KICK / SNARE-CLAP / HAT PROXY
-   for a mixed loop, NOT source separation or ground truth: a hi-hat
+   `duck.py` and `ref.py` use). This is a kick / snare-clap / hat proxy
+   for a mixed loop, not source separation or ground truth: a hi-hat
    transient has low-frequency click energy, a kick has harmonics well
-   past 2 kHz, a clap smears across mid AND high. Read "low band" as "the
+   past 2 kHz, a clap smears across mid and high. Read "low band" as "the
    range where a kick's fundamental dominates in a typical mix", not "the
    kick track".
 4. Per band: onset detection reuses `duck.detect_onsets` (spectral flux +
    MAD threshold + relative floor) run on the band-limited signal. Each
    onset time is folded onto the loop's 16th-note grid (`--grid`, default
-   16 steps/bar) using the loop's BPM, ASSUMING the loop starts on beat 1
-   (downbeat at t=0s) — a 4/4 time signature is also assumed for the
+   16 steps/bar) using the loop's BPM, assuming the loop starts on beat 1
+   (downbeat at t=0s). A 4/4 time signature is also assumed for the
    steps-per-bar math. `mine_drum_loops` checks this assumption against
    every loop's own low-band first onset and reports the pass rate in
    `downbeat_check` rather than asserting it blindly.
-5. Per-bar PRESENCE (not raw count) is accumulated per grid position, so
+5. Per-bar presence (not raw count) is accumulated per grid position, so
    `position_prob[i]` is a true 0..1 probability: the fraction of bars,
    across the whole dataset, that had at least one onset near position i.
    `density` (mean onsets/bar, unclipped) and `onsets_total` are reported
-   separately for loops with genuinely busy/rolled hits at one position.
+   separately for loops with busy/rolled hits at one position.
 
-Small-n honesty: every result carries `n_loops` and an assumptions list
-that says so in words — never treat a pilot corpus's numbers as more
+Small-n caveat: every result carries `n_loops` and an assumptions list
+that says so in words, so a pilot corpus's numbers are not read as more
 certain than the sample size supports.
 """
 
@@ -125,7 +124,7 @@ def _decode_via_ffmpeg(path: str) -> tuple[np.ndarray, int]:
 def load_loop(path: str) -> tuple[np.ndarray, int, str]:
     """Load one loop file. Returns (samples, samplerate, decode_mode).
 
-    decode_mode is `"soundfile"` (the normal, direct path — libsndfile >=
+    decode_mode is `"soundfile"` (the normal, direct path; libsndfile >=
     1.1 reads MP3 natively) or `"ffmpeg-cli fallback"` (only exercised when
     soundfile's direct read fails; requires ffmpeg on PATH).
     """
@@ -141,7 +140,7 @@ def load_loop(path: str) -> tuple[np.ndarray, int, str]:
 
 def _band_split(mono: np.ndarray, sr: int) -> dict[str, np.ndarray]:
     """Low/mid/high split via 4th-order Butterworth filters. Proxy for
-    kick/snare-clap/hat — see module docstring."""
+    kick/snare-clap/hat; see module docstring."""
     nyq = sr / 2.0
     low_sos = butter(4, LOW_BAND_HZ / nyq, btype="lowpass", output="sos")
     mid_sos = butter(4, [LOW_BAND_HZ / nyq, HIGH_BAND_HZ / nyq], btype="bandpass", output="sos")
@@ -156,7 +155,7 @@ def _band_split(mono: np.ndarray, sr: int) -> dict[str, np.ndarray]:
 def _bar_presence(steps: list[int], grid: int, n_bars: int) -> np.ndarray:
     """(n_bars, grid) boolean presence matrix from absolute grid-step onset
     indices. Steps that fall in a trailing partial bar (beyond n_bars) are
-    dropped — the loop's last fractional bar is not double-counted."""
+    dropped, so the loop's last fractional bar is not double-counted."""
     presence = np.zeros((max(n_bars, 1), grid), dtype=bool)
     for s in steps:
         bar, pos = divmod(s, grid)
@@ -166,16 +165,16 @@ def _bar_presence(steps: list[int], grid: int, n_bars: int) -> np.ndarray:
 
 
 def _swing_estimate(offsets: dict[str, list[float]], grid: int) -> dict[str, Any]:
-    """Swing/shuffle estimate from the HIGH band (hats carry the shuffle
+    """Swing/shuffle estimate from the high band (hats carry the shuffle
     feel most audibly). For every high-band onset, its timing is expressed
     as a signed fraction of one grid step from the nearest grid line
-    (-0.5..0.5). Onsets nearest an EVEN grid position (on-8th — beat, "&",
-    etc., e.g. position 2) are pooled separately from onsets nearest an ODD
-    position (the following off-16th, e.g. position 3) — this generalizes
+    (-0.5..0.5). Onsets nearest an even grid position (on-8th: beat, "&",
+    etc., e.g. position 2) are pooled separately from onsets nearest an odd
+    position (the following off-16th, e.g. position 3). This generalizes
     the "position 2 vs the 16th right after it" comparison across every
-    such pair in the dataset instead of just one, which is far more
-    reliable at pilot sample sizes. A positive delay means off-16ths land
-    LATER than the grid relative to on-8ths, i.e. a swung/shuffled feel —
+    such pair in the dataset instead of just one, which is more reliable
+    at pilot sample sizes. A positive delay means off-16ths land later
+    than the grid relative to on-8ths, i.e. a swung/shuffled feel,
     directly comparable to `swingDelay` in grammars.ts once converted to
     beats (`delay_equivalent_beats`).
     """
@@ -219,7 +218,7 @@ def mine_drum_loops(
 
     Raises ValueError if `paths` is empty, if `bpm_from_name=False` and no
     `bpm` fallback is given, or if every file was skipped (decode failure
-    or no determinable BPM) — a directory with no audio files at all is a
+    or no determinable BPM). A directory with no audio files at all is a
     separate, non-error state the CLI handles before calling this.
     """
     if not paths:
@@ -367,7 +366,7 @@ def save_record(
     stats: dict[str, Any],
     attribution: dict[str, Any] | None = None,
 ) -> None:
-    """Write a self-contained drum-stats measurement record — same
+    """Write a self-contained drum-stats measurement record in the same
     library/measurements/ convention as `report.save_record` (schema +
     saved date + sha256-tied sources), adapted for a many-file dataset:
     `sources` is a list of {file, sha256} instead of one file/hash pair.

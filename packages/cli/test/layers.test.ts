@@ -1,7 +1,4 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { createGatewayServer, FakeLiveBridge, type GatewayServer, type SetSummary } from "@awh/core";
 import type { OpCaller } from "../src/op.js";
 import { layerFileName, runLayers, type LayerCaptureFn } from "../src/layers.js";
@@ -9,13 +6,11 @@ import { layerFileName, runLayers, type LayerCaptureFn } from "../src/layers.js"
 /**
  * `awh mix layers` state-restoration tests: against a real gateway server
  * backed by FakeLiveBridge (same pattern as op.test.ts/test/server.test.ts).
- * The critical property (docs/design/analysis-engine.md's 2026-08-23 gap
- * report — "real risk of leaving a track soloed by mistake between
- * steps") is proven TWICE: once on the happy path, and once as a negative
- * control where an injected capture failure aborts the run mid-track — the
- * solo state must come back exactly as it was found either way
- * (docs/lessons-learned.md rule 2: a negative control, not just the
- * positive case).
+ * The property under test is that no track is left soloed by mistake
+ * (docs/design/analysis-engine.md). It is checked twice: on the happy path,
+ * and as a negative control where an injected capture failure aborts the
+ * run mid-track. The solo state must come back exactly as it was found
+ * either way (docs/lessons-learned.md rule 2).
  */
 
 let server: GatewayServer | undefined;
@@ -68,8 +63,8 @@ describe("runLayers — happy path", () => {
   it("solos ONLY the target track during each capture, then restores every track's prior solo state", async () => {
     const caller = await startFakeGateway();
     // Pre-existing state the run must come back to: track:1 already soloed
-    // before `awh mix layers` runs at all — a real scenario the "restore
-    // EXACT prior state" requirement exists for.
+    // before `awh mix layers` runs, the case the "restore exact prior state"
+    // requirement exists for.
     await caller("track.update", { path: "track:1", soloed: true });
     const before = await soloMap(caller);
     expect(before.get("track:1")).toBe(true);
@@ -90,7 +85,7 @@ describe("runLayers — happy path", () => {
     expect(results.every((r) => r.seconds === 1.5)).toBe(true);
 
     // Isolation during each step: exactly one track soloed, and it's the
-    // one being captured — track:1's pre-existing solo was suspended too.
+    // one being captured. track:1's pre-existing solo was suspended too.
     for (const [trackPath, snap] of Object.entries(observedSoloDuringCapture)) {
       for (const [p, soloed] of snap) {
         expect(soloed).toBe(p === trackPath);
@@ -136,7 +131,7 @@ describe("runLayers — negative control: a mid-run capture failure must still r
     const capture: LayerCaptureFn = async (trackPath) => {
       captureCalls++;
       if (trackPath === "track:1") {
-        // Simulate exactly the real failure mode: the AWH Capture Tap
+        // Simulate the real failure mode: the AWH Capture Tap
         // device isn't loaded (captureSpan's own error shape).
         throw new Error(`/tmp/out.wav was not created — is the AWH Capture Tap device loaded?`);
       }
@@ -147,21 +142,20 @@ describe("runLayers — negative control: a mid-run capture failure must still r
       /AWH Capture Tap/,
     );
 
-    // track:2 must never have been reached — the run aborts, it doesn't
-    // limp forward past a failed step.
+    // track:2 must never have been reached: the run aborts instead of
+    // continuing past a failed step.
     expect(captureCalls).toBe(2);
 
-    // THE critical property: every track's solo state — track:0 (soloed
-    // then un-soloed before the failure), track:1 (soloed, then the
-    // capture threw), track:3 (untouched pre-existing solo) — reads back
-    // EXACTLY as it was before the run, proven with a real awh-shaped
-    // set.summary read-back, not just an in-memory assertion.
+    // Every track's solo state reads back exactly as it was before the run:
+    // track:0 (soloed then un-soloed before the failure), track:1 (soloed,
+    // then the capture threw), and track:3 (untouched pre-existing solo).
+    // Checked with a set.summary read-back, not an in-memory assertion.
     const after = await soloMap(caller);
     expect(after).toEqual(before);
     expect(after.get("track:3")).toBe(true);
     expect(after.get("track:0")).toBe(false);
     expect(after.get("track:1")).toBe(false);
-    // Exactly one track soloed overall (the pre-existing track:3) — no
+    // Exactly one track soloed overall (the pre-existing track:3), with no
     // leftover solo from the aborted run.
     expect([...after.values()].filter(Boolean)).toEqual([true]);
   });

@@ -1,10 +1,10 @@
 /**
- * M11 sample library: local index, text/trait search, and MFCC-based
- * similarity ranking (docs/design/sample-library.md). Split out from
- * src/index.ts (same convention as duck.ts/op.ts) so the index-build,
- * search, and similarity logic is testable without spawning the CLI.
+ * Sample library: local index, text/trait search, and MFCC-based
+ * similarity ranking (docs/design/sample-library.md). Kept out of
+ * src/index.ts so the index-build, search, and similarity logic is
+ * testable without spawning the CLI.
  *
- * The index NEVER lands inside the repo tree — it's machine-local,
+ * The index never lands inside the repo tree: it's machine-local,
  * absolute-path-keyed, and meaningless off-machine (design doc, "The
  * index"). Default location: `~/.awh/samples-index.json`, overridable via
  * `AWH_SAMPLES_INDEX` (tests must always set this to a tmp path).
@@ -56,9 +56,9 @@ export interface ScanRecord {
 
 export const SAMPLE_EXTENSIONS = new Set([".wav", ".wave", ".aif", ".aiff", ".flac", ".mp3"]);
 
-/** M11b (docs/design/sample-semantic.md): one CLAP embedding, L2-normalized
- * and 6-decimal-rounded by clapembed.py before it ever reaches Node. `model`
- * is the mismatch-detection key — see `CLAP_MODEL_LABELS`/`expectedClapModelLabel`
+/** One CLAP embedding (docs/design/sample-semantic.md), L2-normalized and
+ * 6-decimal-rounded by clapembed.py before it reaches Node. `model` is the
+ * mismatch-detection key; see `CLAP_MODEL_LABELS`/`expectedClapModelLabel`
  * below, kept in sync with clapembed.py's `_CHECKPOINTS[*]['label']`/
  * `STUB_MODEL_LABEL` by hand (comment on both sides). */
 export interface ClapVector {
@@ -67,15 +67,15 @@ export interface ClapVector {
   v: number[];
 }
 
-/** M11c (`awh samples pitch-tag`): one `mix pitch`-style periodicity-tracked
- * f0 record, mirroring `analysis/awh_analysis/pitch.py`'s `analyze_segment`
- * output (via `samplepitch.pitch_for_sample`). `note.midi` is the ONLY
- * octave-safe field here — `note.name` is stamped by the Python side using
- * STANDARD/scientific pitch notation (C4 = MIDI 60), a full octave apart
- * from this codebase's Ableton convention (C3 = MIDI 60, `@awh/core`'s
- * `pitchToMidi`/`midiToPitch`). Never display `note.name` directly to the
- * user — always re-derive the display name via `midiToPitch(note.midi)` so
- * it matches every other note name this CLI ever prints. */
+/** One `mix pitch`-style periodicity-tracked f0 record from `awh samples
+ * pitch-tag`, mirroring `analysis/awh_analysis/pitch.py`'s `analyze_segment`
+ * output (via `samplepitch.pitch_for_sample`). `note.midi` is the only
+ * octave-safe field here. The Python side stamps `note.name` in scientific
+ * pitch notation (C4 = MIDI 60), an octave apart from this codebase's
+ * Ableton convention (C3 = MIDI 60, `@awh/core`'s `pitchToMidi`/
+ * `midiToPitch`). Never display `note.name` directly; re-derive it via
+ * `midiToPitch(note.midi)` so it matches every other note name the CLI
+ * prints. */
 export interface PitchInfo {
   analysisVersion: number;
   state: "voiced" | "unvoiced" | "too_short";
@@ -93,7 +93,7 @@ export interface PitchInfo {
   };
 }
 
-/** Ableton-convention display name for a pitch-tagged entry's fundamental —
+/** Ableton-convention display name for a pitch-tagged entry's fundamental:
  * the one place `note.midi` should be turned back into a note name. */
 export function pitchDisplayNote(info: PitchInfo): string | null {
   if (info.note === null) return null;
@@ -120,8 +120,8 @@ function emptyIndex(): SamplesIndexFile {
   return { version: 1, roots: [], files: {} };
 }
 
-/** `AWH_SAMPLES_INDEX` if set, else `~/.awh/samples-index.json`. NEVER a
- * repo-relative default — the index is machine-local by design. */
+/** `AWH_SAMPLES_INDEX` if set, else `~/.awh/samples-index.json`. Never a
+ * repo-relative default: the index is machine-local by design. */
 export function resolveSamplesIndexPath(): string {
   const override = process.env.AWH_SAMPLES_INDEX;
   if (override && override.trim()) return resolve(override);
@@ -225,8 +225,8 @@ export function planIndexUpdate(
   const toPrune: string[] = [];
   for (const p of Object.keys(index.files)) {
     if (currentByPath.has(p)) continue;
-    // Only prune entries that fall under one of THIS run's roots — an
-    // `index` call scoped to one folder must not silently drop entries
+    // Only prune entries that fall under one of this run's roots. An
+    // `index` call scoped to one folder must not drop entries
     // indexed from other folders in earlier runs.
     if (absRoots.some((r) => p === r || p.startsWith(`${r}/`))) toPrune.push(p);
   }
@@ -234,7 +234,7 @@ export function planIndexUpdate(
 }
 
 // ---------------------------------------------------------------------------
-// Python scanning — batched (design: "one samplescan invocation per chunk")
+// Python scanning, batched (design: "one samplescan invocation per chunk")
 // ---------------------------------------------------------------------------
 
 export type ScannerFn = (files: string[]) => Promise<ScanRecord[]>;
@@ -243,7 +243,7 @@ export const DEFAULT_SCAN_CHUNK_SIZE = 200;
 
 /** Real scanner: spawns `python -m awh_analysis samplescan`, feeding the
  * chunk's file list on stdin and parsing the JSONL stdout. librosa's
- * ~1s import cost is why this is called once per CHUNK, never per file. */
+ * ~1s import cost is why this is called once per chunk, never per file. */
 export function makePythonScanner(python: string, cwd: string): ScannerFn {
   return (files) =>
     new Promise<ScanRecord[]>((resolvePromise, reject) => {
@@ -324,7 +324,7 @@ export async function runIndex(
   },
 ): Promise<IndexRunResult> {
   const absDirs = dirs.map((d) => resolve(d));
-  // Validate every dir up front — a missing dir is a loud error, no
+  // Validate every dir up front: a missing dir is a loud error, with no
   // partial index writes for the dirs that did exist.
   for (let i = 0; i < absDirs.length; i++) {
     if (!existsSync(absDirs[i]!) || !statSync(absDirs[i]!).isDirectory()) {
@@ -376,17 +376,16 @@ export async function runIndex(
 }
 
 // ---------------------------------------------------------------------------
-// M11c: pitch tagging (kicks/subs/808s -> f0/note, for key-matched search).
-// Separate, OPT-IN enrichment pass on top of the base M11 scan — same shape
-// as M11b's `clap` field/`embed` command below, not folded into `runIndex`
-// (running pyin on every file, including hats/vocals/melodic loops where a
-// single fundamental isn't meaningful, would slow down every `index` run
-// for no benefit). Built in response to a real request while validating the
-// M6b masking toolkit (2026-08-23): "find kicks tuned to match my sub."
+// Pitch tagging (kicks/subs/808s -> f0/note, for key-matched search, e.g.
+// "find kicks tuned to match my sub"). A separate, opt-in enrichment pass on
+// top of the base scan, like the `clap` field/`embed` command below. It is
+// not folded into `runIndex` because running pyin on every file, including
+// hats/vocals/melodic loops where a single fundamental isn't meaningful,
+// would slow down every `index` run for no benefit.
 // ---------------------------------------------------------------------------
 
 /** Only one-shots whose energy is dominated by the low band are pitch-tag
- * CANDIDATES — kicks/subs/808s/bass hits, not the whole library. Checked
+ * candidates: kicks/subs/808s/bass hits, not the whole library. Checked
  * against the owner's real 20,212-file library: 2,427 files (~12%)
  * qualify. Loops (basslines, melodic content) are out of scope for v1. */
 export function isPitchTagCandidate(entry: SamplesIndexEntry): boolean {
@@ -398,9 +397,9 @@ export function isPitchTagCandidate(entry: SamplesIndexEntry): boolean {
 }
 
 /** Bumped in lockstep with `analysis/awh_analysis/samplepitch.py`'s
- * `PITCH_ANALYSIS_VERSION` — a stored `analysisVersion` below this is
- * STALE and gets re-tagged by `runPitchTag`, same spirit as M11b's
- * CLAP model-label staleness key. */
+ * `PITCH_ANALYSIS_VERSION`. A stored `analysisVersion` below this is
+ * stale and gets re-tagged by `runPitchTag`, like the CLAP model-label
+ * staleness key. */
 export const PITCH_ANALYSIS_VERSION = 1;
 
 /** Raw per-file record shape from `python -m awh_analysis samplepitch`
@@ -451,9 +450,9 @@ export type PitchTagFn = (files: string[]) => Promise<RawPitchRecord[]>;
 export const DEFAULT_PITCH_CHUNK_SIZE = 200;
 
 /** Real tagger: spawns `python -m awh_analysis samplepitch`, feeding the
- * chunk's file list on stdin and parsing the JSONL stdout — identical shape
- * to `makePythonScanner`, no amortized model-load cost to batch around
- * (pyin has no expensive one-time checkpoint, unlike CLAP). */
+ * chunk's file list on stdin and parsing the JSONL stdout, the same shape
+ * as `makePythonScanner`. There is no model-load cost to amortize (pyin has
+ * no expensive one-time checkpoint, unlike CLAP). */
 export function makePythonPitchTagger(python: string, cwd: string): PitchTagFn {
   return (files) =>
     new Promise<RawPitchRecord[]>((resolvePromise, reject) => {
@@ -505,8 +504,8 @@ export interface PitchTagRunResult {
   index: SamplesIndexFile;
 }
 
-/** load -> find CANDIDATES (isPitchTagCandidate) missing/stale a pitch tag
- * -> tag in chunks -> save. Zero candidates is a normal STATE the caller
+/** load -> find candidates (isPitchTagCandidate) missing/stale a pitch tag
+ * -> tag in chunks -> save. Zero candidates is a normal state the caller
  * reports, not an error (docs/lessons-learned.md #5). */
 export async function runPitchTag(opts: {
   indexPath: string;
@@ -560,17 +559,17 @@ export async function runPitchTag(opts: {
 }
 
 // ---------------------------------------------------------------------------
-// M11b: CLAP embeddings (docs/design/sample-semantic.md) — batch embed,
-// incremental, model-mismatch re-embed. Reuses the SAME index file as M11
-// (a `clap` field added per entry), never a second index.
+// CLAP embeddings (docs/design/sample-semantic.md): batch embed,
+// incremental, model-mismatch re-embed. Reuses the same index file (a
+// `clap` field added per entry), never a second index.
 // ---------------------------------------------------------------------------
 
 export type ClapModel = "music" | "general";
 export const DEFAULT_CLAP_MODEL: ClapModel = "music";
 
-/** Mirrors clapembed.py's `_CHECKPOINTS[*]['label']` / `STUB_MODEL_LABEL` —
- * kept here (by hand, comment on both sides) so `runEmbed` can decide which
- * entries are STALE (need re-embedding) without spawning python first. */
+/** Mirrors clapembed.py's `_CHECKPOINTS[*]['label']` / `STUB_MODEL_LABEL`,
+ * kept in sync by hand (comment on both sides) so `runEmbed` can decide
+ * which entries are stale (need re-embedding) without spawning python. */
 export const CLAP_MODEL_LABELS: Record<ClapModel, string> = {
   music: "clap-music-v1",
   general: "clap-general-v1",
@@ -578,9 +577,9 @@ export const CLAP_MODEL_LABELS: Record<ClapModel, string> = {
 export const CLAP_STUB_MODEL_LABEL = "stub-v1";
 
 /** The `clap.model` label a freshly-embedded vector for `model` will carry
- * in THIS process — honors AWH_CLAP_STUB the same way clapembed.py does, so
+ * in this process. Honors AWH_CLAP_STUB the same way clapembed.py does, so
  * a Node test running under the stub sees the exact stamp the subprocess
- * will actually produce. */
+ * will produce. */
 export function expectedClapModelLabel(model: ClapModel): string {
   return process.env.AWH_CLAP_STUB === "1" ? CLAP_STUB_MODEL_LABEL : CLAP_MODEL_LABELS[model];
 }
@@ -601,17 +600,17 @@ export type ClapTextEmbedFn = (text: string, model: ClapModel) => Promise<ClapVe
 
 /** CLAP inference is heavier per file than samplescan's DSP pass, but each
  * chunk still pays a multi-second checkpoint-load cost in real (non-stub)
- * mode — smaller than DEFAULT_SCAN_CHUNK_SIZE so a batch failure (one
+ * mode. Smaller than DEFAULT_SCAN_CHUNK_SIZE so a batch failure (one
  * corrupt file) re-embeds less on the per-file fallback inside
- * clapembed.embed_audio_batch, larger than 1 so the load cost is still
+ * clapembed.embed_audio_batch; larger than 1 so the load cost is still
  * amortized across many files. */
 export const DEFAULT_EMBED_CHUNK_SIZE = 100;
 
 /** Real embedder: spawns `python -m awh_analysis clapembed --model <m>`,
- * feeding the chunk's file list on stdin and parsing the JSONL stdout —
+ * feeding the chunk's file list on stdin and parsing the JSONL stdout, the
  * same shape as makePythonScanner. Honors AWH_CLAP_STUB via the child's
- * inherited environment (clapembed.py itself reads the env var; nothing
- * Node-side needs to branch on it beyond `expectedClapModelLabel`). */
+ * inherited environment (clapembed.py reads the env var; nothing Node-side
+ * branches on it beyond `expectedClapModelLabel`). */
 export function makePythonClapEmbedder(python: string, cwd: string): ClapEmbedFn {
   return (files, model) =>
     new Promise<ClapEmbedRecord[]>((resolvePromise, reject) => {
@@ -653,7 +652,7 @@ export function makePythonClapEmbedder(python: string, cwd: string): ClapEmbedFn
 }
 
 /** Real text embedder: `python -m awh_analysis clapembed --model <m> --text
- * "<phrase>"`. No stdin needed — the phrase is a CLI arg (spawn's argv
+ * "<phrase>"`. No stdin needed: the phrase is a CLI arg (spawn's argv
  * array, never a shell, so special characters are safe). */
 export function makePythonClapTextEmbedder(python: string, cwd: string): ClapTextEmbedFn {
   return (text, model) =>
@@ -708,9 +707,9 @@ export interface EmbedRunResult {
 
 /** load -> find candidates missing/stale for `opts.model` -> embed in
  * chunks -> save. "Candidate" = any readable (non-unreadable-scan) indexed
- * file; STALE = has a `clap` vector but under a DIFFERENT model label
- * (a prior `embed --model general` run, say); zero candidates needing
- * embedding is a normal STATE the caller reports, not an error. */
+ * file. Stale = has a `clap` vector but under a different model label
+ * (a prior `embed --model general` run, say). Zero candidates needing
+ * embedding is a normal state the caller reports, not an error. */
 export async function runEmbed(opts: {
   indexPath: string;
   model: ClapModel;
@@ -754,7 +753,7 @@ export async function runEmbed(opts: {
 
 /** The reference file's CLAP vector for `similar --semantic`: from the
  * index if already embedded under `model`, else embedded on the fly
- * (design: "Reference file embedded on the fly") — mirrors
+ * (design: "Reference file embedded on the fly"), mirroring
  * `resolveReferenceVector`'s from-index-or-scan-on-the-fly shape. */
 export async function resolveReferenceClapVector(
   index: SamplesIndexFile,
@@ -787,11 +786,11 @@ export async function resolveReferenceClapVector(
 export const DEFAULT_BPM_TOL = 4;
 export const DEFAULT_CENTS_TOL = 50; // a quarter-tone
 
-/** "F1" (Ableton convention, same as every other note name this CLI takes —
+/** "F1" (Ableton convention, like every other note name this CLI takes;
  * `@awh/core`'s `pitchToMidi`) -> its equal-tempered A440 frequency. The
  * MIDI-to-Hz step is convention-independent (standard A440 formula); only
- * the NAME-to-MIDI step needs to agree with the rest of the codebase, which
- * `pitchToMidi` already handles. */
+ * the name-to-MIDI step needs to agree with the rest of the codebase, which
+ * `pitchToMidi` handles. */
 export function noteNameToHz(name: string): number {
   const midi = pitchToMidi(name);
   return 440 * 2 ** ((midi - 69) / 12);
@@ -809,10 +808,10 @@ export interface SearchOptions {
   bpm?: number;
   bpmTol?: number;
   band?: Band;
-  /** M11c: only entries with a VOICED pitch tag within `centsTol` (default
+  /** Only entries with a voiced pitch tag within `centsTol` (default
    * `DEFAULT_CENTS_TOL`) of this frequency. Untagged/unvoiced/broadband
-   * entries never match — same "never silently ignore missing data"
-   * discipline as `search --semantic`'s not-embedded gate. */
+   * entries never match, so missing data is never silently ignored (as
+   * with `search --semantic`'s not-embedded gate). */
   nearNoteHz?: number;
   centsTol?: number;
 }
@@ -865,8 +864,8 @@ export interface RelaxationSuggestion {
   note: string;
 }
 
-/** Zero hits is a STATE (docs/lessons-learned.md #5) — offer the nearest
- * relaxations rather than just reporting the empty result. */
+/** Zero hits is a state (docs/lessons-learned.md #5): offer the nearest
+ * relaxations rather than only reporting the empty result. */
 export function suggestRelaxations(
   index: SamplesIndexFile,
   terms: string[],
@@ -916,14 +915,14 @@ export function suggestRelaxations(
 }
 
 // ---------------------------------------------------------------------------
-// M11b: semantic search — filter first (reuses searchIndex's trait filters
-// with terms=[]), rank the survivors by CLAP cosine similarity to the
+// Semantic search: filter first (reuses searchIndex's trait filters
+// with terms=[]), then rank the survivors by CLAP cosine similarity to the
 // embedded query phrase (docs/design/sample-semantic.md).
 // ---------------------------------------------------------------------------
 
-/** Any readable entry embedded under `model`'s current label — the
- * NEGATIVE CONTROL gate: `search --semantic` refuses to run (loud error,
- * never a silent token-search fallback) when this is false. */
+/** Any readable entry embedded under `model`'s current label. This is the
+ * gate for `search --semantic`, which refuses to run (loud error, never a
+ * silent token-search fallback) when this is false. */
 export function indexHasClapEmbeddings(index: SamplesIndexFile, model: ClapModel): boolean {
   const expectedLabel = expectedClapModelLabel(model);
   return Object.values(index.files).some(
@@ -939,8 +938,8 @@ export interface SemanticHit {
 
 export interface SemanticSearchResult {
   hits: SemanticHit[];
-  /** Readable files anywhere in the index NOT embedded under `model`'s
-   * current label — index-wide, independent of the trait filters, per the
+  /** Readable files anywhere in the index not embedded under `model`'s
+   * current label: index-wide, independent of the trait filters, per the
    * design's footer ("312 of 9,400 files not embedded"). */
   notEmbeddedInIndex: number;
   totalReadableInIndex: number;
@@ -956,9 +955,9 @@ export function searchSemantic(
   const allReadable = Object.values(index.files).filter((e) => !e.scan.unreadable);
   const embeddedInSpace = allReadable.filter((e) => e.clap && e.clap.model === expectedLabel).length;
 
-  // filter first: reuse searchIndex's trait-filter logic with an empty
-  // token query (matches everything token-wise, same as `search --band low`
-  // with no terms today).
+  // Filter first: reuse searchIndex's trait-filter logic with an empty
+  // token query (matches everything token-wise, like `search --band low`
+  // with no terms).
   const filtered = searchIndex(index, [], filterOpts);
   const hits = filtered
     .filter((h) => h.entry.clap && h.entry.clap.model === expectedLabel)
@@ -994,7 +993,7 @@ export interface NormalizationStats {
   std: number[];
 }
 
-/** Per-dimension z-score stats across a set of vectors — required before
+/** Per-dimension z-score stats across a set of vectors, required before
  * cosine similarity is meaningful across features on very different
  * natural scales (Hz-valued spectral stats vs. 0..1 band fractions). */
 export function computeNormalizationStats(vectors: number[][]): NormalizationStats {
@@ -1048,12 +1047,11 @@ export interface SemanticCandidate {
   entry: SamplesIndexEntry;
 }
 
-/** CLAP-space `similar --semantic` ranking: plain cosine over the ALREADY
- * L2-normalized vectors — unlike `rankSimilar`'s MFCC/spectral feature
- * vector (mixed natural scales, so it needs the z-score normalization
- * step), CLAP embeddings are directly comparable dimension-for-dimension,
- * and re-normalizing them per-dimension would destroy the space's own
- * geometry rather than make it more comparable. */
+/** CLAP-space `similar --semantic` ranking: plain cosine over the already
+ * L2-normalized vectors. Unlike `rankSimilar`'s MFCC/spectral feature
+ * vector (mixed natural scales, so it needs z-score normalization), CLAP
+ * embeddings are directly comparable dimension-for-dimension, and
+ * re-normalizing them per-dimension would distort the embedding space. */
 export function rankSimilarSemantic(
   referenceVector: number[],
   candidates: SemanticCandidate[],
@@ -1102,8 +1100,8 @@ export interface IndexStats {
   byType: { loop: number; oneshot: number; unreadable: number };
   byBand: { low: number; mid: number; high: number };
   durationStats: { minS: number; maxS: number; meanS: number } | null;
-  /** M11c: pitch-tag coverage over ELIGIBLE candidates (isPitchTagCandidate)
-   * only — never over the whole library, since most files (hats, vocals,
+  /** Pitch-tag coverage over eligible candidates (isPitchTagCandidate)
+   * only, never over the whole library, since most files (hats, vocals,
    * melodic loops) were never candidates in the first place. */
   pitchTag: { candidates: number; tagged: number; voiced: number; unvoiced: number; tooShort: number };
 }

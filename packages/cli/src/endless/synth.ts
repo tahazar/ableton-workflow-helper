@@ -1,10 +1,10 @@
 /**
- * Pure-TS seeded synthesis for `awh endless demo` — small, deterministic,
+ * Pure-TS seeded synthesis for `awh endless demo`: small, deterministic,
  * dependency-free stems so the endless player has something to play with
  * zero owner assets (docs/design/endless-player.md). This is offline
  * render-to-buffer code (Node-only, no Web Audio), unrelated to the
- * player's decision core — see packages/cli/assets/endless/player.js for
- * that. A tiny local seeded RNG lives here rather than reusing player.js's
+ * player's decision core in packages/cli/assets/endless/player.js.
+ * A tiny local seeded RNG lives here rather than reusing player.js's
  * PRNG: this is a different domain (offline synthesis parameters, not a
  * playback decision that needs cross-runtime determinism against a shared
  * test), and importing a plain .js asset into typechecked CLI source isn't
@@ -15,7 +15,7 @@
 const SAMPLE_RATE = 44100;
 
 /** mulberry32, self-contained (see file header for why this isn't shared
- * with player.js's copy). Closure-based (stateful) is fine here — this is
+ * with player.js's copy). Closure-based (stateful) is fine here: this is
  * one-shot offline rendering, not something under determinism test. */
 function makeRng(seed: number): () => number {
   let state = seed >>> 0;

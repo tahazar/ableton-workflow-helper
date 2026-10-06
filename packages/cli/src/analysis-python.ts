@@ -1,10 +1,10 @@
 /**
- * Shared helper: locate the Python interpreter + working directory for
+ * Locate the Python interpreter and working directory for
  * `python -m awh_analysis <cmd>` (the venv at `<repo root>/.venv`,
- * overridable via `AWH_PYTHON` — see analysis/README.md). Every analysis-
+ * overridable via `AWH_PYTHON`; see analysis/README.md). Every analysis-
  * engine call site uses this (mix/duck/ref/opmatch/drums mine in
- * src/index.ts, and M11's `awh samples` in src/samples.ts) — split out so
- * samples.ts doesn't need to import the CLI entry point just for this.
+ * src/index.ts, and `awh samples` in src/samples.ts). It lives in its own
+ * module so samples.ts doesn't import the CLI entry point.
  */
 import { existsSync } from "node:fs";
 import { dirname, join } from "node:path";

@@ -1,7 +1,7 @@
 import { BridgeError, type NoteSpec } from "../bridge/types.js";
 
 /**
- * AWH bar|beat notation — the human/LLM-facing text format for MIDI notes.
+ * AWH bar|beat notation: the human/LLM-facing text format for MIDI notes.
  * Clean-room design (concept inspired by prior art; no code ported).
  *
  * Grammar (one event per line; "#" starts a comment; blank lines ignored):
@@ -15,7 +15,7 @@ import { BridgeError, type NoteSpec } from "../bridge/types.js";
  * Rules:
  * - bar and beat are 1-based: "1|1" is the very start of the clip.
  * - beat must satisfy 1 <= beat < beatsPerBar + 1 (fractions fine: 1|4.75).
- * - duration is in BEATS (not note values): in 4/4, a quarter note is 1,
+ * - duration is in beats (not note values): in 4/4, a quarter note is 1,
  *   an eighth is 1/2 or 0.5, a whole bar is 4. Fractions and decimals both
  *   parse; serialization prefers exact simple fractions.
  * - Pitch names use Ableton's octave convention: middle C (MIDI 60) = C3.
@@ -100,7 +100,7 @@ export function parseNotation(text: string, options: NotationOptions = {}): Pars
 
   const lines = text.split(/\r?\n/);
   lines.forEach((rawLine, lineNo) => {
-    // "#" starts a comment only at line start or after whitespace — a "#"
+    // "#" starts a comment only at line start or after whitespace; a "#"
     // inside a token is an accidental (D#3), not a comment.
     const line = rawLine.replace(/(^|\s)#.*$/, "$1").trim();
     if (line === "") return;

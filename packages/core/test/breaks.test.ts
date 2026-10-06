@@ -7,7 +7,6 @@ import {
   type BreakSpec,
 } from "../src/breaks/spec.js";
 import {
-  DRUM_RACK_PAD_COUNT,
   SLICE_NOTE_BASE,
   noteToSliceIndex,
   parseChopMap,
@@ -179,7 +178,7 @@ function slice(
 
 /** A one-bar (16-step) canonical amen-ish skeleton: kick@0, snare@4, hat@8,
  *  snare@12, a ghost hit@15 (the bar's last step, so the canonical timeline
- *  measures out to a clean 16 steps — sourceLen = max(gridStep)+1). */
+ *  measures out to a clean 16 steps: sourceLen = max(gridStep)+1). */
 function amenMap(confidence = 0.9): ChopMap {
   return {
     file: "amen.wav",
@@ -273,7 +272,7 @@ describe("generateBreakPattern — negative control: all-low-confidence roles", 
       turnaroundDensity: 1,
       snareDisplacement: [],
       ghostShuffleChance: 0,
-      allowSubstitution: true, // spec ALLOWS it — the map's own low confidence must override
+      allowSubstitution: true, // spec allows it; the map's own low confidence must override
     };
     const map = amenMap(0.3); // every slice below LOW_CONFIDENCE_THRESHOLD (0.4)
     expect(map.slices.every((s) => s.confidence < LOW_CONFIDENCE_THRESHOLD)).toBe(true);
@@ -290,7 +289,7 @@ describe("generateBreakPattern — negative control: all-low-confidence roles", 
       const canonicalStep = ((step % 16) + 16) % 16;
       const expectedIndex = canonicalIndexAtStep.get(canonicalStep);
       expect(expectedIndex).toBeDefined();
-      // never a DIFFERENT slice of the same role — always the canonical
+      // never a different slice of the same role; always the canonical
       // slice's own index (stutter/retrigger only).
       expect(noteToIndex(n.pitch)).toBe(expectedIndex);
     }

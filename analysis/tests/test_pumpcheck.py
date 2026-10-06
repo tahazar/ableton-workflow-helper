@@ -1,5 +1,6 @@
-"""Pump v2 tests — synthetic known-truth signals, including the retriggered-
-decay negative control the v1 beat-fold heuristic could not rule out."""
+"""pumpcheck tests: synthetic known-truth signals, including the
+retriggered-decay negative control the `dynamics.pump` beat-fold heuristic
+cannot rule out."""
 
 from __future__ import annotations
 
@@ -9,7 +10,6 @@ import sys
 from pathlib import Path
 
 import numpy as np
-import pytest
 
 from awh_analysis import pumpcheck
 from conftest import to_stereo, write_wav
@@ -31,9 +31,9 @@ def _ducked_bass(
     carrier_hz: float = 50.0,
     carrier_amp: float = 0.5,
 ):
-    """Sustained carrier tone with the EXACT fixed dip model applied every
-    cycle (instant dip / hold / exponential release) — what a Volume Shaper
-    would actually produce, retriggered on the trigger clip."""
+    """Sustained carrier tone with the exact fixed dip model applied every
+    cycle (instant dip / hold / exponential release): what a Volume Shaper
+    produces, retriggered on the trigger clip."""
     n = int(round(duration_s * sr))
     t = np.arange(n) / sr
     carrier = carrier_amp * np.sin(2 * np.pi * carrier_hz * t)
@@ -57,9 +57,10 @@ def _decaying_bass(
     decay_tau_s: float = 0.15,
     floor_amp: float = 0.003,
 ):
-    """The v1 killer case: a bass note RETRIGGERED at each trigger time,
-    decaying on its own (no duck at all) — high right at the trigger,
-    falling continuously toward the next one. Beat-synced, but NOT ducking.
+    """The case beat-folding cannot separate: a bass note retriggered at each
+    trigger time, decaying on its own (no duck at all). High right at the
+    trigger, falling continuously toward the next one. Beat-synced, but not
+    ducking.
     Pattern copied from test_duck.py's _kick_drums."""
     n = int(round(duration_s * sr))
     t = np.arange(n) / sr
@@ -89,8 +90,8 @@ def test_check_pump_genuine_duck_is_detected():
 
 
 def test_check_pump_retriggered_decay_is_not_ducking():
-    """The v1 shipped without this negative control: a retriggered note's
-    own decay is beat-synced too, and must NOT read as ducking."""
+    """Negative control: a retriggered note's own decay is beat-synced too,
+    and must not read as ducking."""
     x = _decaying_bass(SR, TRIGGERS, DURATION_S)
     result = pumpcheck.check_pump(x, SR, TRIGGERS)
 

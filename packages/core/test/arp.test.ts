@@ -240,7 +240,7 @@ describe("generateArp — pitch pool", () => {
     const { notes } = generateArp(chords, spec, { seed: 1, bars: 2 });
     const base = new Set(chords[0]!.pitches);
     for (const n of notes) expect(base.has(n.pitch)).toBe(true);
-    // and it genuinely reaches all three (not stuck on one octave copy)
+    // and it reaches all three (not stuck on one octave copy)
     expect(new Set(notes.map((n) => n.pitch))).toEqual(base);
   });
 });
@@ -275,8 +275,8 @@ describe("generateArp — chord boundary re-selects the pool without resetting p
     // chordA covers steps 0-7, chordB covers steps 8-15. With a naive
     // "reset pattern position at chord change" bug, step 8's pitch index
     // would restart at 0 (chordB's bottom note, 72); the pinned behavior
-    // keeps the GLOBAL step counter (i=8) live, landing on i%3=2 (chordB's
-    // TOP note, 79) instead — directly distinguishing the two.
+    // keeps the global step counter (i=8) live, landing on i%3=2 (chordB's
+    // top note, 79) instead, which distinguishes the two.
     const spec = FULL_MASK_SPEC({ octaves: 1, patternLength: 16 });
     const chords: ArpChordSpan[] = [
       { pitches: [60, 64, 67], startBeat: 0, endBeat: 2 },
@@ -285,7 +285,7 @@ describe("generateArp — chord boundary re-selects the pool without resetting p
     const { notes } = generateArp(chords, spec, { seed: 1, bars: 1 });
     expect(notes).toHaveLength(16);
     expect(notes[7]!.pitch).toBe(64); // chordA, i=7, 7%3=1
-    expect(notes[8]!.pitch).toBe(79); // chordB, i=8, 8%3=2 (NOT 72)
+    expect(notes[8]!.pitch).toBe(79); // chordB, i=8, 8%3=2 (not 72)
     expect(notes[9]!.pitch).toBe(72); // chordB, i=9, 9%3=0
   });
 });

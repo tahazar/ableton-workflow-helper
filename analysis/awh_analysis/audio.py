@@ -84,10 +84,10 @@ def to_mono(x: np.ndarray) -> np.ndarray:
 def sanitize_json(obj):
     """Replace non-finite floats (inf/-inf/nan) with None recursively.
 
-    Python's json module happily writes Infinity/-Infinity/NaN with
-    allow_nan=True — which is NOT valid JSON and breaks strict parsers
-    (found live: a silent bar's -inf dB in a reference record crashed the
-    Node CLI). Null is the honest encoding of "no measurable energy".
+    Python's json module writes Infinity/-Infinity/NaN with allow_nan=True,
+    which is not valid JSON and breaks strict parsers (a silent bar's -inf
+    dB in a reference record crashes the Node CLI). Null encodes "no
+    measurable energy".
     """
     import math
 

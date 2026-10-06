@@ -1,10 +1,10 @@
 /**
- * .alc generation via TEMPLATE CAPTURE (docs/research/alc-live-library.md).
+ * .alc generation via template capture (docs/research/alc-live-library.md).
  *
- * We never hand-construct Live's clip schema: the owner saves ONE real MIDI
+ * We never hand-construct Live's clip schema: the user saves one real MIDI
  * clip from Live 12 to the User Library (`awh lib capture-template`), and we
- * keep its gunzipped XML as the golden template. Rendering a library clip =
- * string surgery on that template — replace the KeyTracks note data, clip
+ * keep its gunzipped XML as the golden template. Rendering a library clip is
+ * string surgery on that template: replace the KeyTracks note data, clip
  * name, loop/length markers, and time signature; leave everything else
  * byte-for-byte as Live wrote it (unknown elements are rejected by older
  * Lives and wrong values crash silently, so we don't improvise).

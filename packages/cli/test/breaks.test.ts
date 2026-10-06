@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 import { createGatewayServer, FakeLiveBridge, type ClipDetail, type GatewayServer } from "@awh/core";
 
 // `analysisPython()` (src/analysis-python.ts) derives its python `cwd` as
-// `dirname(AWH_LIBRARY)/analysis` — same isolation trick as advise.test.ts:
-// symlink the REAL analysis/ dir alongside a scratch `library/` so `awh
+// `dirname(AWH_LIBRARY)/analysis`. Same isolation approach as advise.test.ts:
+// symlink the real analysis/ dir alongside a scratch `library/` so `awh
 // breaks chop` can find the real awh_analysis package without touching the
 // repo's actual library/.
 const MAIN_VENV_PYTHON = "/home/user/ableton-workflow-helper/.venv/bin/python";
@@ -17,9 +17,9 @@ const hasRealPython = existsSync(MAIN_VENV_PYTHON);
 const REPO_ANALYSIS_DIR = fileURLToPath(new URL("../../../analysis", import.meta.url));
 
 /**
- * M15 break engine — CLI-level tests (docs/design/break-engine.md's
- * verification bar). The pattern/fill engine's own property tests live in
- * packages/core/test/breaks.test.ts (pure, no Python); this file covers
+ * Break engine CLI-level tests (docs/design/break-engine.md's verification
+ * bar). The pattern/fill engine's own property tests live in
+ * packages/core/test/breaks.test.ts (pure, no Python). This file covers
  * what's specific to the CLI layer: `--map` chop-map-record resolution,
  * the `--mode` note-mapping check (and its count-mismatch warning), the
  * knowledge break-style-<name>/break-pattern-<name> fallback via an
@@ -82,10 +82,9 @@ async function opCall(base: string, name: string, args?: unknown): Promise<unkno
   return body.result;
 }
 
-// A hand-built chop-map record (bypasses the Python analyzer — the pure
-// pattern/fill engine already has its own thorough core-level tests; this
-// file focuses on CLI wiring): 5 slices, one bar, one snare-role
-// substitution candidate.
+// A hand-built chop-map record that bypasses the Python analyzer, since the
+// pattern/fill engine has its own core-level tests and this file covers CLI
+// wiring: 5 slices, one bar, one snare-role substitution candidate.
 function chopMapRecordJson(overrides: { confidence?: number } = {}) {
   const conf = overrides.confidence ?? 0.9;
   const slice = (index: number, gridStep: number, role: string) => ({
@@ -137,7 +136,7 @@ async function writeChopMapRecord(libraryRoot: string, name: string, overrides: 
 }
 
 // ---------------------------------------------------------------------------
-// synthetic break WAV (real audio, real Python subprocess) — same
+// Synthetic break WAV (real audio, real Python subprocess), using the same
 // attack/release-ramped burst construction as analysis/tests/test_breakchop.py,
 // reimplemented here in plain PCM16 mono so the CLI-level `chop` test
 // exercises the real awh_analysis.breakchop subprocess end to end.

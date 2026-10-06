@@ -1,8 +1,8 @@
-"""B1: melodic audio-to-MIDI transcription (Basic Pitch, ONNX backend).
+"""Melodic audio-to-MIDI transcription (Basic Pitch, ONNX backend).
 
-Requires the `a2m` extra (see analysis/README.md) — skipped entirely if
+Requires the `a2m` extra (see analysis/README.md). Skipped entirely if
 basic-pitch isn't installed, so the rest of the suite stays green on a venv
-that only has the M6 (measurement) dependencies.
+that only has the base measurement dependencies.
 """
 
 from __future__ import annotations
@@ -64,8 +64,8 @@ def test_two_note_sequence_in_order(tmp_path):
 
 
 def test_silence_is_zero_notes_not_an_error(tmp_path):
-    """Zero notes is a valid STATE (docs/lessons-learned.md #5), not a
-    thrown error — silence -> n_notes == 0, notes == []."""
+    """Zero notes is a valid state (docs/lessons-learned.md #5), not a
+    thrown error: silence -> n_notes == 0, notes == []."""
     path = tmp_path / "silence.wav"
     write_wav(path, np.zeros(int(round(1.5 * SR))), SR)
 
@@ -76,17 +76,16 @@ def test_silence_is_zero_notes_not_an_error(tmp_path):
 
 
 def test_negative_control_white_noise_does_not_produce_a_confident_melody(tmp_path):
-    """White noise has no pitched structure — the model must not hallucinate
-    a melody out of it.
+    """White noise has no pitched structure, so the model must not
+    hallucinate a melody out of it.
 
-    Empirically (verified against this exact fixture while writing this
-    test, onnxruntime CPU backend): Basic Pitch's default thresholds produce
-    EXACTLY ZERO notes on white noise at every amplitude tried (0.2 to 0.95
-    full-scale) and on pink noise too — broadband noise doesn't resemble the
+    Empirically (this fixture, onnxruntime CPU backend): Basic Pitch's
+    default thresholds produce zero notes on white noise at every amplitude
+    tried (0.2 to 0.95 full-scale) and on pink noise too. Broadband noise doesn't resemble the
     model's learned harmonic/onset features closely enough to cross
     onset_thresh=0.5/frame_thresh=0.3. We assert a looser bound than "always
     exactly 0" on purpose: a small note count with short durations, so the
-    test keeps meaning (catches genuine melody hallucination) without being
+    test keeps meaning (catches melody hallucination) without being
     brittle to minor model/library version drift that might produce an
     occasional short spurious blip.
     """
@@ -102,7 +101,7 @@ def test_negative_control_white_noise_does_not_produce_a_confident_melody(tmp_pa
 
 def test_deterministic_same_file_same_params(tmp_path):
     """Same file + params -> identical JSON (no seed, no randomness at
-    inference time — the whole point of a transcription tool)."""
+    inference time)."""
     path = tmp_path / "det.wav"
     write_wav(path, sine(440.0, 1.5), SR)
 
@@ -138,7 +137,7 @@ def test_params_reflect_what_was_actually_used(tmp_path):
 
 
 def test_cli_a2m_json_smoke(tmp_path):
-    """`python -m awh_analysis a2m <file> --json` — the exact invocation the
+    """`python -m awh_analysis a2m <file> --json`: the exact invocation the
     Node CLI shells out to (see runAnalysisJson/`awh clip from-audio`)."""
     path = tmp_path / "cli440.wav"
     write_wav(path, sine(440.0, 1.5), SR)

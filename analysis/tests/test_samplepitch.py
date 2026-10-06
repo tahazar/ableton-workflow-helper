@@ -1,7 +1,7 @@
-"""M11c pitch-tagging tests (docs/design/sample-library.md's verification
+"""Pitch-tagging tests (docs/design/sample-library.md's verification
 bar, same convention as test_samplescan.py): a synthetic tuned "808" one-shot
-(a decaying low sine — has a real fundamental), a broadband noise-burst
-"kick" one-shot (no periodicity — the common real case this tool must not
+(a decaying low sine with a real fundamental), a broadband noise-burst
+"kick" one-shot (no periodicity; the common real case this tool must not
 mis-tag), and a too-short clip (state, not a crash)."""
 
 from __future__ import annotations
@@ -27,14 +27,14 @@ def _decaying_sine(freq: float, sr: int, duration_s: float, amp: float, tau: flo
 
 
 def _tuned_808_oneshot(freq: float = 55.0) -> np.ndarray:
-    """A clean, decaying low sine — the tuned-kick/808 case: has a real,
+    """A clean, decaying low sine, the tuned-kick/808 case: has a real,
     trackable fundamental (A1 at 55 Hz)."""
     return _decaying_sine(freq, SR, 0.6, amp=0.6, tau=0.25)
 
 
 def _broadband_kick_oneshot(seed: int = 3) -> np.ndarray:
-    """A decaying noise burst — the common real "kick" case: mostly-low
-    dominant band (a hard transient thump), but NO coherent periodicity.
+    """A decaying noise burst, the common real "kick" case: mostly-low
+    dominant band (a hard transient thump), but no coherent periodicity.
     Must land as unvoiced, never a confidently-wrong fabricated pitch."""
     t = np.linspace(0, 0.25, int(round(0.25 * SR)), endpoint=False)
     return white_noise(SR, 0.25, amp=0.6, seed=seed) * np.exp(-t * 12)
@@ -66,7 +66,7 @@ def test_tuned_808_lands_on_real_fundamental(tmp_path):
 
 def test_broadband_kick_is_unvoiced_not_a_fabricated_pitch(tmp_path):
     """The negative control this tool exists to get right: a real kick is
-    usually a broadband transient, not a tuned tone — it must come back
+    usually a broadband transient, not a tuned tone, so it must come back
     unvoiced/low-confidence, never a confidently-wrong f0."""
     path = _write(tmp_path, "kick.wav", _broadband_kick_oneshot())
     rec = samplepitch.pitch_for_sample(path)
@@ -166,10 +166,9 @@ def test_cli_samplepitch_stdin_emits_jsonl(tmp_path):
 
 
 def test_cli_samplepitch_never_emits_nan_or_infinity_tokens(tmp_path):
-    """Every record goes through `audio.sanitize_json` (same M6 finding as
-    samplescan) — non-finite floats must come out as JSON `null`, never the
-    invalid `NaN`/`Infinity` tokens Python's json module would otherwise
-    happily write."""
+    """Every record goes through `audio.sanitize_json` (same as samplescan):
+    non-finite floats must come out as JSON `null`, never the invalid
+    `NaN`/`Infinity` tokens Python's json module would otherwise write."""
     silent = _write(tmp_path, "silence.wav", np.zeros(int(round(1.0 * SR))))
     proc = _run_samplepitch([silent])
     assert proc.returncode == 0, proc.stderr

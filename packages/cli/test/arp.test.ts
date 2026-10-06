@@ -8,17 +8,17 @@ import { fileURLToPath } from "node:url";
 import { createGatewayServer, FakeLiveBridge, type ClipDetail, type GatewayServer } from "@awh/core";
 
 /**
- * M14 arp engine — CLI-level tests (docs/design/arp-engine.md's
- * verification bar). The engine/spec property tests live in
- * packages/core/test/arp.test.ts; this file covers what's specific to the
+ * Arp engine CLI-level tests (docs/design/arp-engine.md's verification
+ * bar). The engine/spec property tests live in
+ * packages/core/test/arp.test.ts. This file covers what's specific to the
  * CLI layer: --prog end-to-end against a fake gateway, the chord-clip
  * source (reading a clip `awh chords` itself would write), the
  * knowledge-entry style fallback (tier printed) via an isolated AWH_LIBRARY
- * (sibling knowledge/ dir — same override `findLibraryRoot` honors, see
+ * (sibling knowledge/ dir, the same override `findLibraryRoot` honors; see
  * packages/core/src/library/store.ts), the melody-only negative control,
- * and the unknown-style error. Same async-spawn-against-an-in-process-
- * gateway pattern as advise.test.ts's `--set` test (spawnSync would
- * deadlock the gateway).
+ * and the unknown-style error. Uses the same async-spawn-against-an-in-
+ * process-gateway pattern as advise.test.ts's `--set` test (spawnSync
+ * would deadlock the gateway).
  */
 
 const CLI_DIST = fileURLToPath(new URL("../dist/index.js", import.meta.url));
@@ -172,7 +172,7 @@ describe.skipIf(!hasBuiltCli)("awh arp — full CLI integration", () => {
     const { dir, libraryRoot } = await makeTestLibrary();
     try {
       // style resolution fails before any gateway call is made, so no fake
-      // gateway is needed for this one — the port is never actually dialed.
+      // gateway is needed for this one; the port is never dialed.
       const result = await runCli(
         ["-p", "9", "arp", "--prog", "i-VI", "--key", "A minor", "--style", "does-not-exist", "track:0", "--at-bar", "1"],
         { AWH_LIBRARY: libraryRoot },

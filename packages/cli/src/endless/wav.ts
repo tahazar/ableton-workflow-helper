@@ -1,12 +1,11 @@
 /**
- * Pure-TS WAV (RIFF/PCM) reading and writing for M10 (`awh endless`).
- * `awh endless build` needs each pool file's exact duration (bar-exact
- * loops, checked to +-25ms against bars*4*60/bpm — see spec.ts docs), and
- * `awh endless demo` needs to synthesize tiny WAV files without pulling in
- * an audio library — both are simple enough to do as direct chunk math, no
- * dependency needed (docs/design/endless-player.md: "RIFF fmt/data chunk
- * math"; zero-dep is a hard constraint for the player, and this keeps the
- * whole `endless` feature dependency-free).
+ * Pure-TS WAV (RIFF/PCM) reading and writing for the endless player
+ * (`awh endless`). `awh endless build` needs each pool file's exact duration
+ * (bar-exact loops, checked to +-25ms against bars*4*60/bpm; see spec.ts),
+ * and `awh endless demo` synthesizes tiny WAV files. Both are direct chunk
+ * math, so no audio library is needed (docs/design/endless-player.md: "RIFF
+ * fmt/data chunk math"). Zero dependencies is a hard constraint for the
+ * player, and this keeps the whole `endless` feature dependency-free.
  */
 
 export interface WavInfo {
@@ -21,7 +20,7 @@ export interface WavInfo {
  * Parse a WAV file's `fmt ` and `data` chunks (generic chunk walk, so extra
  * chunks like LIST/JUNK/fact don't confuse it) and compute its duration.
  * Throws a clear, non-WAV-specific message for anything that isn't a
- * RIFF/WAVE file (v1 doesn't support other formats — see design doc).
+ * RIFF/WAVE file (v1 doesn't support other formats; see design doc).
  */
 export function parseWavHeader(buf: Buffer): WavInfo {
   if (buf.length < 12 || buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WAVE") {

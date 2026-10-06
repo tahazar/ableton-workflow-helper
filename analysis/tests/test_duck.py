@@ -66,8 +66,8 @@ def test_duck_fit_tracks_the_kick_decay():
 
 def test_duck_fit_masking_based_depth_from_bass():
     x = _kick_drums(SR, TRIGGERS, 4.5)
-    # constant 50 Hz bass — loud enough to need real ducking, and clearly
-    # voiced (a clean sine) -> takes the pitch-aware NARROWBAND path
+    # constant 50 Hz bass: loud enough to need real ducking, and clearly
+    # voiced (a clean sine) -> takes the pitch-aware narrowband path
     t = np.arange(int(4.5 * SR)) / SR
     bass = to_stereo(0.5 * np.sin(2 * np.pi * 50.0 * t))
     result = duck.fit_duck_envelope(x, SR, TRIGGERS, bass=bass, bass_sr=SR)
@@ -82,20 +82,18 @@ def test_duck_fit_masking_based_depth_from_bass():
 
 
 def test_duck_fit_broadband_bass_falls_back_to_generic_low_band():
-    """A REAL finding while building the narrowband path: pyin can find a
-    spurious low-confidence periodic frame even in pure white noise (state
-    flips to "voiced" on just ONE frame) — `state == "voiced"` alone is not
-    a strong enough gate. This confirms the voiced_fraction gate
-    (MASKING_MIN_VOICED_FRACTION) correctly routes genuinely broadband bass
-    to the ORIGINAL generic-low-band calc, and that the fallback produces
-    the exact same number the pre-narrowband code would (regression guard
-    on the untouched branch)."""
+    """pyin can find a spurious low-confidence periodic frame even in pure
+    white noise (state flips to "voiced" on one frame), so
+    `state == "voiced"` alone is not a strong enough gate. This confirms the
+    voiced_fraction gate (MASKING_MIN_VOICED_FRACTION) routes broadband
+    bass to the generic-low-band calc, and that this branch produces
+    exactly the generic-low-band formula's number."""
     x = _kick_drums(SR, TRIGGERS, 4.5)
     rng = np.random.default_rng(5)
     noise_bass = to_stereo(0.5 * rng.standard_normal(int(4.5 * SR)))
 
     bass_pitch = duck.pitch.analyze_segment(duck.to_mono(noise_bass), SR)
-    assert bass_pitch["voiced_fraction"] < duck.MASKING_MIN_VOICED_FRACTION  # confirms the gate is actually exercised
+    assert bass_pitch["voiced_fraction"] < duck.MASKING_MIN_VOICED_FRACTION  # confirms the gate is exercised
 
     result = duck.fit_duck_envelope(x, SR, TRIGGERS, bass=noise_bass, bass_sr=SR)
     rec = result["recommendation"]
@@ -103,7 +101,7 @@ def test_duck_fit_broadband_bass_falls_back_to_generic_low_band():
     assert "broadband bass" in rec["depth_source"]
     assert "narrowband" not in rec["depth_source"]
 
-    # recompute the ORIGINAL generic-low-band formula independently and
+    # recompute the generic-low-band formula independently and
     # confirm the fallback matches it exactly
     bass_low = duck._low_band(noise_bass, SR)
     bass_low_db = float(20.0 * np.log10(max(np.sqrt(np.mean(bass_low**2)), 1e-9)))
@@ -128,23 +126,23 @@ def test_narrow_band_hz_floored_at_welch_resolution():
     lo2, hi2 = duck._narrow_band_hz(1000.0, SR)
     cents_half_hz = 1000.0 * (2.0 ** (duck.MASKING_BAND_HALF_CENTS / 1200.0) - 1.0)
     assert (hi2 - lo2) == pytest.approx(2 * cents_half_hz, rel=1e-6)
-    assert cents_half_hz > mainlobe_half_hz  # confirms this case actually exercises the other branch
+    assert cents_half_hz > mainlobe_half_hz  # confirms this case exercises the other branch
 
 
 def test_masking_depth_responds_to_where_the_kicks_energy_actually_is():
-    """Negative control proving the narrowband measurement is genuinely
-    measuring the TARGETED band, not silently behaving like the old generic
-    low-band calc. Same bass (a clean 300 Hz sine, well clear of the kick's
-    own 55 Hz fundamental) against two kicks that differ ONLY in whether
+    """Negative control proving the narrowband measurement measures the
+    targeted band rather than behaving like the generic low-band calc.
+    Same bass (a clean 300 Hz sine, well clear of the kick's own 55 Hz
+    fundamental) against two kicks that differ only in whether
     they carry real energy near 300 Hz during their body window."""
     t = np.arange(int(4.5 * SR)) / SR
     bass = to_stereo(0.5 * np.sin(2 * np.pi * 300.0 * t))
 
-    kick_far = _kick_drums(SR, TRIGGERS, 4.5)  # only the 55 Hz kick — near-silent at 300 Hz
+    kick_far = _kick_drums(SR, TRIGGERS, 4.5)  # only the 55 Hz kick, near-silent at 300 Hz
 
     kick_near_sig = kick_far[:, 0].copy() if kick_far.ndim == 2 else kick_far.copy()
     # add a real 300 Hz decaying burst at each trigger, same shape as the
-    # kick's own decay, so the body window genuinely carries energy there
+    # kick's own decay, so the body window carries energy there
     for trig in TRIGGERS:
         start = int(round(trig * SR))
         length = min(len(kick_near_sig) - start, int(0.45 * SR))
@@ -160,7 +158,7 @@ def test_masking_depth_responds_to_where_the_kicks_energy_actually_is():
     result_near = duck.fit_duck_envelope(kick_near, SR, TRIGGERS, bass=bass, bass_sr=SR)
 
     # kick_near has real energy right where the bass lives -> the natural
-    # separation is already better -> LESS additional duck depth needed
+    # separation is already better -> less additional duck depth needed
     assert result_near["recommendation"]["depth_db"] < result_far["recommendation"]["depth_db"]
 
 
@@ -201,8 +199,8 @@ def test_measure_duck_depth_ducked_vs_flat():
 
 
 def test_duck_fit_flags_misaligned_triggers():
-    """Live finding: guessed trigger times produced a plausible-looking but
-    nonsensical envelope with no flag. Misalignment must warn."""
+    """Guessed trigger times produce a plausible-looking but nonsensical
+    envelope. Misalignment must warn."""
     x = _kick_drums(SR, TRIGGERS, 4.5)
     aligned = duck.fit_duck_envelope(x, SR, TRIGGERS)
     assert aligned["warnings"] == []
