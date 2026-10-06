@@ -62,7 +62,7 @@ export class LibraryStore {
         const entry = parseClipEntry(await readFile(abs, "utf8"));
         entries.push({ ...entry, relPath: join("clips", rel) });
       } catch (err) {
-        throw new Error(`Bad library entry ${abs}: ${(err as Error).message}`);
+        throw new Error(`Bad library entry ${abs}: ${(err as Error).message}`, { cause: err });
       }
     }
     return entries.filter(

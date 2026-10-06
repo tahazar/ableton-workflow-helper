@@ -287,7 +287,7 @@ export async function auditionSlug(params: {
   try {
     fireArgs = await remoteFire({ trackIdx, slotIdx, ...params.osc });
   } catch (err) {
-    throw new Error(`placed ${params.source.slug} -> ${path} but could not fire it: ${(err as Error).message}`);
+    throw new Error(`placed ${params.source.slug} -> ${path} but could not fire it: ${(err as Error).message}`, { cause: err });
   }
 
   return {

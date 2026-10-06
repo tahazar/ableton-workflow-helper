@@ -4835,6 +4835,7 @@ opGroup
       } catch (err) {
         throw new Error(
           `op verify requires the AWH Capture Tap M4L device (m4l/README.md) — ${(err as Error).message}`,
+          { cause: err },
         );
       }
 

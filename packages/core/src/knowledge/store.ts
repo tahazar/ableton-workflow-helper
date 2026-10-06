@@ -93,7 +93,7 @@ export class KnowledgeStore {
         }
         entries.push({ ...entry, relPath: rel });
       } catch (err) {
-        throw new Error(`Bad knowledge entry ${abs}: ${(err as Error).message}`);
+        throw new Error(`Bad knowledge entry ${abs}: ${(err as Error).message}`, { cause: err });
       }
     }
     return entries.filter(
@@ -174,7 +174,7 @@ export class KnowledgeStore {
           findingsCount: raw.findings.length,
         });
       } catch (err) {
-        throw new Error(`Bad measurement record ${f}: ${(err as Error).message}`);
+        throw new Error(`Bad measurement record ${f}: ${(err as Error).message}`, { cause: err });
       }
     }
     return out;
@@ -202,7 +202,7 @@ export class KnowledgeStore {
           nSources: raw.n_sources,
         });
       } catch (err) {
-        throw new Error(`Bad drum-stats record ${f}: ${(err as Error).message}`);
+        throw new Error(`Bad drum-stats record ${f}: ${(err as Error).message}`, { cause: err });
       }
     }
     return out;
@@ -231,7 +231,7 @@ export class KnowledgeStore {
           bpm: raw.chopmap.bpm,
         });
       } catch (err) {
-        throw new Error(`Bad chop-map record ${f}: ${(err as Error).message}`);
+        throw new Error(`Bad chop-map record ${f}: ${(err as Error).message}`, { cause: err });
       }
     }
     return out;
@@ -258,7 +258,7 @@ export class KnowledgeStore {
           ...(analysis.sections ? { sectionCount: analysis.sections.length } : {}),
         });
       } catch (err) {
-        throw new Error(`Bad reference record ${f}: ${(err as Error).message}`);
+        throw new Error(`Bad reference record ${f}: ${(err as Error).message}`, { cause: err });
       }
     }
     return out;
