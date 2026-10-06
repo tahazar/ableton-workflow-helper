@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["typescript", "unicorn", "oxc", "vitest"],
+  "plugins": ["typescript", "unicorn", "oxc", "vitest", "import"],
   "categories": {
     "correctness": "warn",
     "suspicious": "warn"
@@ -8,7 +8,27 @@
   "rules": {
     "vitest/valid-expect": ["warn", { "maxArgs": 2 }],
     "unicorn/consistent-function-scoping": "off",
-    "no-underscore-dangle": "off"
+    "no-underscore-dangle": "off",
+    "import/no-cycle": "warn",
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": ["@ableton-extensions/sdk", "@ableton-extensions/sdk/*"],
+            "message": "Only packages/extension may import the Ableton SDK (ADR-001)."
+          }
+        ]
+      }
+    ]
   },
+  "overrides": [
+    {
+      "files": ["packages/extension/**"],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    }
+  ],
   "ignorePatterns": ["**/dist/**", "**/coverage/**", "vendor/**"]
 }

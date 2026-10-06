@@ -110,11 +110,12 @@ L3. `build: Enable oxlint suspicious category` (done)
     existing `Cmd` suffix). `consistent-function-scoping` (22 hits, all
     local helpers) and `no-underscore-dangle` (the deliberate
     `window.__endlessEngine` debug hook) are off.
-L4. `build: Enforce SDK import boundary with oxlint`
+L4. `build: Enforce SDK import boundary with oxlint` (done)
     ADR-001 says only `packages/extension` may import
-    `@ableton-extensions/sdk`. Encode it as `no-restricted-imports` with
-    an override for `packages/extension/**`, and enable `import/no-cycle`
-    (0 findings today) to keep it that way.
+    `@ableton-extensions/sdk`. `no-restricted-imports` blocks the package
+    and its subpaths everywhere except `packages/extension/**`, and the
+    `import` plugin now runs with `import/no-cycle` on. Both had 0
+    findings; probe files confirmed each rule fires.
 L5. `build: Add type-aware oxlint rules`
     Add `oxlint-tsgolint` and run with `--type-aware`. Enable
     `no-floating-promises`, `no-misused-promises`, `await-thenable`, and
