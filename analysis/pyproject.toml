@@ -66,3 +66,5 @@ source = ["awh_analysis"]
 
 [tool.coverage.report]
 show_missing = true
+# Floor only goes up; see docs/quality-plan.md.
+fail_under = 74
