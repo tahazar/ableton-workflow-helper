@@ -45,6 +45,12 @@ clap = [
     "laion_clap",
 ]
 
+# Test runner and coverage: `pip install -e '.[dev]'` from analysis/.
+dev = [
+    "pytest",
+    "pytest-cov",
+]
+
 [project.scripts]
 awh-analysis = "awh_analysis.__main__:main"
 
@@ -54,3 +60,9 @@ include = ["awh_analysis*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.coverage.run]
+source = ["awh_analysis"]
+
+[tool.coverage.report]
+show_missing = true

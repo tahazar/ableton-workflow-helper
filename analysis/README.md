@@ -11,9 +11,12 @@ One-time, from the repo root:
 
 ```sh
 python3 -m venv .venv
-.venv/bin/pip install numpy scipy soundfile pyloudnorm librosa pytest
+.venv/bin/pip install -e 'analysis[dev]'
 cd analysis && ../.venv/bin/pytest -q && cd ..   # engine self-test
 ```
+
+The `dev` extra adds `pytest` and `pytest-cov`. For a coverage table, run
+`../.venv/bin/pytest -q --cov` from `analysis/`.
 
 `librosa` (ISC, license audit below) is a base dependency:
 `awh samples index`'s `samplescan` uses it for spectral centroid/rolloff/
