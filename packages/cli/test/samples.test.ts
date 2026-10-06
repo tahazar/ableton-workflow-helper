@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, rm, utimes } from "node:fs/promises";
-import { existsSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
@@ -11,12 +11,16 @@ import {
   cosineSimilarity,
   expectedClapModelLabel,
   indexHasClapEmbeddings,
+  isPitchTagCandidate,
   loadSamplesIndex,
   makePythonClapEmbedder,
   makePythonClapTextEmbedder,
+  makePythonPitchTagger,
   makePythonScanner,
   normalizeVector,
+  noteNameToHz,
   pathTokens,
+  pitchDisplayNote,
   planIndexUpdate,
   rankSimilar,
   rankSimilarSemantic,
@@ -25,6 +29,7 @@ import {
   resolveSamplesIndexPath,
   runEmbed,
   runIndex,
+  runPitchTag,
   saveSamplesIndex,
   scanFilesChunked,
   searchIndex,
@@ -32,24 +37,28 @@ import {
   suggestRelaxations,
   summarizeIndex,
   walkSampleFiles,
+  PITCH_ANALYSIS_VERSION,
+  type ClapEmbedFn,
   type ClapEmbedRecord,
+  type PitchInfo,
+  type PitchTagFn,
+  type RawPitchRecord,
   type SamplesIndexFile,
   type ScanRecord,
   type ScannerFn,
 } from "../src/samples.js";
 
 /**
- * M11 sample-library tests (docs/design/sample-library.md's verification
- * bar). Two tiers, deliberately:
- *  - FAKE-scanner tests (fast, no python) for the index/prune/search
- *    machinery, which only needs deterministic feature RECORDS, not real
+ * Sample-library tests (docs/design/sample-library.md's verification
+ * bar), in two tiers:
+ *  - Fake-scanner tests (fast, no python) for the index/prune/search
+ *    machinery, which only needs deterministic feature records, not real
  *    audio analysis.
- *  - REAL-scanner tests (spawn `python -m awh_analysis samplescan` against
- *    the venv in the MAIN checkout, per the task's setup note) for the
- *    negative-control similarity ranking, which genuinely needs real
- *    MFCC/spectral features to be meaningful.
+ *  - Real-scanner tests (spawn `python -m awh_analysis samplescan` against
+ *    the repo's .venv) for the negative-control similarity
+ *    ranking, which needs real MFCC/spectral features to be meaningful.
  *
- * Every test sets AWH_SAMPLES_INDEX to a tmp path — NEVER writes to the
+ * Every test sets AWH_SAMPLES_INDEX to a tmp path and never writes to the
  * real ~/.awh (docs/design/sample-library.md: "Never committed... nothing
  * under library/ or knowledge/").
  */
@@ -84,10 +93,10 @@ function fakeScanRecord(path: string, overrides: Partial<ScanRecord> = {}): Scan
     spectral_centroid_hz: 1000,
     spectral_rolloff_hz: 3000,
     spectral_flatness: 0.2,
-    mfcc_means: new Array(13).fill(0) as number[],
+    mfcc_means: Array.from({ length: 13 }, () => 0),
     band_energy: { low: 0.6, mid: 0.3, high: 0.1 },
     dominant_band: "low",
-    similarity_vector: [...(new Array(13).fill(0) as number[]), 1000, 3000, 0.2, 0.6, 0.3, 0.1],
+    similarity_vector: [...Array.from({ length: 13 }, () => 0), 1000, 3000, 0.2, 0.6, 0.3, 0.1],
     low_band_hz: 120,
     high_band_hz: 2000,
     ...overrides,
@@ -118,9 +127,7 @@ async function touchFile(path: string, content = "x"): Promise<void> {
 describe("pathTokens", () => {
   it("normalizes folder + filename words, lowercased, split on punctuation", () => {
     const tokens = pathTokens("/packs/Amen_Break_170.wav");
-    expect(tokens).toEqual(
-      expect.arrayContaining(["packs", "amen", "break", "170", "wav"]),
-    );
+    expect(tokens).toEqual(expect.arrayContaining(["packs", "amen", "break", "170", "wav"]));
   });
 });
 
@@ -155,7 +162,7 @@ describe("walkSampleFiles", () => {
 });
 
 // ---------------------------------------------------------------------------
-// AWH_SAMPLES_INDEX honored — NEVER the real ~/.awh
+// AWH_SAMPLES_INDEX honored, never the real ~/.awh
 // ---------------------------------------------------------------------------
 
 describe("resolveSamplesIndexPath", () => {
@@ -179,7 +186,7 @@ describe("resolveSamplesIndexPath", () => {
 });
 
 // ---------------------------------------------------------------------------
-// runIndex: incremental skip + prune (fake scanner — deterministic, fast)
+// runIndex: incremental skip + prune (fake scanner: deterministic, fast)
 // ---------------------------------------------------------------------------
 
 describe("runIndex (fake scanner) — incremental + prune", () => {
@@ -196,7 +203,7 @@ describe("runIndex (fake scanner) — incremental + prune", () => {
     expect(first.pruned).toBe(0);
     expect(calls.length).toBeGreaterThan(0);
 
-    // touch NOTHING -> second run must scan 0 files (incremental skip)
+    // touch nothing -> second run must scan 0 files (incremental skip)
     const second = await runIndex([corpus], { rescan: false, indexPath, scanner });
     expect(second.scanned).toBe(0);
     expect(second.unchanged).toBe(2);
@@ -296,7 +303,7 @@ describe("planIndexUpdate", () => {
         },
       },
     };
-    // indexing ONLY /roots/a this run — /roots/b entries must survive even
+    // indexing only /roots/a this run; /roots/b entries must survive even
     // though they're not in currentFiles
     const plan = planIndexUpdate(index, ["/roots/a"], [], { rescan: false });
     expect(plan.toPrune).toEqual(["/roots/a/gone.wav"]);
@@ -420,8 +427,16 @@ describe("cosine similarity + normalization", () => {
   it("rankSimilar excludes the reference path itself", () => {
     const ref = [1, 0, 0];
     const candidates = [
-      { path: "/a", vector: [1, 0, 0], entry: { path: "/a", size: 1, mtimeMs: 1, tokens: [], scan: fakeScanRecord("/a") } },
-      { path: "/b", vector: [0, 1, 0], entry: { path: "/b", size: 1, mtimeMs: 1, tokens: [], scan: fakeScanRecord("/b") } },
+      {
+        path: "/a",
+        vector: [1, 0, 0],
+        entry: { path: "/a", size: 1, mtimeMs: 1, tokens: [], scan: fakeScanRecord("/a") },
+      },
+      {
+        path: "/b",
+        vector: [0, 1, 0],
+        entry: { path: "/b", size: 1, mtimeMs: 1, tokens: [], scan: fakeScanRecord("/b") },
+      },
     ];
     const ranked = rankSimilar(ref, candidates, "/a");
     expect(ranked.map((h) => h.path)).toEqual(["/b"]);
@@ -448,12 +463,12 @@ describe("summarizeIndex", () => {
 });
 
 // ---------------------------------------------------------------------------
-// REAL python scanner — negative-control similarity ranking + real index
-// build. Uses the venv in the MAIN checkout (task setup note); skipped
-// gracefully if it isn't present so the rest of the suite still runs.
+// Real python scanner: negative-control similarity ranking + real index
+// build. Uses the repo's .venv; skipped if it isn't present so the
+// rest of the suite still runs.
 // ---------------------------------------------------------------------------
 
-const MAIN_VENV_PYTHON = "/home/user/ableton-workflow-helper/.venv/bin/python";
+const MAIN_VENV_PYTHON = fileURLToPath(new URL("../../../.venv/bin/python", import.meta.url));
 const hasRealPython = existsSync(MAIN_VENV_PYTHON);
 
 function writeWavMono16(path: string, samples: number[], sr: number): void {
@@ -481,12 +496,12 @@ function writeWavMono16(path: string, samples: number[], sr: number): void {
 
 function sineSamples(freq: number, sr: number, durS: number, amp = 0.6): number[] {
   const n = Math.round(durS * sr);
-  const out: number[] = new Array(n);
+  const out = Array.from({ length: n }, () => 0);
   for (let i = 0; i < n; i++) out[i] = amp * Math.sin((2 * Math.PI * freq * i) / sr);
   return out;
 }
 
-/** Deterministic PRNG (mulberry32) — no external deps needed for a fake
+/** Deterministic PRNG (mulberry32), so no external deps are needed for a fake
  * noise burst in a Node test. */
 function noiseSamples(durS: number, sr: number, amp = 0.5, seed = 1): number[] {
   let s = seed >>> 0;
@@ -497,7 +512,7 @@ function noiseSamples(durS: number, sr: number, amp = 0.5, seed = 1): number[] {
     return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
   };
   const n = Math.round(durS * sr);
-  const out: number[] = new Array(n);
+  const out = Array.from({ length: n }, () => 0);
   for (let i = 0; i < n; i++) {
     const env = Math.exp(-i / sr / 0.03);
     out[i] = amp * env * (rand() * 2 - 1);
@@ -505,80 +520,80 @@ function noiseSamples(durS: number, sr: number, amp = 0.5, seed = 1): number[] {
   return out;
 }
 
-describe.skipIf(!hasRealPython)("real analysis engine — index build + similarity negative control", () => {
-  const SR = 44100;
-  let originalAwhPython: string | undefined;
+describe.skipIf(!hasRealPython)(
+  "real analysis engine — index build + similarity negative control",
+  () => {
+    const SR = 44100;
+    let originalAwhPython: string | undefined;
 
-  beforeEach(() => {
-    originalAwhPython = process.env.AWH_PYTHON;
-    process.env.AWH_PYTHON = MAIN_VENV_PYTHON;
-  });
-  afterEach(() => {
-    if (originalAwhPython === undefined) delete process.env.AWH_PYTHON;
-    else process.env.AWH_PYTHON = originalAwhPython;
-  });
+    beforeEach(() => {
+      originalAwhPython = process.env.AWH_PYTHON;
+      process.env.AWH_PYTHON = MAIN_VENV_PYTHON;
+    });
+    afterEach(() => {
+      if (originalAwhPython === undefined) delete process.env.AWH_PYTHON;
+      else process.env.AWH_PYTHON = originalAwhPython;
+    });
 
-  it(
-    "indexes a real tmp corpus, then a `similar` query on a sine-bass reference " +
-      "ranks a second sine bass above the noise hats, hat last",
-    async () => {
-      const corpus = join(tmpDir, "corpus");
-      await mkdir(corpus, { recursive: true });
-      writeWavMono16(join(corpus, "bass1.wav"), sineSamples(80, SR, 0.6), SR);
-      writeWavMono16(join(corpus, "bass2.wav"), sineSamples(85, SR, 0.6), SR);
-      writeWavMono16(join(corpus, "bass3.wav"), sineSamples(110, SR, 0.7), SR);
-      writeWavMono16(join(corpus, "hat1.wav"), noiseSamples(0.12, SR, 0.5, 1), SR);
-      writeWavMono16(join(corpus, "hat2.wav"), noiseSamples(0.15, SR, 0.5, 2), SR);
+    it(
+      "indexes a real tmp corpus, then a `similar` query on a sine-bass reference " +
+        "ranks a second sine bass above the noise hats, hat last",
+      async () => {
+        const corpus = join(tmpDir, "corpus");
+        await mkdir(corpus, { recursive: true });
+        writeWavMono16(join(corpus, "bass1.wav"), sineSamples(80, SR, 0.6), SR);
+        writeWavMono16(join(corpus, "bass2.wav"), sineSamples(85, SR, 0.6), SR);
+        writeWavMono16(join(corpus, "bass3.wav"), sineSamples(110, SR, 0.7), SR);
+        writeWavMono16(join(corpus, "hat1.wav"), noiseSamples(0.12, SR, 0.5, 1), SR);
+        writeWavMono16(join(corpus, "hat2.wav"), noiseSamples(0.15, SR, 0.5, 2), SR);
 
-      const indexPath = join(tmpDir, "index.json");
-      const { python, cwd } = analysisPython();
-      expect(existsSync(cwd)).toBe(true);
-      const scanner = makePythonScanner(python, cwd);
+        const indexPath = join(tmpDir, "index.json");
+        const { python, cwd } = analysisPython();
+        expect(existsSync(cwd)).toBe(true);
+        const scanner = makePythonScanner(python, cwd);
 
-      const first = await runIndex([corpus], { rescan: false, indexPath, scanner });
-      expect(first.scanned).toBe(5);
-      expect(first.unreadable).toBe(0);
+        const first = await runIndex([corpus], { rescan: false, indexPath, scanner });
+        expect(first.scanned).toBe(5);
+        expect(first.unreadable).toBe(0);
 
-      // incremental skip proven on the real engine too
-      const second = await runIndex([corpus], { rescan: false, indexPath, scanner });
-      expect(second.scanned).toBe(0);
-      expect(second.unchanged).toBe(5);
+        // incremental skip proven on the real engine too
+        const second = await runIndex([corpus], { rescan: false, indexPath, scanner });
+        expect(second.scanned).toBe(0);
+        expect(second.unchanged).toBe(5);
 
-      const index = await loadSamplesIndex(indexPath);
-      const bass1Path = join(corpus, "bass1.wav");
-      const { vector: refVector, fromIndex } = await resolveReferenceVector(
-        index,
-        bass1Path,
-        scanner,
-      );
-      expect(fromIndex).toBe(true);
+        const index = await loadSamplesIndex(indexPath);
+        const bass1Path = join(corpus, "bass1.wav");
+        const { vector: refVector, fromIndex } = await resolveReferenceVector(
+          index,
+          bass1Path,
+          scanner,
+        );
+        expect(fromIndex).toBe(true);
 
-      const candidates = Object.values(index.files)
-        .filter((e) => !e.scan.unreadable)
-        .map((e) => ({ path: e.path, vector: e.scan.similarity_vector!, entry: e }));
-      const ranked = rankSimilar(refVector, candidates, bass1Path);
-      expect(ranked.length).toBe(4); // everything except the reference itself
+        const candidates = Object.values(index.files)
+          .filter((e) => !e.scan.unreadable)
+          .map((e) => ({ path: e.path, vector: e.scan.similarity_vector!, entry: e }));
+        const ranked = rankSimilar(refVector, candidates, bass1Path);
+        expect(ranked.length).toBe(4); // everything except the reference itself
 
-      const rankedNames = ranked.map((h) => h.path.split("/").pop());
-      // NEGATIVE CONTROL: both hats must rank BELOW both other basses —
-      // the reference is more similar to any other sine bass than to a
-      // noise burst.
-      const bassRanks = rankedNames
-        .map((n, i) => (n?.startsWith("bass") ? i : -1))
-        .filter((i) => i >= 0);
-      const hatRanks = rankedNames
-        .map((n, i) => (n?.startsWith("hat") ? i : -1))
-        .filter((i) => i >= 0);
-      expect(Math.max(...bassRanks)).toBeLessThan(Math.min(...hatRanks));
-      // and the very last-ranked sample is a hat
-      expect(rankedNames[rankedNames.length - 1]).toMatch(/^hat/);
-    },
-    30_000,
-  );
+        const rankedNames = ranked.map((h) => h.path.split("/").pop());
+        // Negative control: both hats must rank below both other basses,
+        // since the reference is more similar to any other sine bass than to
+        // a noise burst.
+        const bassRanks = rankedNames
+          .map((n, i) => (n?.startsWith("bass") ? i : -1))
+          .filter((i) => i >= 0);
+        const hatRanks = rankedNames
+          .map((n, i) => (n?.startsWith("hat") ? i : -1))
+          .filter((i) => i >= 0);
+        expect(Math.max(...bassRanks)).toBeLessThan(Math.min(...hatRanks));
+        // and the very last-ranked sample is a hat
+        expect(rankedNames[rankedNames.length - 1]).toMatch(/^hat/);
+      },
+      30_000,
+    );
 
-  it(
-    "reference file not in the index is scanned on the fly",
-    async () => {
+    it("reference file not in the index is scanned on the fly", async () => {
       const corpus = join(tmpDir, "corpus");
       await mkdir(corpus, { recursive: true });
       writeWavMono16(join(corpus, "bass2.wav"), sineSamples(85, SR, 0.6), SR);
@@ -595,19 +610,18 @@ describe.skipIf(!hasRealPython)("real analysis engine — index build + similari
       const { fromIndex, vector } = await resolveReferenceVector(index, outsideRef, scanner);
       expect(fromIndex).toBe(false);
       expect(vector.length).toBeGreaterThan(0);
-    },
-    30_000,
-  );
-});
+    }, 30_000);
+  },
+);
 
 // ---------------------------------------------------------------------------
-// M11b semantic search (docs/design/sample-semantic.md) — ALL under
-// AWH_CLAP_STUB=1, same two-tier split as above:
+// Semantic search (docs/design/sample-semantic.md), all under
+// AWH_CLAP_STUB=1, with the same two-tier split as above:
 //  - pure logic (fake embedder, no python) for embed/mismatch/search/rank
-//  - real `clapembed.py` subprocess (still AWH_CLAP_STUB=1, so no torch
-//    ever loads) for the end-to-end integration + the negative control,
-//    which genuinely needs the CLI's OWN wiring in src/index.ts, not just
-//    the samples.ts library functions.
+//  - real `clapembed.py` subprocess (still AWH_CLAP_STUB=1, so torch never
+//    loads) for the end-to-end integration + the negative control, which
+//    needs the CLI's own wiring in src/index.ts, not only the samples.ts
+//    library functions.
 // ---------------------------------------------------------------------------
 
 describe("M11b semantic search — embed/search/similar logic (fake embedder, AWH_CLAP_STUB=1)", () => {
@@ -621,7 +635,7 @@ describe("M11b semantic search — embed/search/similar logic (fake embedder, AW
     else process.env.AWH_CLAP_STUB = originalStub;
   });
 
-  /** A trivially fake embedder — deterministic per path, no python, but
+  /** A fake embedder: deterministic per path, no python, but
    * still stamped "stub-v1" so it agrees with `expectedClapModelLabel`
    * under AWH_CLAP_STUB=1 (set above), the same contract the real
    * clapembed.py subprocess honors. */
@@ -698,12 +712,12 @@ describe("M11b semantic search — embed/search/similar logic (fake embedder, AW
     const { scanner } = fakeScannerWithCallCount();
     await runIndex([corpus], { rescan: false, indexPath, scanner });
 
-    // seed a prior embed under a DIFFERENT model label — simulating a real
+    // seed a prior embed under a different model label, simulating a real
     // `embed --model general` run without needing two real model spaces
     // under the stub (which always stamps "stub-v1" regardless of --model).
     const index = await loadSamplesIndex(indexPath);
     for (const entry of Object.values(index.files)) {
-      entry.clap = { model: "clap-general-v1", dim: 8, v: new Array(8).fill(0.1) };
+      entry.clap = { model: "clap-general-v1", dim: 8, v: Array.from({ length: 8 }, () => 0.1) };
     }
     await saveSamplesIndex(indexPath, index);
 
@@ -824,66 +838,58 @@ describe.skipIf(!hasRealPython)(
       else process.env.AWH_CLAP_STUB = originalStub;
     });
 
-    it(
-      "embeds real files through the real clapembed subprocess and is incremental",
-      async () => {
-        const corpus = join(tmpDir, "corpus");
-        // NOTE: content doesn't need to be valid audio — the stub embedder
-        // hashes raw bytes, it never decodes anything.
-        await touchFile(join(corpus, "a.wav"), "content-a");
-        await touchFile(join(corpus, "b.wav"), "content-b");
-        const indexPath = join(tmpDir, "index.json");
-        const { scanner } = fakeScannerWithCallCount();
-        await runIndex([corpus], { rescan: false, indexPath, scanner });
+    it("embeds real files through the real clapembed subprocess and is incremental", async () => {
+      const corpus = join(tmpDir, "corpus");
+      // Content doesn't need to be valid audio: the stub embedder
+      // hashes raw bytes, it never decodes anything.
+      await touchFile(join(corpus, "a.wav"), "content-a");
+      await touchFile(join(corpus, "b.wav"), "content-b");
+      const indexPath = join(tmpDir, "index.json");
+      const { scanner } = fakeScannerWithCallCount();
+      await runIndex([corpus], { rescan: false, indexPath, scanner });
 
-        const { python, cwd } = analysisPython();
-        const embedder = makePythonClapEmbedder(python, cwd);
-        const first = await runEmbed({ indexPath, model: "music", embedder });
-        expect(first.embedded).toBe(2);
-        expect(first.modelLabel).toBe("stub-v1");
+      const { python, cwd } = analysisPython();
+      const embedder = makePythonClapEmbedder(python, cwd);
+      const first = await runEmbed({ indexPath, model: "music", embedder });
+      expect(first.embedded).toBe(2);
+      expect(first.modelLabel).toBe("stub-v1");
 
-        const second = await runEmbed({ indexPath, model: "music", embedder });
-        expect(second.embedded).toBe(0);
-        expect(second.upToDate).toBe(2);
-      },
-      20_000,
-    );
+      const second = await runEmbed({ indexPath, model: "music", embedder });
+      expect(second.embedded).toBe(0);
+      expect(second.upToDate).toBe(2);
+    }, 20_000);
 
-    it(
-      "similar --semantic ranks a stub-identical (byte-for-byte copy) file first",
-      async () => {
-        const corpus = join(tmpDir, "corpus");
-        await touchFile(join(corpus, "ref.wav"), "IDENTICAL-BYTES-XYZ");
-        await touchFile(join(corpus, "dup.wav"), "IDENTICAL-BYTES-XYZ"); // byte-identical copy
-        await touchFile(join(corpus, "other.wav"), "totally-different-content");
-        const indexPath = join(tmpDir, "index.json");
-        const { scanner } = fakeScannerWithCallCount();
-        await runIndex([corpus], { rescan: false, indexPath, scanner });
+    it("similar --semantic ranks a stub-identical (byte-for-byte copy) file first", async () => {
+      const corpus = join(tmpDir, "corpus");
+      await touchFile(join(corpus, "ref.wav"), "IDENTICAL-BYTES-XYZ");
+      await touchFile(join(corpus, "dup.wav"), "IDENTICAL-BYTES-XYZ"); // byte-identical copy
+      await touchFile(join(corpus, "other.wav"), "totally-different-content");
+      const indexPath = join(tmpDir, "index.json");
+      const { scanner } = fakeScannerWithCallCount();
+      await runIndex([corpus], { rescan: false, indexPath, scanner });
 
-        const { python, cwd } = analysisPython();
-        const embedder = makePythonClapEmbedder(python, cwd);
-        await runEmbed({ indexPath, model: "music", embedder });
+      const { python, cwd } = analysisPython();
+      const embedder = makePythonClapEmbedder(python, cwd);
+      await runEmbed({ indexPath, model: "music", embedder });
 
-        const index = await loadSamplesIndex(indexPath);
-        const refPath = join(corpus, "ref.wav");
-        const { vector: refVector, fromIndex } = await resolveReferenceClapVector(
-          index,
-          refPath,
-          embedder,
-          "music",
-        );
-        expect(fromIndex).toBe(true);
+      const index = await loadSamplesIndex(indexPath);
+      const refPath = join(corpus, "ref.wav");
+      const { vector: refVector, fromIndex } = await resolveReferenceClapVector(
+        index,
+        refPath,
+        embedder,
+        "music",
+      );
+      expect(fromIndex).toBe(true);
 
-        const readable = Object.values(index.files).filter((e) => !e.scan.unreadable);
-        const candidates = readable.map((e) => ({ path: e.path, vector: e.clap!, entry: e }));
-        const ranked = rankSimilarSemantic(refVector.v, candidates, refPath);
+      const readable = Object.values(index.files).filter((e) => !e.scan.unreadable);
+      const candidates = readable.map((e) => ({ path: e.path, vector: e.clap!, entry: e }));
+      const ranked = rankSimilarSemantic(refVector.v, candidates, refPath);
 
-        expect(ranked[0]!.path).toBe(resolve(join(corpus, "dup.wav")));
-        expect(ranked[0]!.score).toBeCloseTo(1, 6);
-        expect(ranked[ranked.length - 1]!.path).toBe(resolve(join(corpus, "other.wav")));
-      },
-      20_000,
-    );
+      expect(ranked[0]!.path).toBe(resolve(join(corpus, "dup.wav")));
+      expect(ranked[0]!.score).toBeCloseTo(1, 6);
+      expect(ranked[ranked.length - 1]!.path).toBe(resolve(join(corpus, "other.wav")));
+    }, 20_000);
 
     it("text embedding via the real subprocess is deterministic and shaped right", async () => {
       const { python, cwd } = analysisPython();
@@ -907,7 +913,7 @@ describe.skipIf(!hasRealPython)(
         const indexPath = join(tmpDir, "index.json");
         const { scanner } = fakeScannerWithCallCount();
         await runIndex([corpus], { rescan: false, indexPath, scanner });
-        // deliberately never run `embed` — the index has entries, zero vectors
+        // deliberately never run `embed`: the index has entries, zero vectors
 
         const result = spawnSync(
           process.execPath,
@@ -932,6 +938,325 @@ describe.skipIf(!hasRealPython)(
     );
   },
 );
+
+// ---------------------------------------------------------------------------
+// Pitch tagging (kicks/subs -> f0/note, for key-matched search). Same shape
+// as the embed/search-semantic pattern above: a separate, opt-in
+// enrichment pass, incremental, only over eligible candidates
+// (isPitchTagCandidate).
+// ---------------------------------------------------------------------------
+
+describe("M11c pitch tagging — index/search logic (fake tagger)", () => {
+  /** A candidate record: a one-shot whose energy is low-band-dominated
+   * (the eligibility filter's own criteria). */
+  function candidateRecord(path: string, overrides: Partial<ScanRecord> = {}): ScanRecord {
+    return fakeScanRecord(path, { type_guess: "oneshot", dominant_band: "low", ...overrides });
+  }
+
+  function fakePitchRecord(path: string, overrides: Partial<RawPitchRecord> = {}): RawPitchRecord {
+    return {
+      path,
+      unreadable: false,
+      error: null,
+      pitch_analysis_version: PITCH_ANALYSIS_VERSION,
+      state: "voiced",
+      f0_hz: 55.0,
+      note: { name: "A1", midi: 33, cents: 0 }, // standard notation, as the real Python side stamps it
+      voiced_fraction: 0.9,
+      confidence: 0.6,
+      f0_stability_semitones: 0.1,
+      harmonic_dominance: {
+        flagged: false,
+        harmonic: null,
+        ratio_db: null,
+        time_s: null,
+        fraction_of_voiced_frames: 0,
+      },
+      ...overrides,
+    };
+  }
+
+  function fakePitchTagger(): { tagger: PitchTagFn; calls: string[][] } {
+    const calls: string[][] = [];
+    const tagger: PitchTagFn = async (files) => {
+      calls.push(files);
+      return files.map((f) => fakePitchRecord(f));
+    };
+    return { tagger, calls };
+  }
+
+  describe("isPitchTagCandidate", () => {
+    it("true for a low-band one-shot", () => {
+      const index = indexFromRecords([candidateRecord("/a.wav")]);
+      expect(isPitchTagCandidate(index.files["/a.wav"]!)).toBe(true);
+    });
+    it("false for a loop (even low-band)", () => {
+      const index = indexFromRecords([
+        fakeScanRecord("/a.wav", { type_guess: "loop", dominant_band: "low" }),
+      ]);
+      expect(isPitchTagCandidate(index.files["/a.wav"]!)).toBe(false);
+    });
+    it("false for a one-shot NOT low-band (a hat, say)", () => {
+      const index = indexFromRecords([
+        fakeScanRecord("/a.wav", { type_guess: "oneshot", dominant_band: "high" }),
+      ]);
+      expect(isPitchTagCandidate(index.files["/a.wav"]!)).toBe(false);
+    });
+    it("false for an unreadable entry", () => {
+      const index = indexFromRecords([{ path: "/a.wav", unreadable: true, error: "boom" }]);
+      expect(isPitchTagCandidate(index.files["/a.wav"]!)).toBe(false);
+    });
+  });
+
+  it("runPitchTag tags only candidates and is incremental (second run tags 0)", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "kick.wav"));
+    await touchFile(join(corpus, "hat.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const scanner: ScannerFn = async (files) =>
+      files.map((f) =>
+        f.includes("kick")
+          ? candidateRecord(f)
+          : fakeScanRecord(f, { type_guess: "oneshot", dominant_band: "high" }),
+      );
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const { tagger, calls } = fakePitchTagger();
+    const first = await runPitchTag({ indexPath, tagger });
+    expect(first.tagged).toBe(1);
+    expect(first.neverTagged).toBe(1);
+    expect(first.stale).toBe(0);
+    expect(first.upToDate).toBe(0);
+    expect(first.notCandidate).toBe(1); // the hat
+    expect(first.totalCandidates).toBe(1);
+    expect(calls.flat()).toEqual([join(corpus, "kick.wav")]); // never called for the hat
+
+    const second = await runPitchTag({ indexPath, tagger });
+    expect(second.tagged).toBe(0);
+    expect(second.upToDate).toBe(1);
+  });
+
+  it("re-tags a stale (older PITCH_ANALYSIS_VERSION) entry", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "kick.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const scanner: ScannerFn = async (files) => files.map((f) => candidateRecord(f));
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const index = await loadSamplesIndex(indexPath);
+    const kickPath = join(corpus, "kick.wav");
+    index.files[kickPath]!.pitch = {
+      analysisVersion: 0, // older than PITCH_ANALYSIS_VERSION
+      state: "unvoiced",
+      f0Hz: null,
+      note: null,
+      voicedFraction: 0,
+      confidence: 0,
+      f0StabilitySemitones: null,
+      harmonicDominance: {
+        flagged: false,
+        harmonic: null,
+        ratioDb: null,
+        timeS: null,
+        fractionOfVoicedFrames: 0,
+      },
+    };
+    await saveSamplesIndex(indexPath, index);
+
+    const { tagger } = fakePitchTagger();
+    const result = await runPitchTag({ indexPath, tagger });
+    expect(result.stale).toBe(1);
+    expect(result.neverTagged).toBe(0);
+    expect(result.tagged).toBe(1);
+
+    const reloaded = await loadSamplesIndex(indexPath);
+    expect(reloaded.files[kickPath]!.pitch!.state).toBe("voiced"); // overwritten by the re-tag
+  });
+
+  it("zero eligible candidates is a STATE (totalCandidates=0), not an error", async () => {
+    const corpus = join(tmpDir, "corpus");
+    await touchFile(join(corpus, "hat.wav"));
+    const indexPath = join(tmpDir, "index.json");
+    const scanner: ScannerFn = async (files) =>
+      files.map((f) => fakeScanRecord(f, { type_guess: "oneshot", dominant_band: "high" }));
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const { tagger, calls } = fakePitchTagger();
+    const result = await runPitchTag({ indexPath, tagger });
+    expect(result.totalCandidates).toBe(0);
+    expect(result.tagged).toBe(0);
+    expect(calls.length).toBe(0);
+  });
+
+  // ---------------------------------------------------------------------
+  // Octave-convention correctness. Python's pitch.py stamps `note.name` in
+  // scientific notation (C4 = MIDI 60), an octave apart from this
+  // codebase's Ableton convention (C3 = MIDI 60, @awh/core's
+  // pitchToMidi/midiToPitch). Every note name the user sees or types must
+  // use the Ableton convention; the raw Python `name` must never reach a
+  // user.
+  // ---------------------------------------------------------------------
+
+  it("noteNameToHz parses Ableton-convention names (A3 = 440 Hz, not A4)", () => {
+    expect(noteNameToHz("A3")).toBeCloseTo(440, 6);
+    expect(noteNameToHz("C3")).toBeCloseTo(261.6255653, 3); // Ableton C3 = middle C = MIDI 60
+  });
+
+  it("pitchDisplayNote re-derives the Ableton name from midi, ignoring the raw Python name", () => {
+    const info: PitchInfo = {
+      analysisVersion: PITCH_ANALYSIS_VERSION,
+      state: "voiced",
+      f0Hz: 440,
+      note: { name: "A4", midi: 69, cents: 0 }, // Python's scientific-notation name, must be ignored
+      voicedFraction: 0.9,
+      confidence: 0.6,
+      f0StabilitySemitones: 0.1,
+      harmonicDominance: {
+        flagged: false,
+        harmonic: null,
+        ratioDb: null,
+        timeS: null,
+        fractionOfVoicedFrames: 0,
+      },
+    };
+    expect(pitchDisplayNote(info)).toBe("A3"); // Ableton convention, not the stored "A4"
+  });
+
+  it("pitchDisplayNote returns null when there's no pitch", () => {
+    const info: PitchInfo = {
+      analysisVersion: PITCH_ANALYSIS_VERSION,
+      state: "unvoiced",
+      f0Hz: null,
+      note: null,
+      voicedFraction: 0,
+      confidence: 0,
+      f0StabilitySemitones: null,
+      harmonicDominance: {
+        flagged: false,
+        harmonic: null,
+        ratioDb: null,
+        timeS: null,
+        fractionOfVoicedFrames: 0,
+      },
+    };
+    expect(pitchDisplayNote(info)).toBeNull();
+  });
+
+  // ---------------------------------------------------------------------
+  // search --near-note
+  // ---------------------------------------------------------------------
+
+  function withPitch(rec: ScanRecord, pitch: PitchInfo): SamplesIndexFile["files"][string] {
+    return { path: rec.path, size: 1, mtimeMs: 1, tokens: pathTokens(rec.path), scan: rec, pitch };
+  }
+
+  function voicedPitch(f0Hz: number): PitchInfo {
+    return {
+      analysisVersion: PITCH_ANALYSIS_VERSION,
+      state: "voiced",
+      f0Hz,
+      note: { name: "?", midi: 0, cents: 0 },
+      voicedFraction: 0.9,
+      confidence: 0.6,
+      f0StabilitySemitones: 0.1,
+      harmonicDominance: {
+        flagged: false,
+        harmonic: null,
+        ratioDb: null,
+        timeS: null,
+        fractionOfVoicedFrames: 0,
+      },
+    };
+  }
+
+  it("searchIndex --near-note matches within cents tolerance and excludes untagged/unvoiced entries", () => {
+    const targetHz = noteNameToHz("F1"); // this project's own key root, per the real session
+    const index: SamplesIndexFile = { version: 1, roots: [], files: {} };
+    // exactly on the note
+    index.files["/on-note.wav"] = withPitch(candidateRecord("/on-note.wav"), voicedPitch(targetHz));
+    // 20 cents sharp — inside the default 50-cent tolerance
+    index.files["/close.wav"] = withPitch(
+      candidateRecord("/close.wav"),
+      voicedPitch(targetHz * 2 ** (20 / 1200)),
+    );
+    // a full semitone (100 cents) away — outside the default tolerance
+    index.files["/far.wav"] = withPitch(
+      candidateRecord("/far.wav"),
+      voicedPitch(targetHz * 2 ** (100 / 1200)),
+    );
+    // a candidate that was never tagged
+    index.files["/untagged.wav"] = {
+      ...indexFromRecords([candidateRecord("/untagged.wav")]).files["/untagged.wav"]!,
+    };
+    // a tagged-but-unvoiced (broadband) entry sitting numerically at f0Hz=null
+    index.files["/broadband.wav"] = withPitch(candidateRecord("/broadband.wav"), {
+      ...voicedPitch(targetHz),
+      state: "unvoiced",
+      f0Hz: null,
+    });
+
+    const hits = searchIndex(index, [], { nearNoteHz: targetHz });
+    const paths = hits.map((h) => h.path).toSorted();
+    expect(paths).toEqual(["/close.wav", "/on-note.wav"]);
+  });
+
+  it("suggestRelaxations names untagged eligible candidates when --near-note finds nothing", () => {
+    const targetHz = noteNameToHz("F1");
+    const index: SamplesIndexFile = { version: 1, roots: [], files: {} };
+    index.files["/kick1.wav"] = indexFromRecords([candidateRecord("/kick1.wav")]).files[
+      "/kick1.wav"
+    ]!;
+    index.files["/kick2.wav"] = indexFromRecords([candidateRecord("/kick2.wav")]).files[
+      "/kick2.wav"
+    ]!;
+
+    const suggestions = suggestRelaxations(index, [], { nearNoteHz: targetHz });
+    expect(suggestions.some((s) => s.note.includes("pitch-tag"))).toBe(true);
+  });
+});
+
+describe.skipIf(!hasRealPython)("M11c real samplepitch.py subprocess integration", () => {
+  const SR = 44100;
+  let originalAwhPython: string | undefined;
+
+  beforeEach(() => {
+    originalAwhPython = process.env.AWH_PYTHON;
+    process.env.AWH_PYTHON = MAIN_VENV_PYTHON;
+  });
+  afterEach(() => {
+    if (originalAwhPython === undefined) delete process.env.AWH_PYTHON;
+    else process.env.AWH_PYTHON = originalAwhPython;
+  });
+
+  it("pitch-tags a real tuned low sine as voiced, and real broadband noise as unvoiced", async () => {
+    const corpus = join(tmpDir, "corpus");
+    mkdirSync(corpus, { recursive: true });
+    const tunedPath = join(corpus, "808.wav");
+    const noisePath = join(corpus, "kick.wav");
+    writeWavMono16(tunedPath, sineSamples(55.0, SR, 0.6), SR);
+    writeWavMono16(noisePath, noiseSamples(0.25, SR, 0.6, 3), SR);
+    const indexPath = join(tmpDir, "index.json");
+    // Force both files pitch-tag-eligible regardless of the real scan
+    // heuristics (isPitchTagCandidate: readable + oneshot + low band).
+    const scanner: ScannerFn = async (files) =>
+      files.map((f) =>
+        fakeScanRecord(f, { type_guess: "oneshot", dominant_band: "low", onset_count: 1 }),
+      );
+
+    await runIndex([corpus], { rescan: false, indexPath, scanner });
+
+    const { python, cwd } = analysisPython();
+    const tagger = makePythonPitchTagger(python, cwd);
+    const result = await runPitchTag({ indexPath, tagger });
+    expect(result.tagged).toBe(2);
+
+    const reloaded = await loadSamplesIndex(indexPath);
+    expect(reloaded.files[tunedPath]!.pitch!.state).toBe("voiced");
+    expect(reloaded.files[tunedPath]!.pitch!.f0Hz).not.toBeNull();
+    expect(reloaded.files[noisePath]!.pitch!.state).toBe("unvoiced");
+    expect(reloaded.files[noisePath]!.pitch!.f0Hz).toBeNull();
+  }, 20_000);
+});
 
 // keep scanFilesChunked + saveSamplesIndex imports exercised even where the
 // higher-level runIndex tests above don't directly assert on them

@@ -10,7 +10,24 @@ from typing import Any
 
 import soundfile as sf
 
-from . import a2m, ab, bands, clapembed, drumstats, duck, opmatch, pitch, pumpcheck, ref, report, samplescan, targets
+from . import (
+    a2m,
+    ab,
+    advise as advise_mod,
+    bands,
+    breakchop,
+    clapembed,
+    drumstats,
+    duck,
+    opmatch,
+    pitch,
+    pumpcheck,
+    ref,
+    report,
+    samplepitch,
+    samplescan,
+    targets,
+)
 
 
 def _print_json(obj: Any) -> None:
@@ -142,8 +159,6 @@ def _cmd_target(args: argparse.Namespace) -> int:
     return 0
 
 
-
-
 def _cmd_duck(args: argparse.Namespace) -> int:
     from . import audio
 
@@ -182,9 +197,9 @@ def _cmd_duck(args: argparse.Namespace) -> int:
             f"between-hit floor; body ends {k['body_end_ms']:.0f} ms; "
             f"tail gone by {k['decay_done_ms']:.0f} ms",
             "",
-            f"Recommended Volume Shaper envelope (per trigger):",
+            "Recommended Volume Shaper envelope (per trigger):",
             f"  depth    {rec['depth_db']:.1f} dB   ({rec['depth_source']})",
-            f"  attack   0 ms (instant — trigger-locked)",
+            "  attack   0 ms (instant — trigger-locked)",
             f"  hold     {rec['hold_ms']:.0f} ms at full depth",
             f"  release  {rec['release_ms']:.0f} ms, {rec['release_curve']} — fully "
             f"recovered by {rec['fully_recovered_by_ms']:.0f} ms "
@@ -202,8 +217,6 @@ def _cmd_duck(args: argparse.Namespace) -> int:
             )
         print("\n".join(lines))
     return 0
-
-
 
 
 def _cmd_duckdepth(args: argparse.Namespace) -> int:
@@ -315,8 +328,6 @@ def _cmd_ref(args: argparse.Namespace) -> int:
     return 0
 
 
-
-
 def _cmd_a2m(args: argparse.Namespace) -> int:
     result = a2m.transcribe(
         args.file,
@@ -406,9 +417,7 @@ def _render_bands_text(result: dict) -> str:
     files = result["files"]
     multi = len(files) > 1
     lines = [f"calibration: {result['calibration']}", ""]
-    header = f"{'band':<14s} {'range':<14s}" + "".join(
-        f"{'  ' + f['file']:>22s}" for f in files
-    )
+    header = f"{'band':<14s} {'range':<14s}" + "".join(f"{'  ' + f['file']:>22s}" for f in files)
     lines.append(header)
     labels = [b["label"] for b in files[0]["bands"]]
     for idx, label in enumerate(labels):
@@ -434,7 +443,9 @@ def _render_bands_text(result: dict) -> str:
 
 
 def _cmd_bands(args: argparse.Namespace) -> int:
-    result = bands.compare_files(args.files, bands_spec=args.bands, start_s=args.from_, end_s=args.to)
+    result = bands.compare_files(
+        args.files, bands_spec=args.bands, start_s=args.from_, end_s=args.to
+    )
     if args.json:
         _print_json(result)
     else:
@@ -558,7 +569,7 @@ def _cmd_drumstats(args: argparse.Namespace) -> int:
         dataset_name = os.path.basename(os.path.normpath(args.paths[0]))
 
     if not files:
-        # Zero audio files found is a STATE, not an error (docs/lessons-learned.md #5).
+        # Zero audio files found is a state, not an error (docs/lessons-learned.md #5).
         payload = {"dataset": dataset_name, "n_loops": 0, "files": []}
         if args.json:
             _print_json(payload)
@@ -598,6 +609,21 @@ def _cmd_samplescan(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_samplepitch(args: argparse.Namespace) -> int:
+    from .audio import sanitize_json
+
+    files = list(args.files)
+    if not files:
+        files = [line.strip() for line in sys.stdin if line.strip()]
+    for path in files:
+        try:
+            record = samplepitch.pitch_for_sample(path)
+        except Exception as exc:  # noqa: BLE001 — never crash the batch on one bad file
+            record = {"path": path, "unreadable": True, "error": str(exc)}
+        print(json.dumps(sanitize_json(record)))
+    return 0
+
+
 def _cmd_clapembed(args: argparse.Namespace) -> int:
     from .audio import sanitize_json
 
@@ -614,6 +640,131 @@ def _cmd_clapembed(args: argparse.Namespace) -> int:
     return 0
 
 
+def _render_advise_text(result: dict) -> str:
+    lines = [
+        f"preset: {result['preset']}   target: {'yes' if result['has_target'] else 'no'}   "
+        f"layers: {'yes' if result['has_layers'] else 'no'}",
+        "",
+    ]
+    if result.get("healthy"):
+        h = result["healthy"]
+        lines.append(f"HEALTHY — {h['message']}")
+        for m in h.get("marginal_metrics", []):
+            lines.append(
+                f"  closest to tripping: {m['id']}  margin {_fmt(m['margin'])} {m['unit']}"
+            )
+        lines.append("")
+
+    for it in result["items"]:
+        header = f"#{it['rank']} [{it['stage']}] {it['id']}"
+        if it["kind"] != "finding":
+            header += f"  ({it['kind']})"
+        lines.append(header)
+        lines.append(f"  {it['issue']}")
+        lines.append(f"  -> {it['action']}")
+        if it["verify"] != "n/a":
+            lines.append(f"  verify:  {it['verify']}")
+        if it.get("blockedBy"):
+            lines.append(f"  blockedBy: {it['blockedBy']}")
+        if it["kind"] == "finding":
+            lines.append(f"  confidence: {it['confidence']}   basis: {it['basis']}")
+        lines.append("")
+
+    if "compare" in result:
+        lines.append("compare vs. saved advice record:")
+        for c in result["compare"]:
+            extra = ""
+            if c["status"] in ("improved", "unchanged") and "old_magnitude" in c:
+                extra = f"  ({_fmt(c['old_magnitude'])} -> {_fmt(c['new_magnitude'])})"
+            lines.append(f"  [{c['status']:9s}] {c['id']}{extra}")
+    return "\n".join(lines)
+
+
+def _cmd_advise(args: argparse.Namespace) -> int:
+    if bool(args.file) == bool(args.record):
+        raise ValueError("advise requires exactly one of <file> or --record <path>")
+
+    if args.record:
+        record = advise_mod.load_json_record(args.record)
+        measurements = record.get("measurements")
+        if measurements is None:
+            raise ValueError(
+                f"{args.record} is not a mix-report measurement record (no 'measurements' field)"
+            )
+        source_label = args.record
+    else:
+        measurements = report.analyze(args.file)
+        source_label = args.file
+
+    target = targets.load_target(args.target) if args.target else None
+    layers = advise_mod.load_json_record(args.layers) if args.layers else None
+
+    result = advise_mod.advise(measurements, target, layers, args.preset)
+
+    if args.save_record:
+        advise_mod.save_advice_record(args.save_record, source_label, result)
+
+    if args.compare:
+        old_record = advise_mod.load_json_record(args.compare)
+        result = {**result, "compare": advise_mod.compare_advice(old_record, result)}
+
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_advise_text(result))
+    return 0
+
+
+def _render_breakchop_text(result: dict) -> str:
+    lines = [
+        f"File: {result['file']}  ({result['duration_s']:.2f}s)",
+        f"BPM: {result['bpm']:.2f} ({result['bpm_source']}, confidence "
+        f"{result['bpm_confidence']:.2f})"
+        + (f", runner-up {result['bpm_runner_up']:.2f}" if result.get("bpm_runner_up") else ""),
+        f"{result['n_slices']} slice(s), grid {result['grid_steps_per_bar']}/bar",
+        "",
+    ]
+    if result["n_slices"] == 0:
+        lines.append("(no onsets detected — nothing to slice)")
+        return "\n".join(lines)
+    lines.append(
+        f"{'#':>3s} {'start':>8s} {'end':>8s} {'grid':>10s} {'offset':>8s} {'role':<7s} conf"
+    )
+    for s in result["slices"]:
+        grid_label = f"{s['bar'] + 1}|{s['pos'] + 1}"
+        ghost = "*" if s["is_ghost"] else " "
+        lines.append(
+            f"{s['index']:>3d} {s['start_s']:8.3f} {s['end_s']:8.3f} {grid_label:>10s} "
+            f"{s['offset_ms']:+7.1f}ms {s['role']:<6s}{ghost} {s['confidence']:.2f}"
+        )
+    if result.get("tail_decay_s") is not None:
+        lines.append("")
+        lines.append(
+            f"tail decays below floor at {result['tail_decay_s']:.3f}s (informational — "
+            "the final slice's end_s above is still the file's own end, byte-exact)"
+        )
+    return "\n".join(lines)
+
+
+def _cmd_breakchop(args: argparse.Namespace) -> int:
+    result = breakchop.analyze_break(
+        args.file, bpm_override=args.bpm, min_gap_s=args.min_gap_ms / 1000.0
+    )
+    if args.export:
+        result["export"] = breakchop.export_slices(args.file, result, args.export)
+    if args.save_record:
+        breakchop.save_chopmap_record(args.save_record, args.file, result)
+    if args.json:
+        _print_json(result)
+    else:
+        print(_render_breakchop_text(result))
+        if args.export:
+            print(
+                f"\nexported {len(result['export']['files'])} slice(s) -> {result['export']['dir']}"
+            )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="awh_analysis")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -626,10 +777,15 @@ def build_parser() -> argparse.ArgumentParser:
     p_report.add_argument("--from", dest="from_", type=float, default=None)
     p_report.add_argument("--to", dest="to", type=float, default=None)
     p_report.add_argument("--json", action="store_true")
-    p_report.add_argument("--save-record", type=str, default=None,
-                          help="also write a measurement record JSON to this path")
-    p_report.add_argument("--quiet", action="store_true",
-                          help="suppress stdout (for record-only runs)")
+    p_report.add_argument(
+        "--save-record",
+        type=str,
+        default=None,
+        help="also write a measurement record JSON to this path",
+    )
+    p_report.add_argument(
+        "--quiet", action="store_true", help="suppress stdout (for record-only runs)"
+    )
     p_report.set_defaults(func=_cmd_report)
 
     p_ab = sub.add_parser("ab", help="Loudness-matched A/B comparison")
@@ -641,15 +797,31 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_duck = sub.add_parser("duck", help="Fit a sidechain duck envelope to the drums")
     p_duck.add_argument("file", help="drums (kick-dominant) audio capture")
-    p_duck.add_argument("--triggers", type=str, required=True,
-                        help="comma-separated trigger times in SECONDS (one cycle if --cycle)")
-    p_duck.add_argument("--cycle", type=float, default=None,
-                        help="trigger pattern cycle length in seconds — tiles the trigger "
-                             "list across the whole file (capture must start on a cycle boundary)")
-    p_duck.add_argument("--bass", type=str, default=None,
-                        help="bass capture (same session/levels) for masking-based depth")
-    p_duck.add_argument("--depth", type=float, default=None,
-                        help="force duck depth in dB (skips the computed recommendation)")
+    p_duck.add_argument(
+        "--triggers",
+        type=str,
+        required=True,
+        help="comma-separated trigger times in SECONDS (one cycle if --cycle)",
+    )
+    p_duck.add_argument(
+        "--cycle",
+        type=float,
+        default=None,
+        help="trigger pattern cycle length in seconds — tiles the trigger "
+        "list across the whole file (capture must start on a cycle boundary)",
+    )
+    p_duck.add_argument(
+        "--bass",
+        type=str,
+        default=None,
+        help="bass capture (same session/levels) for masking-based depth",
+    )
+    p_duck.add_argument(
+        "--depth",
+        type=float,
+        default=None,
+        help="force duck depth in dB (skips the computed recommendation)",
+    )
     p_duck.add_argument("--json", action="store_true")
     p_duck.set_defaults(func=_cmd_duck)
 
@@ -660,42 +832,83 @@ def build_parser() -> argparse.ArgumentParser:
     p_dd.add_argument("--json", action="store_true")
     p_dd.set_defaults(func=_cmd_duckdepth)
 
-    p_pump = sub.add_parser("pumpcheck", help="Trigger-locked sidechain-pump verification (fits the fixed duck model)")
+    p_pump = sub.add_parser(
+        "pumpcheck", help="Trigger-locked sidechain-pump verification (fits the fixed duck model)"
+    )
     p_pump.add_argument("file", help="capture to check (ideally the isolated ducked bus)")
-    p_pump.add_argument("--triggers", type=str, required=True,
-                        help="comma-separated trigger times in SECONDS (one cycle if --cycle)")
-    p_pump.add_argument("--cycle", type=float, default=None,
-                        help="trigger pattern cycle length in seconds — tiles the trigger "
-                             "list across the whole file (capture must start on a cycle boundary)")
+    p_pump.add_argument(
+        "--triggers",
+        type=str,
+        required=True,
+        help="comma-separated trigger times in SECONDS (one cycle if --cycle)",
+    )
+    p_pump.add_argument(
+        "--cycle",
+        type=float,
+        default=None,
+        help="trigger pattern cycle length in seconds — tiles the trigger "
+        "list across the whole file (capture must start on a cycle boundary)",
+    )
     p_pump.add_argument("--json", action="store_true")
     p_pump.set_defaults(func=_cmd_pumpcheck)
 
-    p_ref = sub.add_parser("ref", help="Analyze a reference track: tempo/grid, energy arc, section map")
+    p_ref = sub.add_parser(
+        "ref", help="Analyze a reference track: tempo/grid, energy arc, section map"
+    )
     p_ref.add_argument("file")
-    p_ref.add_argument("--phrase", type=int, default=4,
-                       help="phrase length in bars for section boundary snapping (default 4)")
-    p_ref.add_argument("--hint-bpm", type=float, default=None,
-                       help="disambiguate half/double-time: matches the runner-up "
-                            "within 2%% -> swap (never invents a tempo)")
-    p_ref.add_argument("--save-record", type=str, default=None,
-                       help="also write a reference-analysis record JSON to this path")
+    p_ref.add_argument(
+        "--phrase",
+        type=int,
+        default=4,
+        help="phrase length in bars for section boundary snapping (default 4)",
+    )
+    p_ref.add_argument(
+        "--hint-bpm",
+        type=float,
+        default=None,
+        help="disambiguate half/double-time: matches the runner-up "
+        "within 2%% -> swap (never invents a tempo)",
+    )
+    p_ref.add_argument(
+        "--save-record",
+        type=str,
+        default=None,
+        help="also write a reference-analysis record JSON to this path",
+    )
     p_ref.add_argument("--json", action="store_true")
     p_ref.set_defaults(func=_cmd_ref)
 
     p_a2m = sub.add_parser("a2m", help="Melodic audio-to-MIDI transcription (Basic Pitch, ONNX)")
     p_a2m.add_argument("file")
-    p_a2m.add_argument("--onset-thresh", type=float, default=0.5,
-                       help="onset detection sensitivity (Basic Pitch default 0.5)")
-    p_a2m.add_argument("--frame-thresh", type=float, default=0.3,
-                       help="frame/pitch confidence threshold (Basic Pitch default 0.3)")
-    p_a2m.add_argument("--min-len", type=float, default=127.70,
-                       help="minimum note length in ms (Basic Pitch default 127.70)")
-    p_a2m.add_argument("--min-freq", type=float, default=None,
-                       help="ignore pitches below this frequency in Hz")
-    p_a2m.add_argument("--max-freq", type=float, default=None,
-                       help="ignore pitches above this frequency in Hz")
-    p_a2m.add_argument("--no-melodia-trim", action="store_true",
-                       help="disable the melodia post-processing trick (default: on)")
+    p_a2m.add_argument(
+        "--onset-thresh",
+        type=float,
+        default=0.5,
+        help="onset detection sensitivity (Basic Pitch default 0.5)",
+    )
+    p_a2m.add_argument(
+        "--frame-thresh",
+        type=float,
+        default=0.3,
+        help="frame/pitch confidence threshold (Basic Pitch default 0.3)",
+    )
+    p_a2m.add_argument(
+        "--min-len",
+        type=float,
+        default=127.70,
+        help="minimum note length in ms (Basic Pitch default 127.70)",
+    )
+    p_a2m.add_argument(
+        "--min-freq", type=float, default=None, help="ignore pitches below this frequency in Hz"
+    )
+    p_a2m.add_argument(
+        "--max-freq", type=float, default=None, help="ignore pitches above this frequency in Hz"
+    )
+    p_a2m.add_argument(
+        "--no-melodia-trim",
+        action="store_true",
+        help="disable the melodia post-processing trick (default: on)",
+    )
     p_a2m.add_argument("--json", action="store_true")
     p_a2m.set_defaults(func=_cmd_a2m)
 
@@ -711,8 +924,9 @@ def build_parser() -> argparse.ArgumentParser:
         "— never a naive FFT-peak pick",
     )
     p_pitch.add_argument("file")
-    p_pitch.add_argument("--per-note", action="store_true",
-                         help="segment via onset detection and report f0 per note")
+    p_pitch.add_argument(
+        "--per-note", action="store_true", help="segment via onset detection and report f0 per note"
+    )
     p_pitch.add_argument("--from", dest="from_", type=float, default=None)
     p_pitch.add_argument("--to", type=float, default=None)
     p_pitch.add_argument("--json", action="store_true")
@@ -724,8 +938,12 @@ def build_parser() -> argparse.ArgumentParser:
         "compare); multiple files -> aligned table with deltas vs. the first",
     )
     p_bands.add_argument("files", nargs="+")
-    p_bands.add_argument("--bands", type=str, default=None,
-                         help=f'comma-separated "lo-hi" Hz ranges (default: "{bands.DEFAULT_BANDS_ARG}")')
+    p_bands.add_argument(
+        "--bands",
+        type=str,
+        default=None,
+        help=f'comma-separated "lo-hi" Hz ranges (default: "{bands.DEFAULT_BANDS_ARG}")',
+    )
     p_bands.add_argument("--from", dest="from_", type=float, default=None)
     p_bands.add_argument("--to", type=float, default=None)
     p_bands.add_argument("--json", action="store_true")
@@ -735,23 +953,44 @@ def build_parser() -> argparse.ArgumentParser:
         "drumstats",
         help="Mine band-split rhythm statistics (16th-grid position probabilities) from a folder of drum loops",
     )
-    p_drumstats.add_argument("paths", nargs="+", help="audio files and/or directories (scanned non-recursively)")
     p_drumstats.add_argument(
-        "--bpm", type=float, default=None,
+        "paths", nargs="+", help="audio files and/or directories (scanned non-recursively)"
+    )
+    p_drumstats.add_argument(
+        "--bpm",
+        type=float,
+        default=None,
         help="fixed BPM used as a fallback (or for every file with --no-bpm-from-name)",
     )
     p_drumstats.add_argument(
-        "--no-bpm-from-name", action="store_true",
+        "--no-bpm-from-name",
+        action="store_true",
         help="disable parsing BPM from loop filenames (e.g. '138bpm_...') — requires --bpm",
     )
-    p_drumstats.add_argument("--grid", type=int, default=drumstats.DEFAULT_GRID,
-                             help="grid steps per bar (default 16 = 16th notes)")
-    p_drumstats.add_argument("--dataset", type=str, default=None,
-                             help="dataset name for the output (default: single input directory's basename)")
-    p_drumstats.add_argument("--save-record", type=str, default=None,
-                             help="also write a drum-stats measurement record JSON to this path")
-    p_drumstats.add_argument("--attribution", type=str, default=None,
-                             help="JSON object embedded verbatim in --save-record's 'attribution' field")
+    p_drumstats.add_argument(
+        "--grid",
+        type=int,
+        default=drumstats.DEFAULT_GRID,
+        help="grid steps per bar (default 16 = 16th notes)",
+    )
+    p_drumstats.add_argument(
+        "--dataset",
+        type=str,
+        default=None,
+        help="dataset name for the output (default: single input directory's basename)",
+    )
+    p_drumstats.add_argument(
+        "--save-record",
+        type=str,
+        default=None,
+        help="also write a drum-stats measurement record JSON to this path",
+    )
+    p_drumstats.add_argument(
+        "--attribution",
+        type=str,
+        default=None,
+        help="JSON object embedded verbatim in --save-record's 'attribution' field",
+    )
     p_drumstats.add_argument("--json", action="store_true")
     p_drumstats.set_defaults(func=_cmd_drumstats)
 
@@ -772,36 +1011,126 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_samplescan = sub.add_parser(
         "samplescan",
-        help="Scan sample files -> one JSONL feature record per line (M11 sample library)",
+        help="Scan sample files -> one JSONL feature record per line for the sample library",
     )
     p_samplescan.add_argument(
-        "files", nargs="*",
+        "files",
+        nargs="*",
         help="file paths (or read newline-separated paths from stdin if omitted)",
     )
     p_samplescan.set_defaults(func=_cmd_samplescan)
 
+    p_samplepitch = sub.add_parser(
+        "samplepitch",
+        help="Pitch-tag sample files -> one JSONL f0/note/voiced-fraction record per line",
+    )
+    p_samplepitch.add_argument(
+        "files",
+        nargs="*",
+        help="file paths (or read newline-separated paths from stdin if omitted)",
+    )
+    p_samplepitch.set_defaults(func=_cmd_samplepitch)
+
     p_clapembed = sub.add_parser(
         "clapembed",
-        help="CLAP audio/text embeddings for semantic sample search (M11b) -> JSONL per file, "
+        help="CLAP audio/text embeddings for semantic sample search -> JSONL per file, "
         "or one JSON object with --text",
     )
     p_clapembed.add_argument(
-        "files", nargs="*",
+        "files",
+        nargs="*",
         help="audio file paths (or read newline-separated paths from stdin if omitted)",
     )
-    p_clapembed.add_argument("--model", choices=clapembed.MODEL_CHOICES, default=clapembed.DEFAULT_MODEL,
-                             help="CLAP checkpoint: music (default, music-tuned) or general (AudioSet)")
-    p_clapembed.add_argument("--text", type=str, default=None,
-                             help="embed this text phrase instead of the file list")
+    p_clapembed.add_argument(
+        "--model",
+        choices=clapembed.MODEL_CHOICES,
+        default=clapembed.DEFAULT_MODEL,
+        help="CLAP checkpoint: music (default, music-tuned) or general (AudioSet)",
+    )
+    p_clapembed.add_argument(
+        "--text", type=str, default=None, help="embed this text phrase instead of the file list"
+    )
     p_clapembed.set_defaults(func=_cmd_clapembed)
 
     p_target = sub.add_parser("target", help="Build a genre/reference target")
     p_target.add_argument("files", nargs="+")
     p_target.add_argument("--save", type=str, required=True)
-    p_target.add_argument("--records-dir", type=str, default=None,
-                          help="also write a per-source measurement record into this directory")
+    p_target.add_argument(
+        "--records-dir",
+        type=str,
+        default=None,
+        help="also write a per-source measurement record into this directory",
+    )
     p_target.add_argument("--json", action="store_true")
     p_target.set_defaults(func=_cmd_target)
+
+    p_advise = sub.add_parser(
+        "advise",
+        help="Deterministic rule-based mix advice: a ranked, cited, verifiable plan",
+    )
+    p_advise.add_argument(
+        "file", nargs="?", default=None, help="audio capture to measure (omit with --record)"
+    )
+    p_advise.add_argument(
+        "--record",
+        type=str,
+        default=None,
+        help="a saved mix-report measurement record path instead of re-measuring a capture",
+    )
+    p_advise.add_argument(
+        "--target",
+        type=str,
+        default=None,
+        help="genre target path (library/targets/<name>.json) — unlocks the tonal-balance stage",
+    )
+    p_advise.add_argument(
+        "--layers",
+        type=str,
+        default=None,
+        help="a saved mix-layers record path — unlocks the inter-element masking stage",
+    )
+    p_advise.add_argument("--preset", choices=["club", "streaming", "apple"], default="club")
+    p_advise.add_argument(
+        "--compare",
+        type=str,
+        default=None,
+        help="a previously-saved advice record path to diff this run against",
+    )
+    p_advise.add_argument(
+        "--save-record",
+        type=str,
+        default=None,
+        help="also write an advice record JSON to this path",
+    )
+    p_advise.add_argument("--json", action="store_true")
+    p_advise.set_defaults(func=_cmd_advise)
+
+    p_breakchop = sub.add_parser(
+        "breakchop",
+        help="Chop a break sample (amen, think, ...) into a labeled slice map",
+    )
+    p_breakchop.add_argument("file")
+    p_breakchop.add_argument("--bpm", type=float, default=None, help="override the BPM estimate")
+    p_breakchop.add_argument(
+        "--min-gap-ms",
+        type=float,
+        default=breakchop.DEFAULT_MIN_GAP_S * 1000.0,
+        help="minimum gap between detected onsets in ms",
+    )
+    p_breakchop.add_argument(
+        "--export",
+        type=str,
+        default=None,
+        help="cut slices to <nn>-<role>.wav in this directory, plus a README.md mapping table",
+    )
+    p_breakchop.add_argument(
+        "--save-record",
+        type=str,
+        default=None,
+        help="also write a chop-map record (kind chopmap) to this path",
+    )
+    p_breakchop.add_argument("--json", action="store_true")
+    p_breakchop.set_defaults(func=_cmd_breakchop)
 
     return parser
 

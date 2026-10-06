@@ -1,9 +1,9 @@
 /**
  * AWH Ducker (m4l/): the "full-auto" duck strategy from
- * docs/design/analysis-engine.md's Duck strategies section — a
+ * docs/design/analysis-engine.md's Duck strategies section: a
  * transport-synced gain-envelope M4L device driven over OSC, so there's no
  * routing to click through in Live. This module is the OSC push logic
- * behind `awh mix duck push`, split out from packages/cli/src/index.ts so
+ * behind `awh mix duck push`, kept out of packages/cli/src/index.ts so
  * it's testable against a real UDP socket without spawning the CLI
  * (packages/core/test/duck-push.test.ts).
  */
@@ -43,7 +43,7 @@ export function shapeFromFitJson(fit: unknown): DuckShape {
   const rec = (fit as { recommendation?: Record<string, number> } | undefined)?.recommendation;
   if (!rec || typeof rec.depth_db !== "number") {
     throw new Error(
-      "not a duck-fit JSON file — expected a top-level \"recommendation\" object " +
+      'not a duck-fit JSON file — expected a top-level "recommendation" object ' +
         "(the shape `awh mix duck fit --json` prints)",
     );
   }
@@ -60,10 +60,10 @@ export function shapeFromFitJson(fit: unknown): DuckShape {
 
 /**
  * Push a duck envelope (or bypass it) to the Ducker device. Zero-trigger is
- * a STATE, not an error (docs/lessons-learned.md rule 5): pass
+ * a state, not an error (docs/lessons-learned.md rule 5): pass
  * `triggers: undefined` or an empty beats array with `off: false` and
- * nothing is sent — the caller should print the "nothing to duck" message
- * and exit 0, not treat this as a failure.
+ * nothing is sent. The caller should print the "nothing to duck" message
+ * and exit 0.
  */
 export async function pushDuck(params: {
   port?: number;
@@ -109,7 +109,12 @@ export async function pushDuck(params: {
   );
   await sendToTap(
     "/awh/duck/shape",
-    [oscFloat(shape.attackMs), oscFloat(shape.holdMs), oscFloat(shape.releaseMs), oscFloat(shape.depthDb)],
+    [
+      oscFloat(shape.attackMs),
+      oscFloat(shape.holdMs),
+      oscFloat(shape.releaseMs),
+      oscFloat(shape.depthDb),
+    ],
     port,
   );
   await sendToTap("/awh/duck/on", [1], port);

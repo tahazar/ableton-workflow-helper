@@ -1,7 +1,7 @@
 /**
- * Library entry format (B3): markdown + YAML frontmatter with an EXECUTABLE
- * bar|beat notation block. Grep-able, git-diffable, LLM-native — see
- * docs/design/library-kb.md.
+ * Library entry format: markdown + YAML frontmatter with an executable
+ * bar|beat notation block. Grep-able, git-diffable, LLM-readable (see
+ * docs/design/library-kb.md).
  */
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 
@@ -71,16 +71,11 @@ export function serializeClipEntry(entry: ClipEntry): string {
     bpm: entry.bpm ?? null,
     scale: entry.scale ?? null,
     lengthBeats: entry.lengthBeats,
-    ...(entry.beatsPerBar && entry.beatsPerBar !== 4
-      ? { beatsPerBar: entry.beatsPerBar }
-      : {}),
+    ...(entry.beatsPerBar && entry.beatsPerBar !== 4 ? { beatsPerBar: entry.beatsPerBar } : {}),
     ...(entry.source ? { source: entry.source } : {}),
     tier: entry.tier,
   };
-  const parts = [
-    `---\n${stringifyYaml(front).trimEnd()}\n---`,
-    `# ${entry.title}`,
-  ];
+  const parts = [`---\n${stringifyYaml(front).trimEnd()}\n---`, `# ${entry.title}`];
   if (entry.notation !== undefined) {
     parts.push(`\`\`\`awh-notation\n${entry.notation.trim()}\n\`\`\``);
   }
@@ -110,9 +105,7 @@ export function parseClipEntry(markdown: string): ClipEntry {
     scale: front.scale == null ? null : String(front.scale),
     lengthBeats: Number(front.lengthBeats),
     ...(front.beatsPerBar != null ? { beatsPerBar: Number(front.beatsPerBar) } : {}),
-    ...(front.source && typeof front.source === "object"
-      ? { source: front.source as EntrySource }
-      : {}),
+    ...(front.source && typeof front.source === "object" ? { source: front.source } : {}),
     tier: (front.tier as EntryTier) ?? "draft",
     title: titleMatch?.[1]?.trim() ?? String(front.slug ?? "untitled"),
     ...(notationMatch ? { notation: notationMatch[1]!.trimEnd() } : {}),

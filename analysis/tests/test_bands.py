@@ -1,6 +1,5 @@
-"""bands.py tests (M6b masking toolkit): calibrated per-band dBFS via a
-Welch periodogram — the fix for the two gaps the 2026-08-23 masking-
-analysis session found in the scratch numpy it had to hand-roll (docs/
+"""bands.py tests (masking toolkit): calibrated per-band dBFS via a Welch
+periodogram, addressing two gaps in ad-hoc masking analysis (docs/
 design/analysis-engine.md's "Future work" section): (1) an ad-hoc
 10*log10(sum |FFT|^2) is only meaningful within one sitting, not
 calibrated; (2) one FFT over a whole capture time-smears a changing
@@ -151,7 +150,7 @@ def test_compare_files_single_file_has_no_deltas(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# White noise: energy spread but STILL calibrated (informational sanity)
+# White noise: energy spread but still calibrated (informational sanity)
 # ---------------------------------------------------------------------------
 
 
@@ -161,7 +160,7 @@ def test_white_noise_band_levels_are_finite_and_ordered_by_bandwidth():
     for b in levels["bands"]:
         assert np.isfinite(b["dbfs"])
     # White noise has flat PSD -> wider bands carry more power (sub is
-    # narrower than mid, etc.) — not a strict monotone claim, just sane.
+    # narrower than mid, etc.). Not a strict monotone claim, just sane.
     by_label = {b["label"]: b for b in levels["bands"]}
     assert by_label["mid"]["dbfs"] > by_label["sub"]["dbfs"]
 
@@ -198,8 +197,14 @@ def test_cli_bands_multi_file_text_smoke(tmp_path):
 
     proc = subprocess.run(
         [
-            sys.executable, "-m", "awh_analysis", "bands",
-            str(path_a), str(path_b), "--bands", "200-500",
+            sys.executable,
+            "-m",
+            "awh_analysis",
+            "bands",
+            str(path_a),
+            str(path_b),
+            "--bands",
+            "200-500",
         ],
         capture_output=True,
         text=True,

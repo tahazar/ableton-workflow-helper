@@ -1,15 +1,15 @@
 /**
- * MINIMAL type shim for @ableton-extensions/sdk, used ONLY for typechecking in
+ * Minimal type shim for @ableton-extensions/sdk, used only for typechecking in
  * environments without the SDK (CI, containers). The real SDK (from
  * vendor/ableton-sdk/, never committed) is what esbuild bundles on the dev
- * machine — `pnpm setup:sdk` extracts it and the build fails loudly if absent.
+ * machine. `pnpm setup:sdk` extracts it and the build fails loudly if absent.
  *
  * Declarations mirror .claude/skills/ableton-extension/references/api.md
  * (verified against @ableton-extensions/sdk@1.0.0-beta.1 dist types on the
- * dev machine). Kept to exactly the surface src/ uses — this is not a general
- * SDK reference. Note: the real SDK's model classes are generic over Version;
- * this shim elides the generic (safe: it only affects type positions, and we
- * typecheck against the shim while esbuild bundles the real SDK).
+ * dev machine). Kept to exactly the surface src/ uses; this is not a general
+ * SDK reference. The real SDK's model classes are generic over Version. This
+ * shim elides the generic, which is safe because it only affects type
+ * positions and esbuild bundles the real SDK.
  */
 declare module "@ableton-extensions/sdk" {
   export interface ActivationContext {
@@ -84,7 +84,7 @@ declare module "@ableton-extensions/sdk" {
     duplicateDevice(device: Device): Promise<Device>;
   }
 
-  // No `name` accessor — verified against the real SDK, which exposes only
+  // No `name` accessor: verified against the real SDK, which exposes only
   // receivingNote on DrumChain. sdkLiveBridge.ts derives a display name from
   // the chain's first device instead.
   export class DrumChain extends Chain {

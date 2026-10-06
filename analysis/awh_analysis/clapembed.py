@@ -1,35 +1,34 @@
-"""M11b semantic sample search (docs/design/sample-semantic.md): CLAP
+"""Semantic sample search (docs/design/sample-semantic.md): CLAP
 audio/text embeddings for `awh samples embed` / `search --semantic` /
 `similar --semantic`.
 
-Wraps `laion_clap` (torch CPU — torch is already in the venv per
-analysis/README.md; the `laion_clap` package itself is an OPTIONAL extra,
-see pyproject.toml's `clap` group). LAION-CLAP's own checkpoints are open
-(Apache-2.0-classified code; no CC-BY-NC weights are used anywhere in this
-module — see analysis/README.md's license note). Loads the checkpoint ONCE
-per invocation and batches audio files through it (`embed_audio_batch`), or
+Wraps `laion_clap` (torch CPU; torch is already in the venv per
+analysis/README.md, and the `laion_clap` package itself is an optional
+extra, see pyproject.toml's `clap` group). LAION-CLAP's checkpoints are open
+(Apache-2.0-classified code; no CC-BY-NC weights are used in this module,
+see analysis/README.md's license note). Loads the checkpoint once per
+invocation and batches audio files through it (`embed_audio_batch`), or
 embeds a single text phrase through it (`embed_text`, the CLI's `--text`
-mode) — the same one-Python-invocation-per-batch shape `samplescan` uses to
-amortize its own import cost.
+mode). This is the same one-Python-invocation-per-batch shape `samplescan`
+uses to amortize its import cost.
 
-Checkpoint resolution: `~/.awh/models/` (override `AWH_MODELS_DIR` — TESTS
-ONLY, mirrors `samples.ts`'s `AWH_SAMPLES_INDEX` pattern of never touching
-the real machine-local cache from an automated run). Hugging Face is
-egress-blocked in the dev container (same constraint as Basic Pitch, see
-analysis/README.md), so the checkpoint download happens on the owner's own
-machine; if it's missing here we raise ONE clear, actionable error naming
-the exact package + checkpoint file + destination path, never a bare stack
+Checkpoint resolution: `~/.awh/models/`. The `AWH_MODELS_DIR` override is
+for tests only, mirroring `samples.ts`'s `AWH_SAMPLES_INDEX` pattern of
+never touching the real machine-local cache from an automated run. Hugging
+Face is egress-blocked in the dev container (same constraint as Basic
+Pitch, see analysis/README.md), so the checkpoint is downloaded on the
+user's machine. If it's missing, this raises one actionable error naming
+the exact package, checkpoint file and destination path, never a bare stack
 trace and never a silent auto-download.
 
 AWH_CLAP_STUB=1 activates a deterministic, hash-derived stub embedder
-entirely INSIDE this module (never a separate test-only file) so every
-Node test runs under it without torch/laion_clap ever loading. The stub is
-honest about being a stub: every vector it emits is stamped
-`model: "stub-v1"` regardless of which --model was requested (the stub has
-no real per-checkpoint distinction to make). `torch`/`laion_clap` are
-imported LAZILY, only inside the non-stub `_RealEmbedder` path — importing
+inside this module (not a separate test-only file) so every Node test runs
+without torch/laion_clap loading. Every vector the stub emits is stamped
+`model: "stub-v1"` regardless of which --model was requested, since the
+stub has no per-checkpoint distinction to make. `torch`/`laion_clap` are
+imported lazily, only inside the non-stub `_RealEmbedder` path: importing
 this module, or running any command under the stub, must stay fast and
-must never require the `clap` extra to be installed.
+must not require the `clap` extra.
 """
 
 from __future__ import annotations
@@ -43,7 +42,7 @@ import numpy as np
 
 STUB_MODEL_LABEL = "stub-v1"
 
-# LAION-CLAP's HTSAT-base joint audio/text embedding dimension — same for
+# LAION-CLAP's HTSAT-base joint audio/text embedding dimension, the same for
 # both checkpoints below. The stub matches it so stub-mode vectors have the
 # real shape (dim, roundtrip through the index schema) even though their
 # content is meaningless.
@@ -53,13 +52,13 @@ MODEL_CHOICES = ("music", "general")
 DEFAULT_MODEL = "music"
 
 # Checkpoint files as published by the LAION-CLAP project. "music" is the
-# music-tuned checkpoint (recommended default for sample-library content —
-# loops/one-shots skew musical, not general AudioSet-style clips); "general"
-# is the broader AudioSet-trained checkpoint. Both are open weights (no
-# CC-BY-NC anywhere in this map — see analysis/README.md's license note);
-# `label` is what gets stamped on every vector (`clap.model`) and is the
-# whole mismatch-detection contract with `packages/cli/src/samples.ts`'s
-# `CLAP_MODEL_LABELS` (kept in sync manually — comment on both sides).
+# music-tuned checkpoint (the default for sample-library content, since
+# loops/one-shots skew musical rather than general AudioSet-style clips);
+# "general" is the broader AudioSet-trained checkpoint. Both are open
+# weights (no CC-BY-NC in this map; see analysis/README.md's license note).
+# `label` is stamped on every vector (`clap.model`) and is the whole
+# mismatch-detection contract with `packages/cli/src/samples.ts`'s
+# `CLAP_MODEL_LABELS`. The two are kept in sync manually.
 _CHECKPOINTS: dict[str, dict[str, str]] = {
     "music": {
         "filename": "music_audioset_epoch_15_esc_90.14.pt",
@@ -77,7 +76,7 @@ _CHECKPOINTS: dict[str, dict[str, str]] = {
 
 
 def _models_dir() -> Path:
-    """`~/.awh/models` (override `AWH_MODELS_DIR` — tests only)."""
+    """`~/.awh/models` (override `AWH_MODELS_DIR`, tests only)."""
     override = os.environ.get("AWH_MODELS_DIR")
     if override and override.strip():
         return Path(override).expanduser().resolve()
@@ -94,7 +93,7 @@ def _validate_model(model_key: str) -> None:
 
 
 def _finalize_vector(v: Any) -> list[float]:
-    """L2-normalize then round to 6 decimals (design doc: "size") — the
+    """L2-normalize then round to 6 decimals to bound index size. This is the
     exact on-disk shape for every `clap.v`, in both stub and real mode."""
     arr = np.asarray(v, dtype=np.float64).reshape(-1)
     norm = float(np.linalg.norm(arr))
@@ -108,16 +107,15 @@ def _wrap(model_label: str, vector: list[float]) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# stub embedder (AWH_CLAP_STUB=1) — deterministic, content-hash-derived
+# stub embedder (AWH_CLAP_STUB=1): deterministic, content-hash-derived
 # ---------------------------------------------------------------------------
 
 
 def _stub_vector(data: bytes) -> list[float]:
-    """Deterministic hash-derived unit vector: the SAME bytes always embed
-    to the SAME vector (the whole point of the stub — real embedding
-    determinism, without torch). Content-derived, not path-derived, so a
-    byte-identical copy of an indexed file embeds identically too — that's
-    what the `similar --semantic` "stub-identical file ranks first"
+    """Deterministic hash-derived unit vector: the same bytes always embed
+    to the same vector, giving real-embedding determinism without torch.
+    Content-derived, not path-derived, so a byte-identical copy of an
+    indexed file embeds identically too. That is what the `similar --semantic` "stub-identical file ranks first"
     negative control needs."""
     digest = hashlib.sha256(data).digest()
     seed = int.from_bytes(digest[:8], "big")
@@ -136,7 +134,7 @@ def _stub_embed_text(text: str) -> list[float]:
 
 
 # ---------------------------------------------------------------------------
-# real embedder — laion_clap, torch CPU, imported lazily
+# real embedder: laion_clap, torch CPU, imported lazily
 # ---------------------------------------------------------------------------
 
 
@@ -158,10 +156,10 @@ def _not_installed_message(model_key: str) -> str:
 
 
 class _RealEmbedder:
-    """Loads one laion_clap checkpoint once; reused across a whole batch —
-    the multi-second torch/model-load cost is why this is a class instance
-    kept alive for the invocation, not a per-file function (same reasoning
-    as samplescan's per-CHUNK python invocation amortizing librosa's
+    """Loads one laion_clap checkpoint once and reuses it across a whole
+    batch. The multi-second torch/model-load cost is why this is a class
+    instance kept alive for the invocation, not a per-file function (same
+    reasoning as samplescan's per-chunk python invocation amortizing librosa's
     import cost)."""
 
     def __init__(self, model_key: str):
@@ -195,17 +193,17 @@ class _RealEmbedder:
 
 
 # ---------------------------------------------------------------------------
-# public entry points — used by the `clapembed` CLI subcommand
+# public entry points, used by the `clapembed` CLI subcommand
 # ---------------------------------------------------------------------------
 
 
 def embed_audio_batch(paths: list[str], model_key: str = DEFAULT_MODEL) -> list[dict[str, Any]]:
-    """One record per input path, IN ORDER, never raising per-file — a
+    """One record per input path, in order, never raising per-file. A
     per-file decode failure becomes `{"path", "unreadable": true, "error"}`
     (same contract as `samplescan.scan_file`). A missing checkpoint or a
-    missing `laion_clap` install is a WHOLE-BATCH failure (raises) rather
-    than a per-file one — it's an environment problem, not a bad audio
-    file, and must never degrade into a silently-partial embed."""
+    missing `laion_clap` install is a whole-batch failure (raises): it's an
+    environment problem, not a bad audio file, and must never degrade into
+    a silently-partial embed."""
     _validate_model(model_key)
 
     if _is_stub():
@@ -214,7 +212,12 @@ def embed_audio_batch(paths: list[str], model_key: str = DEFAULT_MODEL) -> list[
             try:
                 vec = _stub_embed_audio(path)
                 records.append(
-                    {"path": path, "unreadable": False, "error": None, "clap": _wrap(STUB_MODEL_LABEL, vec)}
+                    {
+                        "path": path,
+                        "unreadable": False,
+                        "error": None,
+                        "clap": _wrap(STUB_MODEL_LABEL, vec),
+                    }
                 )
             except Exception as exc:  # noqa: BLE001 - one bad file is a record, not a crash
                 records.append({"path": path, "unreadable": True, "error": str(exc), "clap": None})
@@ -230,15 +233,15 @@ def embed_audio_batch(paths: list[str], model_key: str = DEFAULT_MODEL) -> list[
                 "error": None,
                 "clap": _wrap(embedder.label, _finalize_vector(vec)),
             }
-            for path, vec in zip(paths, vectors)
+            for path, vec in zip(paths, vectors, strict=True)
         ]
-    except Exception:
+    except Exception:  # noqa: BLE001 - narrowed by quality plan item 20
         # A whole-batch failure (e.g. one corrupt file the model itself
         # chokes on) falls back to one-at-a-time so the rest of the batch
-        # still embeds — mirrors samplescan's per-file resilience, just at
-        # the batch-call boundary instead of per-file from the start (CLAP
-        # batching is the whole point of a chunk; only degrade off it when
-        # something actually breaks).
+        # still embeds. This mirrors samplescan's per-file resilience at the
+        # batch-call boundary instead of per-file from the start, because
+        # batching is the point of a chunk and only a failure should
+        # degrade off it.
         records = []
         for path in paths:
             try:
@@ -252,13 +255,15 @@ def embed_audio_batch(paths: list[str], model_key: str = DEFAULT_MODEL) -> list[
                     }
                 )
             except Exception as file_exc:  # noqa: BLE001 - one bad file is a record, not a crash
-                records.append({"path": path, "unreadable": True, "error": str(file_exc), "clap": None})
+                records.append(
+                    {"path": path, "unreadable": True, "error": str(file_exc), "clap": None}
+                )
         return records
 
 
 def embed_text(text: str, model_key: str = DEFAULT_MODEL) -> dict[str, Any]:
     """Embed a single text phrase (the `--text` CLI mode / `search
-    --semantic`'s query) into the SAME space as `embed_audio_batch`'s
+    --semantic`'s query) into the same space as `embed_audio_batch`'s
     vectors for the same model_key."""
     _validate_model(model_key)
     if _is_stub():

@@ -21,7 +21,8 @@ const G_MINOR: ScaleContext = { rootNote: 7, intervals: [0, 2, 3, 5, 7, 8, 10] }
 function overlaps(a: NoteSpec[], b: NoteSpec[]): boolean {
   for (const x of a) {
     for (const y of b) {
-      if (x.start < y.start + y.duration - 1e-9 && y.start < x.start + x.duration - 1e-9) return true;
+      if (x.start < y.start + y.duration - 1e-9 && y.start < x.start + x.duration - 1e-9)
+        return true;
     }
   }
   return false;
@@ -227,7 +228,7 @@ describe("response recipes — determinism + property tests", () => {
       const a = applyResponseRecipe(recipe, callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(11));
       const c = applyResponseRecipe(recipe, callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(12));
       // At least the entry delay is drawn from the seed, so timing should differ
-      // for at least one of several seeds — check across a small spread instead
+      // for at least one of several seeds. Check across a small spread instead
       // of asserting a single pair (a legitimate coincidence is possible).
       const others = [12, 13, 14, 15].map((s) =>
         applyResponseRecipe(recipe, callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(s)),
@@ -238,14 +239,26 @@ describe("response recipes — determinism + property tests", () => {
 
     it(`${recipe}: response never overlaps the call region`, () => {
       for (const seed of [1, 2, 3, 4, 5]) {
-        const result = applyResponseRecipe(recipe, callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(seed));
+        const result = applyResponseRecipe(
+          recipe,
+          callNotes,
+          C_MINOR,
+          BASS_MUSIC_CR_SPEC,
+          makeRng(seed),
+        );
         expect(overlaps(callNotes, result.notes)).toBe(false);
       }
     });
 
     it(`${recipe}: rest budget honored — trailing rest before lengthBeats >= restMinBeats`, () => {
       for (const seed of [1, 2, 3, 4, 5]) {
-        const result = applyResponseRecipe(recipe, callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(seed));
+        const result = applyResponseRecipe(
+          recipe,
+          callNotes,
+          C_MINOR,
+          BASS_MUSIC_CR_SPEC,
+          makeRng(seed),
+        );
         if (result.notes.length === 0) continue;
         const tail = result.lengthBeats - endOf(result.notes);
         expect(tail).toBeGreaterThanOrEqual(BASS_MUSIC_CR_SPEC.restMinBeats - 1e-9);
@@ -255,18 +268,30 @@ describe("response recipes — determinism + property tests", () => {
     it(`${recipe}: ends on an allowed resolve-degree pitch (root-relative)`, () => {
       for (const scale of [C_MINOR, G_MINOR]) {
         for (const seed of [1, 2, 3, 4, 5]) {
-          const result = applyResponseRecipe(recipe, callNotes, scale, BASS_MUSIC_CR_SPEC, makeRng(seed));
+          const result = applyResponseRecipe(
+            recipe,
+            callNotes,
+            scale,
+            BASS_MUSIC_CR_SPEC,
+            makeRng(seed),
+          );
           if (result.notes.length === 0) continue;
-          const sorted = [...result.notes].sort((a, b) => a.start - b.start);
+          const sorted = [...result.notes].toSorted((a, b) => a.start - b.start);
           const last = sorted[sorted.length - 1]!;
-          const chroma = ((last.pitch - scale.rootNote) % 12 + 12) % 12;
+          const chroma = (((last.pitch - scale.rootNote) % 12) + 12) % 12;
           expect(BASS_MUSIC_CR_SPEC.resolveDegrees).toContain(chroma);
         }
       }
     });
 
     it(`${recipe}: response pitches stay within the response register`, () => {
-      const result = applyResponseRecipe(recipe, callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(3));
+      const result = applyResponseRecipe(
+        recipe,
+        callNotes,
+        C_MINOR,
+        BASS_MUSIC_CR_SPEC,
+        makeRng(3),
+      );
       for (const n of result.notes) {
         expect(n.pitch).toBeGreaterThanOrEqual(BASS_MUSIC_CR_SPEC.responseRegister[0]);
         expect(n.pitch).toBeLessThanOrEqual(BASS_MUSIC_CR_SPEC.responseRegister[1]);
@@ -276,8 +301,16 @@ describe("response recipes — determinism + property tests", () => {
 
   it("negative control: a call that fills its own cell still gets a legal, non-overlapping response with a WARNING", () => {
     const fullCall: NoteSpec[] = [{ pitch: 72, start: 0, duration: 4, velocity: 100 }];
-    const result = applyResponseRecipe("echo-low", fullCall, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1));
-    expect(result.warnings.some((w) => /leaves only .* rest at its own bar tail/.test(w))).toBe(true);
+    const result = applyResponseRecipe(
+      "echo-low",
+      fullCall,
+      C_MINOR,
+      BASS_MUSIC_CR_SPEC,
+      makeRng(1),
+    );
+    expect(result.warnings.some((w) => /leaves only .* rest at its own bar tail/.test(w))).toBe(
+      true,
+    );
     expect(overlaps(fullCall, result.notes)).toBe(false);
     expect(result.notes.length).toBeGreaterThan(0);
     const tail = result.lengthBeats - endOf(result.notes);
@@ -286,35 +319,48 @@ describe("response recipes — determinism + property tests", () => {
 
   it("a well-rested call produces no rest-budget warning", () => {
     const shortCall: NoteSpec[] = [{ pitch: 72, start: 0, duration: 0.5, velocity: 100 }];
-    const result = applyResponseRecipe("echo-low", shortCall, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1));
+    const result = applyResponseRecipe(
+      "echo-low",
+      shortCall,
+      C_MINOR,
+      BASS_MUSIC_CR_SPEC,
+      makeRng(1),
+    );
     expect(result.warnings).toEqual([]);
   });
 
   it("gracefully handles an empty call (no notes) without throwing", () => {
     for (const recipe of RESPONSE_RECIPE_NAMES) {
-      expect(() => applyResponseRecipe(recipe, [], C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1))).not.toThrow();
+      expect(() =>
+        applyResponseRecipe(recipe, [], C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1)),
+      ).not.toThrow();
       const result = applyResponseRecipe(recipe, [], C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1));
       expect(result.notes).toEqual([]);
     }
   });
 
   it("fitResponseToWindow clamps a natural result into a smaller fixed window and still resolves", () => {
-    const result = applyResponseRecipe("echo-low", callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(5));
+    const result = applyResponseRecipe(
+      "echo-low",
+      callNotes,
+      C_MINOR,
+      BASS_MUSIC_CR_SPEC,
+      makeRng(5),
+    );
     const fitted = fitResponseToWindow(result, 4, C_MINOR, BASS_MUSIC_CR_SPEC);
     expect(fitted.lengthBeats).toBe(4);
     for (const n of fitted.notes) expect(n.start + n.duration).toBeLessThanOrEqual(4 + 1e-9);
-    if (fitted.notes.length > 0) {
-      const last = [...fitted.notes].sort((a, b) => a.start - b.start).pop()!;
-      const chroma = ((last.pitch - C_MINOR.rootNote) % 12 + 12) % 12;
-      expect(BASS_MUSIC_CR_SPEC.resolveDegrees).toContain(chroma);
-    }
+    expect(fitted.notes.length).toBeGreaterThan(0);
+    const last = [...fitted.notes].toSorted((a, b) => a.start - b.start).pop()!;
+    const chroma = (((last.pitch - C_MINOR.rootNote) % 12) + 12) % 12;
+    expect(BASS_MUSIC_CR_SPEC.resolveDegrees).toContain(chroma);
   });
 
   it("recipe registry rejects an unknown recipe name", () => {
-    // @ts-expect-error deliberately invalid recipe name
-    expect(() => applyResponseRecipe("echo-loud", callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1))).toThrowError(
-      /unknown response recipe/,
-    );
+    expect(() =>
+      // @ts-expect-error deliberately invalid recipe name
+      applyResponseRecipe("echo-loud", callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1)),
+    ).toThrowError(/unknown response recipe/);
   });
 });
 
@@ -336,8 +382,16 @@ describe("generateResponses (drop respond)", () => {
   });
 
   it("is deterministic: same options -> byte-identical candidates", () => {
-    const a = generateResponses(callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, { recipes: ["echo-low"], count: 3, seed: 9 });
-    const b = generateResponses(callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, { recipes: ["echo-low"], count: 3, seed: 9 });
+    const a = generateResponses(callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, {
+      recipes: ["echo-low"],
+      count: 3,
+      seed: 9,
+    });
+    const b = generateResponses(callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, {
+      recipes: ["echo-low"],
+      count: 3,
+      seed: 9,
+    });
     expect(a).toEqual(b);
   });
 
@@ -389,7 +443,8 @@ describe("generatePhrase (drop phrase) — frozen regression", () => {
     expect(phrase.callNotes.length).toBe(8); // one onset per bar, 8 call bars in 16
     // turnaround (drop-response, default) removes response in the last cell of
     // each 8-bar unit: cells end at bar 8 and bar 16 (beats 32 and 64).
-    const respNear = (lo: number, hi: number) => phrase.responseNotes.filter((n) => n.start >= lo && n.start < hi);
+    const respNear = (lo: number, hi: number) =>
+      phrase.responseNotes.filter((n) => n.start >= lo && n.start < hi);
     expect(respNear(24, 32).length).toBe(0);
     expect(respNear(56, 64).length).toBe(0);
     expect(respNear(0, 8).length).toBeGreaterThan(0);
@@ -411,10 +466,12 @@ describe("generatePhrase — property tests", () => {
       const phrase = generatePhrase(BASS_MUSIC_CR_SPEC, C_MINOR, { bars: 8, seed });
       const cellBeats = BASS_MUSIC_CR_SPEC.cellBars * 4;
       for (let c = 0; c < 4; c++) {
-        const inCell = phrase.responseNotes.filter((n) => n.start >= c * cellBeats && n.start < (c + 1) * cellBeats);
+        const inCell = phrase.responseNotes.filter(
+          (n) => n.start >= c * cellBeats && n.start < (c + 1) * cellBeats,
+        );
         if (inCell.length === 0) continue;
-        const last = [...inCell].sort((a, b) => a.start - b.start).pop()!;
-        const chroma = ((last.pitch - C_MINOR.rootNote) % 12 + 12) % 12;
+        const last = [...inCell].toSorted((a, b) => a.start - b.start).pop()!;
+        const chroma = (((last.pitch - C_MINOR.rootNote) % 12) + 12) % 12;
         expect(BASS_MUSIC_CR_SPEC.resolveDegrees).toContain(chroma);
       }
     }
@@ -447,25 +504,29 @@ describe("generatePhrase — property tests", () => {
 
     // "state": call repeats verbatim between the two state cells
     expect(call0).toEqual(call1);
-    // response is the SAME anchored response in every cell (state or vary-call;
+    // response is the same anchored response in every cell (state or vary-call;
     // cell 3 is the turnaround cell for this spec so is excluded from this
-    // specific claim — covered separately by the turnaround tests)
+    // claim; the turnaround tests cover it)
     expect(resp0).toEqual(resp1);
     expect(resp1).toEqual(resp2);
     void resp3;
     // "vary-call": call rhythm (onset times) is identical to the base cell,
-    // only pitches may differ — and at least one vary-call bar actually
+    // only pitches may differ, and at least one vary-call bar
     // differs in pitch from the base call (it's not a no-op)
     expect(call2.map((n) => n.start)).toEqual(call0.map((n) => n.start));
     expect(call3.map((n) => n.start)).toEqual(call0.map((n) => n.start));
-    expect([call2, call3].some((c) => JSON.stringify(c.map((n) => n.pitch)) !== JSON.stringify(call0.map((n) => n.pitch)))).toBe(
-      true,
-    );
+    expect(
+      [call2, call3].some(
+        (c) => JSON.stringify(c.map((n) => n.pitch)) !== JSON.stringify(call0.map((n) => n.pitch)),
+      ),
+    ).toBe(true);
   });
 
   it("throws a clear error when --bars is not a whole multiple of cellBars", () => {
     const oddSpec: PhraseSpec = { ...BASS_MUSIC_CR_SPEC, cellBars: 3 };
-    expect(() => generatePhrase(oddSpec, C_MINOR, { bars: 8, seed: 1 })).toThrowError(/whole multiple/);
+    expect(() => generatePhrase(oddSpec, C_MINOR, { bars: 8, seed: 1 })).toThrowError(
+      /whole multiple/,
+    );
   });
 
   it("--variant forces a named call cell; different variants differ", () => {

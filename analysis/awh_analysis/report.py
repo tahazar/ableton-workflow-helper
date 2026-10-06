@@ -177,8 +177,7 @@ def _delivery_findings(measurements: dict, delivery: str) -> list[dict]:
                 "true_peak_db",
                 tp_db,
                 dbtp_max,
-                f"{delivery} requires true peak ≤ {dbtp_max:.1f} dBTP; measured "
-                f"{tp_db:.2f} dBTP.",
+                f"{delivery} requires true peak ≤ {dbtp_max:.1f} dBTP; measured {tp_db:.2f} dBTP.",
                 "Lower the limiter's output ceiling (e.g. to -1.0 dBTP) or add a true-peak "
                 "limiter after the master chain to avoid inter-sample clipping on lossy codecs.",
             )
@@ -314,8 +313,8 @@ def findings(measurements: dict, delivery: str | None = None) -> list[dict]:
             offset = band.get("trough_offset_ms")
             shape = band.get("shape")
             depth = band.get("depth_db")
-            # Misalignment is only meaningful when the modulation actually
-            # looks like ducking — a decay-like trough sits late in the
+            # Misalignment is only meaningful when the modulation
+            # looks like ducking. A decay-like trough sits late in the
             # cycle by nature, not because a compressor is mis-synced.
             if (
                 shape == "ducking-like"
@@ -359,9 +358,9 @@ def findings(measurements: dict, delivery: str | None = None) -> list[dict]:
 
 
 # ---------------------------------------------------------------------------
-# Measurement records: a git-versioned "db" of analyzed files (owner request,
-# M6 follow-up). One JSON per analyzed file under library/measurements/ —
-# retrievable by grep/Claude without re-running the DSP.
+# Measurement records: a git-versioned "db" of analyzed files. One JSON per
+# analyzed file under library/measurements/, searchable with ordinary text
+# tools without re-running the DSP.
 # ---------------------------------------------------------------------------
 
 

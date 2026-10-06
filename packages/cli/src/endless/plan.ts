@@ -1,21 +1,21 @@
 /**
- * `awh endless plan` — emits a fully-commented `endless.yaml` starter
+ * `awh endless plan`: emits a fully commented `endless.yaml` starter
  * scaffold (docs/design/endless-player.md). Hand-templated (not
- * `yaml.stringify`) specifically so the comments survive — same reasoning
- * as why the other `plan` commands (`awh sections plan`) hand the owner an
- * editable YAML review step rather than writing straight to Live.
+ * `yaml.stringify`) so the comments survive, for the same reason the other
+ * `plan` commands (`awh sections plan`) produce an editable YAML file to
+ * review instead of writing straight to Live.
  *
  * Two sources for the section list (mutually exclusive, like `sections
  * plan --form` / `--from-ref`):
- *  - `--sections "intro:8,drop:16,..."` — bars given directly.
- *  - `--from-ref <name>` — reuses a saved reference record's corrected
- *    section map (M8's `library/references/*.json`, or a `ref sections
- *    read -o <file>` JSON) for bars AND bpm, same file shape `sections
- *    plan --from-ref` already reads (`reference.sections` / `.sections`,
- *    each `{name, start_bar, end_bar}`).
+ *  - `--sections "intro:8,drop:16,..."`: bars given directly.
+ *  - `--from-ref <name>`: reuses a saved reference record's corrected
+ *    section map (`library/references/*.json`, or a `ref sections
+ *    read -o <file>` JSON) for bars and bpm, the same file shape `sections
+ *    plan --from-ref` reads (`reference.sections` / `.sections`, each
+ *    `{name, start_bar, end_bar}`).
  *
  * Layers can't be inferred from either source (a reference's section map
- * says nothing about stem names) — the scaffold always starts with a
+ * says nothing about stem names), so the scaffold always starts with a
  * `drums`/`bass` pair plus a commented-out `pads` example the owner edits
  * to match their actual stems.
  */
@@ -38,7 +38,9 @@ export function parseSectionsArg(arg: string): PlanSection[] {
     .map((p) => p.trim())
     .filter((p) => p !== "");
   if (parts.length === 0) {
-    throw new Error(`--sections must list at least one "id:bars" pair (got ${JSON.stringify(arg)})`);
+    throw new Error(
+      `--sections must list at least one "id:bars" pair (got ${JSON.stringify(arg)})`,
+    );
   }
   const seen = new Set<string>();
   return parts.map((part) => {
@@ -53,9 +55,9 @@ export function parseSectionsArg(arg: string): PlanSection[] {
   });
 }
 
-/** Slugify a reference section name into a spec-safe section id — same
- * lenient-parsing spirit as `ref sections read` ("don't fix a non-standard
- * name the owner chose"), just constrained to id-safe characters. */
+/** Slugify a reference section name into a spec-safe section id. Lenient
+ * like `ref sections read` ("don't fix a non-standard name the owner
+ * chose"), only constrained to id-safe characters. */
 function slugifySectionName(name: string, index: number): string {
   const slug = name
     .trim()
@@ -95,18 +97,25 @@ function emptyPoolsBlock(layerIds: string[], indent: string): string {
 
 /**
  * Builds the commented YAML text. Transitions default to a simple forward
- * loop through every section in order (s0 -> s1 -> ... -> sN-1 -> s0) —
- * trivially reachable-by-construction and an honest, obviously-editable
- * starting point (comments say so) rather than guessing a genre-specific
- * graph shape from a bare section list.
+ * loop through every section in order (s0 -> s1 -> ... -> sN-1 -> s0).
+ * Every section is reachable by construction, and the comments mark it as
+ * an editable starting point instead of guessing a genre-specific graph
+ * shape from a bare section list.
  */
 export function buildEndlessPlanYaml(opts: PlanOptions): string {
   const { name, bpm, sections } = opts;
   const sectionsYaml = sections
     .map((s, i) => {
-      const lines = [`  - id: ${s.id}`, `    bars: ${s.bars}`, `    pools:`, emptyPoolsBlock(STARTER_LAYERS, "      ")];
+      const lines = [
+        `  - id: ${s.id}`,
+        `    bars: ${s.bars}`,
+        `    pools:`,
+        emptyPoolsBlock(STARTER_LAYERS, "      "),
+      ];
       if (i === sections.length - 1) {
-        lines.push(`    # layerMuteProbability: 0.15   # occasional one-layer thin-out, uncomment to use`);
+        lines.push(
+          `    # layerMuteProbability: 0.15   # occasional one-layer thin-out, uncomment to use`,
+        );
       }
       return lines.join("\n");
     })

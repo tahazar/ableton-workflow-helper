@@ -1,8 +1,8 @@
 /**
- * Knowledge entry format (B4): markdown + YAML frontmatter, tiered and
- * executable-first — see docs/design/library-kb.md. Topics are OPEN-ENDED:
- * an entry's topic is its directory path under knowledge/ (owner
- * requirement: new domain = new directory, never a hardcoded list).
+ * Knowledge entry format: markdown + YAML frontmatter, tiered and
+ * executable-first (see docs/design/library-kb.md). Topics are open-ended:
+ * an entry's topic is its directory path under knowledge/, so a new domain
+ * is a new directory, never an edit to a hardcoded list.
  */
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { EntryTier } from "../library/entry.js";
@@ -20,8 +20,8 @@ export interface KnowledgeEntry {
   title: string;
   /**
    * The `## Executable` section's raw markdown (notation blocks, pipeline
-   * specs, style specs, recipes). The contract: whenever knowledge CAN be
-   * expressed executably it MUST be — prose alone is a last resort.
+   * specs, style specs, recipes). Whenever knowledge can be expressed
+   * executably it must be; prose alone is a last resort.
    */
   executable?: string;
   /** Everything else after the title (including the Executable section). */
@@ -89,7 +89,7 @@ export function parseKnowledgeEntry(markdown: string): KnowledgeEntry {
 
 /**
  * Extract a named fenced code block (e.g. "awh-style-spec", "awh-notation")
- * from an entry's markdown — the executable payload loaders use this.
+ * from an entry's markdown; the executable payload loaders use this.
  */
 export function extractFencedBlock(markdown: string, language: string): string | undefined {
   const match = markdown.match(new RegExp("```" + language + "\\n([\\s\\S]*?)```"));

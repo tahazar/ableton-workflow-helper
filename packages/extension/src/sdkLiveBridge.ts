@@ -42,10 +42,10 @@ const LIVE_API_VERSION = "1.0.0";
 
 /**
  * LiveBridge adapter over the Ableton Extensions SDK. This file and main.ts
- * are the ONLY places the SDK may be touched (ADR-001).
+ * are the only places the SDK may be touched (ADR-001).
  *
  * Design rules (see docs/dev-loop.md guardrails):
- * - Paths are re-resolved from `application.song` on EVERY call — never cache
+ * - Paths are re-resolved from `application.song` on every call. Never cache
  *   SDK objects or handles across operations (they invalidate on move/delete).
  * - Each op wraps its mutations in one `withinTransaction`; async creates are
  *   grouped by returning the promise from the transaction callback. Ops that
@@ -135,7 +135,7 @@ export class SdkLiveBridge implements LiveBridge {
     const isMidi = clip instanceof MidiClip;
     // clip.duration is unreliable for session-slot clips (observed negative
     // and unstable across calls on a clip that was never placed in the
-    // arrangement — likely arrangement-relative under the hood). Session
+    // arrangement; likely arrangement-relative under the hood). Session
     // clips use endMarker - startMarker instead, matching the documented
     // "Session clips: loop length" contract; arrangement clips keep
     // clip.duration (verified stable/correct against real placements).
@@ -148,7 +148,7 @@ export class SdkLiveBridge implements LiveBridge {
       duration,
       looping: clip.looping,
       muted: clip.muted,
-      ...(isMidi ? { noteCount: (clip as MidiClip).notes.length } : {}),
+      ...(isMidi ? { noteCount: clip.notes.length } : {}),
     };
   }
 
@@ -161,7 +161,7 @@ export class SdkLiveBridge implements LiveBridge {
       paramCount: device.parameters.length,
     };
     if (device instanceof DrumRack) {
-      // DrumChain has no name accessor in the real SDK — only receivingNote.
+      // DrumChain has no name accessor in the real SDK, only receivingNote.
       // Best-effort name from the pad's first device (Live typically names
       // the chain after its sampler/instrument).
       summary.drumPads = device.chains.map((chain, i) => ({
@@ -323,7 +323,11 @@ export class SdkLiveBridge implements LiveBridge {
     return { path: `track:${this.song.tracks.indexOf(copy)}` };
   }
 
-  async clearArrangementRange(trackPath: string, startBeat: number, endBeat: number): Promise<void> {
+  async clearArrangementRange(
+    trackPath: string,
+    startBeat: number,
+    endBeat: number,
+  ): Promise<void> {
     const track = this.trackAt(parsePath(trackPath), trackPath);
     await this.ctx.withinTransaction(() => track.clearClipsInRange(startBeat, endBeat));
   }
@@ -344,7 +348,7 @@ export class SdkLiveBridge implements LiveBridge {
     return { audioPath };
   }
 
-  // -- library outbox (B3b) -------------------------------------------------
+  // -- library outbox -------------------------------------------------------
   // Right-click captures are buffered in storageDirectory (the only place
   // the sandbox lets us persist); `awh lib import` drains via this op.
 
@@ -367,16 +371,16 @@ export class SdkLiveBridge implements LiveBridge {
   }
 
   /**
-   * Capture a right-clicked MIDI clip (by Handle) into the outbox — called
+   * Capture a right-clicked MIDI clip (by Handle) into the outbox. Called
    * by the context-menu command in main.ts. Uses the same verified
    * NoteDescription conversion as every other note read.
    */
-  async captureClipToOutbox(handle: Parameters<ExtensionContext["getObjectFromHandle"]>[0]): Promise<string> {
+  async captureClipToOutbox(
+    handle: Parameters<ExtensionContext["getObjectFromHandle"]>[0],
+  ): Promise<string> {
     const clip = this.ctx.getObjectFromHandle(handle, MidiClip);
     const lengthBeats =
-      clip.endMarker - clip.startMarker > 0
-        ? clip.endMarker - clip.startMarker
-        : clip.duration;
+      clip.endMarker - clip.startMarker > 0 ? clip.endMarker - clip.startMarker : clip.duration;
     await this.appendOutboxEntry({
       name: clip.name,
       notes: clip.notes.map(fromNoteDescription),
@@ -413,9 +417,7 @@ export class SdkLiveBridge implements LiveBridge {
   // -- scenes ---------------------------------------------------------------
 
   async createScene(index?: number): Promise<{ path: string }> {
-    const scene = await this.ctx.withinTransaction(() =>
-      this.song.createScene(index ?? -1),
-    );
+    const scene = await this.ctx.withinTransaction(() => this.song.createScene(index ?? -1));
     return { path: `scene:${this.song.scenes.indexOf(scene)}` };
   }
 
@@ -433,7 +435,8 @@ export class SdkLiveBridge implements LiveBridge {
   private sceneAt(path: string) {
     const segments = parsePath(path);
     const root = segments[0];
-    if (root?.kind !== "scene") throw new BridgeError("bad_request", `expected a scene path: ${path}`);
+    if (root?.kind !== "scene")
+      throw new BridgeError("bad_request", `expected a scene path: ${path}`);
     const scene = this.song.scenes[root.index];
     if (!scene) throw new BridgeError("not_found", `no scene ${root.index}`);
     return scene;
@@ -453,7 +456,8 @@ export class SdkLiveBridge implements LiveBridge {
         throw new BridgeError("bad_request", `not a MIDI track: ${slotPath}`);
       }
       const sub = segments[1];
-      if (sub?.kind !== "slot") throw new BridgeError("bad_request", `expected a slot path: ${slotPath}`);
+      if (sub?.kind !== "slot")
+        throw new BridgeError("bad_request", `expected a slot path: ${slotPath}`);
       const slot = track.clipSlots[sub.index];
       if (!slot) throw new BridgeError("not_found", `no slot ${sub.index} (${slotPath})`);
       clip = await this.ctx.withinTransaction(() => slot.createMidiClip(args.lengthBeats));
@@ -473,13 +477,14 @@ export class SdkLiveBridge implements LiveBridge {
       const segments = parsePath(lanePath);
       const track = this.trackAt(segments, lanePath);
       const sub = segments[1];
-      if (sub?.kind !== "lane") throw new BridgeError("bad_request", `expected a lane path: ${lanePath}`);
+      if (sub?.kind !== "lane")
+        throw new BridgeError("bad_request", `expected a lane path: ${lanePath}`);
       const lane = track.takeLanes[sub.index];
       if (!lane) throw new BridgeError("not_found", `no take lane ${sub.index} (${lanePath})`);
       clip = await this.ctx.withinTransaction(() =>
         lane.createMidiClip(startBeat, args.lengthBeats),
       );
-      path = `${lanePath}`; // lane clips are re-read via summary; no stable sub-index yet
+      path = lanePath; // lane clips are re-read via summary; no stable sub-index yet
     }
 
     // Create-then-configure: second undo step (SDK constraint, documented).
@@ -497,7 +502,7 @@ export class SdkLiveBridge implements LiveBridge {
     if (!(track instanceof AudioTrack)) {
       throw new BridgeError("bad_request", `not an audio track: ${args.trackPath}`);
     }
-    // Bring the file under Live's management first — createAudioClip needs a
+    // Bring the file under Live's management first: createAudioClip needs a
     // path Live manages; raw external paths fail or break later.
     const imported = await this.ctx.resources.importIntoProject(args.filePath);
     const clip = await this.ctx.withinTransaction(() =>
@@ -554,7 +559,11 @@ export class SdkLiveBridge implements LiveBridge {
 
   // -- devices --------------------------------------------------------------
 
-  async insertDevice(ownerPath: string, deviceName: string, index?: number): Promise<{ path: string }> {
+  async insertDevice(
+    ownerPath: string,
+    deviceName: string,
+    index?: number,
+  ): Promise<{ path: string }> {
     const segments = parsePath(ownerPath);
     const last = segments[segments.length - 1];
     if (last?.kind === "chain") {

@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { parseProgression, type ChordSpec, type ScaleContextLike } from "../src/harmony/progression.js";
+import {
+  parseProgression,
+  type ChordSpec,
+  type ScaleContextLike,
+} from "../src/harmony/progression.js";
 import { renderChords, voiceProgression } from "../src/harmony/voicing.js";
-import { SCALES, parseScale } from "../src/transforms/scales.js";
+import { SCALES } from "../src/transforms/scales.js";
 import { BridgeError } from "../src/bridge/types.js";
 
 const A_MINOR: ScaleContextLike = { rootNote: 9, intervals: SCALES.minor! };
@@ -65,10 +69,14 @@ describe("parseProgression", () => {
 });
 
 describe("voiceProgression", () => {
-  const chords = (text: string, scale: ScaleContextLike): ChordSpec[] => parseProgression(text, scale);
+  const chords = (text: string, scale: ScaleContextLike): ChordSpec[] =>
+    parseProgression(text, scale);
 
   it("close voicing sits near the target center", () => {
-    const voiced = voiceProgression(chords("I-IV-V-I", C_MAJOR), { center: 60, voiceLeading: false });
+    const voiced = voiceProgression(chords("I-IV-V-I", C_MAJOR), {
+      center: 60,
+      voiceLeading: false,
+    });
     for (const v of voiced) {
       const avg = v.pitches.reduce((a, b) => a + b, 0) / v.pitches.length;
       expect(Math.abs(avg - 60)).toBeLessThan(12);
@@ -112,7 +120,7 @@ describe("voiceProgression", () => {
   });
 
   it("spread + voice leading (the default combination) doesn't drift the register down over a long progression", () => {
-    // Regression: voice-leading a chord against the PREVIOUS chord's
+    // Regression: voice-leading a chord against the previous chord's
     // already-spread pitches (rather than its pre-spread close voicing)
     // compounds each spread pass into the next search target, sinking the
     // whole progression by nearly an octave after the first transition.
@@ -124,7 +132,7 @@ describe("voiceProgression", () => {
       // window around center, but the lowest voice must stay in the same
       // ballpark for every chord, not sink further with each transition
       // (the bug sank this exact progression to a lowest pitch of 24,
-      // 36 semitones below center — well outside this bound).
+      // 36 semitones below center, well outside this bound).
       expect(Math.min(...v.pitches)).toBeGreaterThan(center - 24);
     }
   });
@@ -150,7 +158,7 @@ describe("renderChords", () => {
     const expectedHits = 4 * 4;
     const expectedNotes = voiced.reduce((n, v) => n + v.pitches.length, 0) * 4;
     expect(notes.length).toBe(expectedNotes);
-    const starts = [...new Set(notes.map((n) => n.start))].sort((a, b) => a - b);
+    const starts = [...new Set(notes.map((n) => n.start))].toSorted((a, b) => a - b);
     expect(starts.length).toBe(expectedHits);
     for (const n of notes) expect(n.duration).toBe(0.9);
   });
@@ -179,7 +187,7 @@ describe("renderChords", () => {
     const threeChords = parseProgression("I-IV-V", C_MAJOR);
     const voiced = voiceProgression(threeChords, { voiceLeading: false });
     const notes = renderChords(voiced, { bars: 4, beatsPerBar: 4, rhythm: "whole" });
-    const starts = [...new Set(notes.map((n) => n.start))].sort((a, b) => a - b);
+    const starts = [...new Set(notes.map((n) => n.start))].toSorted((a, b) => a - b);
     expect(starts).toEqual([0, 16 / 3, 32 / 3]);
     for (const n of notes) expect(n.duration).toBeCloseTo(16 / 3, 9);
   });
@@ -192,7 +200,9 @@ describe("renderChords", () => {
     for (let i = 1; i < a.length; i++) {
       const prev = a[i - 1]!;
       const cur = a[i]!;
-      expect(cur.start > prev.start || (cur.start === prev.start && cur.pitch >= prev.pitch)).toBe(true);
+      expect(cur.start > prev.start || (cur.start === prev.start && cur.pitch >= prev.pitch)).toBe(
+        true,
+      );
     }
   });
 });

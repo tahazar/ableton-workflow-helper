@@ -1,8 +1,8 @@
 /**
- * M9 phrase engine entry points:
- *  - generateResponses: `awh drop respond` — N candidate responses to an
- *    EXISTING call clip's notes, one freestanding clip per candidate.
- *  - generatePhrase: `awh drop phrase` — cold-start an 8/16-bar call and
+ * Phrase engine entry points:
+ *  - generateResponses: `awh drop respond`, N candidate responses to an
+ *    existing call clip's notes, one freestanding clip per candidate.
+ *  - generatePhrase: `awh drop phrase`, cold-start an 8/16-bar call and
  *    response pair from a PhraseSpec (weighted callCells, evolution plan,
  *    turnaround), two equal-length voices.
  *
@@ -15,7 +15,12 @@ import { sortNotes } from "../transforms/types.js";
 import { makeRng, variantSeed } from "../transforms/rng.js";
 import type { EvolutionAction, EvolutionStep, PhraseSpec, ResponseRecipeName } from "./spec.js";
 import { applyResponseRecipe, fitResponseToWindow } from "./recipes.js";
-import { PHRASE_BEATS_PER_BAR, callCellToNotes, generateCallPitches, pickWeighted } from "./util.js";
+import {
+  PHRASE_BEATS_PER_BAR,
+  callCellToNotes,
+  generateCallPitches,
+  pickWeighted,
+} from "./util.js";
 
 // ---------------------------------------------------------------------------
 // drop respond
@@ -40,10 +45,10 @@ export interface ResponseCandidate {
 
 /**
  * Generate N response candidates answering `callNotes` (an existing call
- * clip's notes, verbatim — never re-fit or truncated). Each candidate is its
+ * clip's notes, verbatim, never re-fit or truncated). Each candidate is its
  * own deterministic (recipe, seed) draw with its own naturally-sized
- * container (call end + delay + content + rest, rounded to a whole bar) —
- * never overlaps the call region regardless of how full the call clip is.
+ * container (call end + delay + content + rest, rounded to a whole bar), so
+ * it never overlaps the call region regardless of how full the call clip is.
  */
 export function generateResponses(
   callNotes: NoteSpec[],
@@ -57,7 +62,13 @@ export function generateResponses(
     const seed = variantSeed(opts.seed, i);
     const rng = makeRng(seed);
     const result = applyResponseRecipe(recipe, callNotes, scale, spec, rng);
-    candidates.push({ recipe, seed, notes: result.notes, lengthBeats: result.lengthBeats, warnings: result.warnings });
+    candidates.push({
+      recipe,
+      seed,
+      notes: result.notes,
+      lengthBeats: result.lengthBeats,
+      warnings: result.warnings,
+    });
   }
   return candidates;
 }
@@ -93,25 +104,31 @@ function evolutionActionAt(evolution: EvolutionStep[], bar: number): EvolutionAc
 /**
  * Generate a cold-start call/response phrase spanning `opts.bars` bars.
  *
- * Groove-level choices — the call's rhythmic cell, and which response
- * recipe answers it — are drawn ONCE and held for the whole phrase (same
- * discipline as the drum grammars' groove-level choices, ../drums/
- * grammars.ts). "State" bars (evolution.action === "state") replay that
- * held call verbatim; "vary-call" bars redraw fresh PITCHES over the SAME
- * rhythmic cell (rather than a different cell or a different response) so
- * the call's own bar-length never changes — which is what lets the single
- * anchored response (principle: "evolve one side at a time", response never
- * varies) stay byte-identical and provably non-overlapping across every
- * cell without being recomputed per bar. Turnaround (drop-response |
- * extra-rest | none) is a distinct, response-only adjustment applied on the
- * last bar of each phraseBars unit — it never touches the call.
+ * Groove-level choices (the call's rhythmic cell, and which response recipe
+ * answers it) are drawn once and held for the whole phrase, like the drum
+ * grammars' groove-level choices (../drums/grammars.ts). "State" bars
+ * (evolution.action === "state") replay that held call verbatim; "vary-call"
+ * bars redraw fresh pitches over the same rhythmic cell (rather than a
+ * different cell or a different response) so the call's bar-length never
+ * changes. That lets the single anchored response (principle: "evolve one
+ * side at a time", the response never varies) stay byte-identical and
+ * non-overlapping across every cell without being recomputed per bar.
+ * Turnaround (drop-response | extra-rest | none) is a separate,
+ * response-only adjustment applied on the last bar of each phraseBars unit;
+ * it never touches the call.
  */
-export function generatePhrase(spec: PhraseSpec, scale: ScaleContext, opts: GeneratePhraseOptions): GeneratedPhrase {
+export function generatePhrase(
+  spec: PhraseSpec,
+  scale: ScaleContext,
+  opts: GeneratePhraseOptions,
+): GeneratedPhrase {
   const beatsPerBar = PHRASE_BEATS_PER_BAR;
   const cellBeats = spec.cellBars * beatsPerBar;
   const totalBeats = opts.bars * beatsPerBar;
   if (totalBeats % cellBeats !== 0) {
-    throw new Error(`--bars ${opts.bars} is not a whole multiple of the spec's cellBars (${spec.cellBars})`);
+    throw new Error(
+      `--bars ${opts.bars} is not a whole multiple of the spec's cellBars (${spec.cellBars})`,
+    );
   }
   const numCells = totalBeats / cellBeats;
   const rng = makeRng(opts.seed);
@@ -119,7 +136,9 @@ export function generatePhrase(spec: PhraseSpec, scale: ScaleContext, opts: Gene
 
   const cell =
     opts.variant !== undefined
-      ? spec.callCells[((opts.variant % spec.callCells.length) + spec.callCells.length) % spec.callCells.length]!
+      ? spec.callCells[
+          ((opts.variant % spec.callCells.length) + spec.callCells.length) % spec.callCells.length
+        ]!
       : pickWeighted(spec.callCells, rng);
   const basePitches = generateCallPitches(cell, spec.callRegister, scale, rng);
   const baseCallNotes = callCellToNotes(cell, basePitches);
@@ -140,7 +159,9 @@ export function generatePhrase(spec: PhraseSpec, scale: ScaleContext, opts: Gene
     const isTurnaroundCell = ((c + 1) * spec.cellBars) % spec.phraseBars === 0;
 
     const callNotesThisCell =
-      action === "vary-call" ? callCellToNotes(cell, generateCallPitches(cell, spec.callRegister, scale, rng)) : baseCallNotes;
+      action === "vary-call"
+        ? callCellToNotes(cell, generateCallPitches(cell, spec.callRegister, scale, rng))
+        : baseCallNotes;
     for (const n of callNotesThisCell) allCall.push({ ...n, start: n.start + cellOffset });
 
     let responseNotesThisCell = baseResponse.notes;

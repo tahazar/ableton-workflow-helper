@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { decodeOscMessage, encodeOscMessage, oscFloat } from "../src/osc.js";
 
 /**
- * Independent reference encoder — builds OSC bytes from scratch (not by
+ * Independent reference encoder: builds OSC bytes from scratch (not by
  * calling encodeOscMessage) so the tests are a real byte-check, not a
  * tautology. Mirrors the OSC 1.0 spec: null-terminated strings padded to a
  * 4-byte boundary, then typed args in address order.
@@ -14,7 +14,10 @@ function padTo4(buf: Buffer): Buffer {
 function refString(s: string): Buffer {
   return padTo4(Buffer.concat([Buffer.from(s, "ascii"), Buffer.alloc(1)]));
 }
-type TaggedArg = { tag: "i"; value: number } | { tag: "f"; value: number } | { tag: "s"; value: string };
+type TaggedArg =
+  | { tag: "i"; value: number }
+  | { tag: "f"; value: number }
+  | { tag: "s"; value: string };
 function refEncode(address: string, args: TaggedArg[]): Buffer {
   const parts: Buffer[] = [refString(address), refString(`,${args.map((a) => a.tag).join("")}`)];
   for (const a of args) {
@@ -39,7 +42,7 @@ describe("encodeOscMessage", () => {
   });
 
   it("byte-checks all-float args, forced via oscFloat (/awh/duck/shape)", () => {
-    // attackMs/holdMs/releaseMs/depthDb are all whole numbers here — without
+    // attackMs/holdMs/releaseMs/depthDb are all whole numbers here. Without
     // oscFloat() the plain-number heuristic would tag them 'i', but the
     // Ducker protocol requires floats (m4l/README.md), so duck.ts always
     // wraps these in oscFloat().
@@ -70,7 +73,7 @@ describe("encodeOscMessage", () => {
 
   it("byte-checks a mixed int/float/string arg list (status-style reply)", () => {
     // on(int) attackMs(forced float, whole) name(string) depthDb(auto float,
-    // non-integer) — exercises all three tag paths in one message.
+    // non-integer): exercises all three tag paths in one message.
     const got = encodeOscMessage("/awh/duck/status", [1, oscFloat(2), "kick-bus", 6.5]);
     const want = refEncode("/awh/duck/status", [
       { tag: "i", value: 1 },

@@ -48,14 +48,10 @@ def load(
 
     if frame_start < 0 or frame_start > total_frames:
         raise ValueError(
-            f"start_s={start_s} is out of range for a file of "
-            f"{total_frames / sr:.3f} s"
+            f"start_s={start_s} is out of range for a file of {total_frames / sr:.3f} s"
         )
     if frame_end < frame_start or frame_end > total_frames:
-        raise ValueError(
-            f"end_s={end_s} is out of range for a file of "
-            f"{total_frames / sr:.3f} s"
-        )
+        raise ValueError(f"end_s={end_s} is out of range for a file of {total_frames / sr:.3f} s")
 
     n_frames = frame_end - frame_start
     if n_frames / sr < MIN_DURATION_S:
@@ -84,10 +80,10 @@ def to_mono(x: np.ndarray) -> np.ndarray:
 def sanitize_json(obj):
     """Replace non-finite floats (inf/-inf/nan) with None recursively.
 
-    Python's json module happily writes Infinity/-Infinity/NaN with
-    allow_nan=True — which is NOT valid JSON and breaks strict parsers
-    (found live: a silent bar's -inf dB in a reference record crashed the
-    Node CLI). Null is the honest encoding of "no measurable energy".
+    Python's json module writes Infinity/-Infinity/NaN with allow_nan=True,
+    which is not valid JSON and breaks strict parsers (a silent bar's -inf
+    dB in a reference record crashes the Node CLI). Null encodes "no
+    measurable energy".
     """
     import math
 

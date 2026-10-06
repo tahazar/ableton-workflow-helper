@@ -9,7 +9,7 @@ import { clampPitch, sortNotes } from "../transforms/types.js";
 import { shiftDegrees, snapToScale } from "../transforms/scales.js";
 import type { CallCell } from "./spec.js";
 
-/** Phrase engine is 4/4 only today (see docs/design/phrase-engine.md). */
+/** Phrase engine is 4/4 only (see docs/design/phrase-engine.md). */
 export const PHRASE_BEATS_PER_BAR = 4;
 
 export function callEndBeat(notes: NoteSpec[]): number {
@@ -21,7 +21,7 @@ export function callStartBeat(notes: NoteSpec[]): number {
 }
 
 function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
+  const sorted = [...values].toSorted((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
@@ -62,7 +62,11 @@ export function fitPitchToRegister(pitch: number, register: readonly [number, nu
 }
 
 /** Octave-fold into `register`, then snap to `scale`, re-folding if the snap nudged it out. */
-export function repitchLow(pitch: number, scale: ScaleContext, register: readonly [number, number]): number {
+export function repitchLow(
+  pitch: number,
+  scale: ScaleContext,
+  register: readonly [number, number],
+): number {
   const folded = fitPitchToRegister(pitch, register);
   const snapped = snapToScale(folded, scale);
   return fitPitchToRegister(snapped, register);
@@ -77,7 +81,7 @@ export function resolveDegreePitches(
   const chromas = new Set(resolveDegrees.map((d) => ((Math.round(d) % 12) + 12) % 12));
   const pitches: number[] = [];
   for (let p = register[0]; p <= register[1]; p++) {
-    const chroma = ((p - rootNote) % 12 + 12) % 12;
+    const chroma = (((p - rootNote) % 12) + 12) % 12;
     if (chromas.has(chroma)) pitches.push(p);
   }
   return pitches;
@@ -119,6 +123,11 @@ export function generateCallPitches(
 
 export function callCellToNotes(cell: CallCell, pitches: number[], velocity = 100): NoteSpec[] {
   return sortNotes(
-    cell.beats.map((b, i) => ({ pitch: pitches[i]!, start: b, duration: cell.lengths[i]!, velocity })),
+    cell.beats.map((b, i) => ({
+      pitch: pitches[i]!,
+      start: b,
+      duration: cell.lengths[i]!,
+      velocity,
+    })),
   );
 }

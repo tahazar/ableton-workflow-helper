@@ -1,14 +1,14 @@
 /**
- * Live 12 directory-Pack writer — behavior ported from alpax (MIT,
+ * Live 12 directory-Pack writer, behavior ported from alpax (MIT,
  * https://github.com/kmontag/alpax), formats verified in
  * docs/research/alc-live-library.md.
  *
  * A plain folder becomes a browser Pack via `Ableton Folder Info/
  * Properties.cfg`; bumping PackRevision there makes Live re-index the pack
  * (our "notice my changes" trigger). Tags ride in the pack XMP as
- * `Group|Tag|Sub Tag` keyword paths — Live auto-creates unknown tags on scan.
+ * `Group|Tag|Sub Tag` keyword paths; Live auto-creates unknown tags on scan.
  *
- * SAFETY: writes are confined to the pack directory, and an existing
+ * Safety: writes are confined to the pack directory, and an existing
  * directory is only reused when it carries our own Properties.cfg marker.
  */
 import { mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
@@ -33,15 +33,12 @@ export interface PackItem {
   /** Path inside the pack, forward slashes (e.g. "hats/rolling-hats.alc"). */
   relPath: string;
   content: Buffer;
-  /** Tag paths: [group, tag, subtag?] — e.g. ["AWH", "hats"]. */
+  /** Tag paths: [group, tag, subtag?], e.g. ["AWH", "hats"]. */
   keywords: string[][];
 }
 
 function escapeXml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
 const jsonStr = (s: string) => JSON.stringify(s);
@@ -123,7 +120,7 @@ export function packXmp(props: PackProperties, items: PackItem[]): string {
 
 /**
  * (Re)generate a pack directory. Refuses a non-empty directory that is not
- * one of our packs (missing Properties.cfg) — we only ever clobber a mirror
+ * one of our packs (missing Properties.cfg): we only clobber a mirror
  * we generated. Stale files from previous exports are removed.
  */
 export async function writePack(
@@ -143,9 +140,7 @@ export async function writePack(
     if (existsSync(marker)) {
       const cfg = await readFile(marker, "utf8");
       if (!cfg.includes(`String PackUniqueID = ${jsonStr(props.uniqueId)};`)) {
-        throw new Error(
-          `${dir} belongs to a different pack — refusing to overwrite`,
-        );
+        throw new Error(`${dir} belongs to a different pack — refusing to overwrite`);
       }
       // Our pack: clear stale content, keep nothing.
       for (const name of await readdir(dir)) {
@@ -160,9 +155,5 @@ export async function writePack(
   }
   await mkdir(join(dir, FOLDER_INFO_DIR), { recursive: true });
   await writeFile(marker, packPropertiesCfg(props), "utf8");
-  await writeFile(
-    join(dir, FOLDER_INFO_DIR, PACK_XMP_FILE),
-    packXmp(props, items),
-    "utf8",
-  );
+  await writeFile(join(dir, FOLDER_INFO_DIR, PACK_XMP_FILE), packXmp(props, items), "utf8");
 }

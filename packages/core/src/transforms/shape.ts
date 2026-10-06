@@ -1,15 +1,9 @@
 import { BridgeError, type NoteSpec } from "../bridge/types.js";
 import { snapToScale } from "./scales.js";
-import {
-  clampPitch,
-  numParam,
-  sortNotes,
-  strParam,
-  type TransformDef,
-} from "./types.js";
+import { clampPitch, numParam, sortNotes, strParam, type TransformDef } from "./types.js";
 
 /**
- * Shape transforms — rework existing material (spec R7): they may drop,
+ * Shape transforms rework existing material: they may drop,
  * reshape, double, or echo the user's notes, but never invent pitches that
  * didn't come from the input.
  */
@@ -21,11 +15,9 @@ function isDownbeat(start: number, beatsPerBar: number): boolean {
 }
 
 function median(values: number[]): number {
-  const sorted = [...values].sort((a, b) => a - b);
+  const sorted = [...values].toSorted((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
-  return sorted.length % 2 === 0
-    ? (sorted[mid - 1]! + sorted[mid]!) / 2
-    : sorted[mid]!;
+  return sorted.length % 2 === 0 ? (sorted[mid - 1]! + sorted[mid]!) / 2 : sorted[mid]!;
 }
 
 export const thin: TransformDef = {
@@ -76,9 +68,7 @@ export const invert: TransformDef = {
     "Mirror the melodic contour around a pivot pitch (default: median of input). Params: pivot (MIDI pitch)",
   make(params) {
     const hasPivot = params.pivot !== undefined;
-    const pivotParam = hasPivot
-      ? numParam(params, "pivot", 0, { min: 0, max: 127 })
-      : undefined;
+    const pivotParam = hasPivot ? numParam(params, "pivot", 0, { min: 0, max: 127 }) : undefined;
     return (notes, ctx) => {
       if (notes.length === 0) return notes;
       const pivot = pivotParam ?? median(notes.map((n) => n.pitch));
@@ -117,9 +107,7 @@ export const velocityShape: TransformDef = {
         const v = n.velocity ?? 100;
         let shaped: number;
         if (mode === "accent") {
-          shaped = isDownbeat(n.start, ctx.beatsPerBar)
-            ? v + amount * (127 - v)
-            : v - amount * 20;
+          shaped = isDownbeat(n.start, ctx.beatsPerBar) ? v + amount * (127 - v) : v - amount * 20;
         } else {
           const frac =
             ctx.lengthBeats > 0 ? Math.min(1, Math.max(0, n.start / ctx.lengthBeats)) : 0;
@@ -139,7 +127,7 @@ export const legato: TransformDef = {
     const gap = numParam(params, "gap", 0, { min: 0, max: 1 });
     return (notes) => {
       const sorted = sortNotes(notes);
-      const starts = [...new Set(sorted.map((n) => n.start))].sort((a, b) => a - b);
+      const starts = [...new Set(sorted.map((n) => n.start))].toSorted((a, b) => a - b);
       return sorted.map((n) => {
         const idx = starts.indexOf(n.start);
         const nextStart = idx + 1 < starts.length ? starts[idx + 1] : undefined;

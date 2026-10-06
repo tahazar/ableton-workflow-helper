@@ -1,13 +1,13 @@
-"""Melodic audio-to-MIDI transcription (B1).
+"""Melodic audio-to-MIDI transcription.
 
 Wraps Spotify's Basic Pitch (`basic_pitch.inference.predict`, Apache-2.0),
-running on the ONNX Runtime backend (no TensorFlow — see analysis/README.md
+running on the ONNX Runtime backend (no TensorFlow; see analysis/README.md
 for the exact install). Polyphonic pitch estimation, not ground truth: this
 is a starting point to audition and correct in Live, not a transcript.
 
 Deterministic on a given machine/onnxruntime build: the model has no
 training-time-only randomness (no dropout at inference), so the same file +
-params reliably produce the same note list — unlike `awh vary`/drum
+params reliably produce the same note list. Unlike `awh vary`/drum
 generation, there is no seed to pass.
 """
 
@@ -75,7 +75,7 @@ def transcribe(
 
     # Basic Pitch unconditionally prints "Predicting MIDI for <path>..." to
     # stdout (basic_pitch/inference.py, not gated behind its no_tf_warnings
-    # log-level context) — swallow it so `--json` output stays parseable.
+    # log-level context). Swallow it so `--json` output stays parseable.
     with contextlib.redirect_stdout(io.StringIO()):
         _model_output, _midi_data, note_events = predict(
             path,

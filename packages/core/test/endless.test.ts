@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { parseEndlessSpec, validateEndlessSpec, type EndlessSpec } from "../src/endless/spec.js";
 
 /**
- * M10 EndlessSpec parsing + structural validation (docs/design/endless-player.md
+ * EndlessSpec parsing + structural validation (docs/design/endless-player.md
  * "Verification bar"). File-existence and WAV-duration checks live in
- * packages/cli/test/endless.test.ts (they need real files on disk) — this
+ * packages/cli/test/endless.test.ts (they need real files on disk); this
  * file covers everything that's a pure function of the parsed spec:
- * typo-rejection, reachability (with the required negative control: a
- * stranded section is REJECTED, not silently unreachable), and empty pools.
+ * typo-rejection, reachability (a stranded section is rejected, not silently
+ * unreachable), and empty pools.
  */
 
 const MINIMAL_YAML = `
@@ -73,8 +73,9 @@ sections:
   });
 
   it("rejects an unknown top-level field (typo)", () => {
-    expect(() => parseEndlessSpec(MINIMAL_YAML.replace("crossfadeMs", "crossfadeMs") + "\nbmp: 1"))
-      .toThrow(/unknown field "bmp"/);
+    expect(() =>
+      parseEndlessSpec(MINIMAL_YAML.replace("crossfadeMs", "crossfadeMs") + "\nbmp: 1"),
+    ).toThrow(/unknown field "bmp"/);
   });
 
   it("rejects an unknown field inside a layer", () => {
@@ -217,9 +218,11 @@ sections:
     pools: { drums: [audio/intro.wav], pads: [] }
 `);
     const problems = validateEndlessSpec(spec);
-    expect(problems.some((p) => p.includes('section "intro"') && p.includes('layer "pads"') && p.includes("empty"))).toBe(
-      true,
-    );
+    expect(
+      problems.some(
+        (p) => p.includes('section "intro"') && p.includes('layer "pads"') && p.includes("empty"),
+      ),
+    ).toBe(true);
   });
 
   it("reports multiple problems in one pass (not fail-fast)", () => {

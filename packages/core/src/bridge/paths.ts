@@ -16,7 +16,7 @@ import { BridgeError } from "./types.js";
  *   chain:<i>            rack chain               track:2/dev:0/chain:3
  *                        (chains nest devices:    track:2/dev:0/chain:3/dev:1)
  *
- * Paths are ADDRESSES, not identities: they are re-resolved against the
+ * Paths are addresses, not identities: they are re-resolved against the
  * current Set on every call, and indices shift when the user moves or
  * deletes objects. Callers should re-read the summary after structural edits.
  */
@@ -64,9 +64,7 @@ export function parsePath(path: string): PathSegment[] {
 }
 
 export function formatPath(segments: PathSegment[]): string {
-  return segments
-    .map((s) => (s.kind === "main" ? "main" : `${s.kind}:${s.index}`))
-    .join("/");
+  return segments.map((s) => (s.kind === "main" ? "main" : `${s.kind}:${s.index}`)).join("/");
 }
 
 /** Convenience for building child paths. */

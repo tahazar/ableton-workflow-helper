@@ -1,0 +1,91 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": [
+    "typescript",
+    "unicorn",
+    "oxc",
+    "vitest",
+    "import"
+  ],
+  "categories": {
+    "correctness": "warn",
+    "suspicious": "warn"
+  },
+  "rules": {
+    "vitest/valid-expect": [
+      "warn",
+      {
+        "maxArgs": 2
+      }
+    ],
+    "unicorn/consistent-function-scoping": "off",
+    "no-underscore-dangle": "off",
+    "import/no-cycle": "warn",
+    "max-lines-per-function": [
+      "warn",
+      {
+        "max": 150,
+        "skipBlankLines": true,
+        "skipComments": true
+      }
+    ],
+    "no-restricted-imports": [
+      "warn",
+      {
+        "patterns": [
+          {
+            "group": [
+              "@ableton-extensions/sdk",
+              "@ableton-extensions/sdk/*"
+            ],
+            "message": "Only packages/extension may import the Ableton SDK (ADR-001)."
+          }
+        ]
+      }
+    ],
+    "typescript/no-floating-promises": "warn",
+    "typescript/no-misused-promises": "warn",
+    "typescript/await-thenable": "warn",
+    "typescript/switch-exhaustiveness-check": "warn",
+    "typescript/no-unnecessary-type-assertion": "warn",
+    "typescript/no-unsafe-type-assertion": "off",
+    "typescript/no-base-to-string": "off",
+    "typescript/restrict-template-expressions": "off",
+    "typescript/consistent-return": "off"
+  },
+  "overrides": [
+    {
+      "files": [
+        "packages/extension/**"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": [
+        "packages/*/src/**/*.ts"
+      ],
+      "rules": {
+        "typescript/no-unsafe-argument": "warn",
+        "typescript/no-unsafe-assignment": "warn",
+        "typescript/no-unsafe-call": "warn",
+        "typescript/no-unsafe-member-access": "warn",
+        "typescript/no-unsafe-return": "warn"
+      }
+    },
+    {
+      "files": [
+        "packages/*/test/**"
+      ],
+      "rules": {
+        "max-lines-per-function": "off"
+      }
+    }
+  ],
+  "ignorePatterns": [
+    "**/dist/**",
+    "**/coverage/**",
+    "vendor/**"
+  ]
+}

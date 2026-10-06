@@ -1,7 +1,7 @@
 import { BridgeError, type NoteSpec } from "../bridge/types.js";
 
 /**
- * AWH bar|beat notation — the human/LLM-facing text format for MIDI notes.
+ * AWH bar|beat notation: the human/LLM-facing text format for MIDI notes.
  * Clean-room design (concept inspired by prior art; no code ported).
  *
  * Grammar (one event per line; "#" starts a comment; blank lines ignored):
@@ -15,7 +15,7 @@ import { BridgeError, type NoteSpec } from "../bridge/types.js";
  * Rules:
  * - bar and beat are 1-based: "1|1" is the very start of the clip.
  * - beat must satisfy 1 <= beat < beatsPerBar + 1 (fractions fine: 1|4.75).
- * - duration is in BEATS (not note values): in 4/4, a quarter note is 1,
+ * - duration is in beats (not note values): in 4/4, a quarter note is 1,
  *   an eighth is 1/2 or 0.5, a whole bar is 4. Fractions and decimals both
  *   parse; serialization prefers exact simple fractions.
  * - Pitch names use Ableton's octave convention: middle C (MIDI 60) = C3.
@@ -42,7 +42,8 @@ const OFFSET_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#"
 /** "C3" -> 60 (Ableton convention: middle C = C3 = MIDI 60). */
 export function pitchToMidi(name: string): number {
   const m = name.match(/^([A-Ga-g])(#|b)?(-?\d+)$/);
-  if (!m) throw new BridgeError("bad_request", `invalid pitch "${name}" (expected e.g. C3, F#2, Eb4)`);
+  if (!m)
+    throw new BridgeError("bad_request", `invalid pitch "${name}" (expected e.g. C3, F#2, Eb4)`);
   const letter = m[1]!.toUpperCase();
   const accidental = m[2] === "#" ? 1 : m[2] === "b" ? -1 : 0;
   const octave = Number(m[3]);
@@ -65,7 +66,8 @@ function parseBeats(token: string, context: string): number {
   const frac = token.match(/^(\d+)\/(\d+)$/);
   if (frac) {
     const den = Number(frac[2]);
-    if (den === 0) throw new BridgeError("bad_request", `${context}: division by zero in "${token}"`);
+    if (den === 0)
+      throw new BridgeError("bad_request", `${context}: division by zero in "${token}"`);
     return Number(frac[1]) / den;
   }
   const n = Number(token);
@@ -100,7 +102,7 @@ export function parseNotation(text: string, options: NotationOptions = {}): Pars
 
   const lines = text.split(/\r?\n/);
   lines.forEach((rawLine, lineNo) => {
-    // "#" starts a comment only at line start or after whitespace — a "#"
+    // "#" starts a comment only at line start or after whitespace; a "#"
     // inside a token is an accidental (D#3), not a comment.
     const line = rawLine.replace(/(^|\s)#.*$/, "$1").trim();
     if (line === "") return;
@@ -129,7 +131,10 @@ export function parseNotation(text: string, options: NotationOptions = {}): Pars
 
     const pos = tokens[0]!.match(/^(\d+)\|(\d+(?:\.\d+)?)$/);
     if (!pos) {
-      throw new BridgeError("bad_request", `${where}: invalid position "${tokens[0]}" (expected bar|beat, e.g. 2|1.5)`);
+      throw new BridgeError(
+        "bad_request",
+        `${where}: invalid position "${tokens[0]}" (expected bar|beat, e.g. 2|1.5)`,
+      );
     }
     const bar = Number(pos[1]);
     const beat = Number(pos[2]);
@@ -165,7 +170,10 @@ export function parseNotation(text: string, options: NotationOptions = {}): Pars
       } else if (/^m$/i.test(opt)) {
         muted = true;
       } else {
-        throw new BridgeError("bad_request", `${where}: unknown option "${opt}" (expected vN, pN, or m)`);
+        throw new BridgeError(
+          "bad_request",
+          `${where}: unknown option "${opt}" (expected vN, pN, or m)`,
+        );
       }
     }
 
@@ -193,7 +201,7 @@ export function serializeNotation(notes: NoteSpec[], options: NotationOptions = 
 
   // Group simultaneous notes with identical duration/velocity/probability/muted
   // into chords for compactness.
-  const sorted = [...notes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  const sorted = [...notes].toSorted((a, b) => a.start - b.start || a.pitch - b.pitch);
   const groups: NoteSpec[][] = [];
   for (const note of sorted) {
     const group = groups.find(

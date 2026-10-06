@@ -1,14 +1,14 @@
 /**
- * B4 StyleSpec: data-driven drum-family styles. A DrumStyleSpec is plain data
+ * StyleSpec: data-driven drum-family styles. A DrumStyleSpec is plain data
  * (parsed from YAML, typically embedded in a knowledge-base entry) that
- * drives the same generator code path as a built-in style — new grooves can
+ * drives the same generator code path as a built-in style, so new grooves can
  * be authored without touching code.
  *
- * Two families exist today:
- *  - "trap": half-time, pattern-CELL kick model (see grammars.ts#trapFamilyPlan).
+ * Two families exist:
+ *  - "trap": half-time, pattern-cell kick model (see grammars.ts#trapFamilyPlan).
  *  - "house": four-on-the-floor, house/techno/garage-adjacent styles (see
  *    grammars.ts#houseFamilyPlan). The built-in "house" and "techno" styles
- *    are themselves just houseFamilyPlan(HOUSE_STYLE_SPEC) /
+ *    are houseFamilyPlan(HOUSE_STYLE_SPEC) /
  *    houseFamilyPlan(TECHNO_STYLE_SPEC).
  */
 import { parse as parseYaml } from "yaml";
@@ -23,7 +23,7 @@ export interface TrapFamilyKickCell {
 
 export interface TrapFamilyStyleSpec {
   name: string;
-  /** Only "trap" is supported today; validated literally. */
+  /** Only "trap" is supported; validated literally. */
   family: "trap";
   /** 1-based beat of the half-time backbeat. Default 3. */
   snareBeat?: number;
@@ -44,7 +44,7 @@ export interface TrapFamilyStyleSpec {
 /**
  * Closed-hat base grid below/at-or-above `hatGrid.threshold` density.
  *  - "8ths": every-half-beat grid (or, at `high`, every-16th grid with a
- *    single uniform velocity band — no on-8th/off-16th split).
+ *    single uniform velocity band, no on-8th/off-16th split).
  *  - "16ths": every-16th grid with the on-8th/off-16th velocity split
  *    (off-16ths optionally delayed by `swingDelay`).
  *  - "offbeat-8ths" (low only): only the "and" of each beat.
@@ -74,7 +74,7 @@ export interface HouseRumbleKicksConfig {
 export interface HouseFamilyStyleSpec {
   name: string;
   family: "house";
-  /** Only "four-floor" is supported today; validated literally. Default. */
+  /** Only "four-floor" is supported; validated literally. Default. */
   kickBeats?: "four-floor";
   /** Roles hit on beats 2 & 4. Default ["clap", "snare"]; [] = none. */
   backbeat?: ("clap" | "snare")[];
@@ -190,7 +190,9 @@ function parseTrapFamilySpec(raw: Record<string, unknown>): TrapFamilyStyleSpec 
       return o;
     });
     if (!offsets.includes(0)) {
-      fail(`kickCells[${i}] ("${cell.name}"): offsets must include 0 (the cell must anchor beat 1)`);
+      fail(
+        `kickCells[${i}] ("${cell.name}"): offsets must include 0 (the cell must anchor beat 1)`,
+      );
     }
     return { name: cell.name, offsets };
   });
@@ -228,7 +230,9 @@ function parseTrapFamilySpec(raw: Record<string, unknown>): TrapFamilyStyleSpec 
   let swingDelay: number | undefined;
   if (raw.swingDelay !== undefined) {
     if (typeof raw.swingDelay !== "number" || Number.isNaN(raw.swingDelay) || raw.swingDelay < 0) {
-      fail(`"swingDelay" must be a non-negative number of beats (got ${JSON.stringify(raw.swingDelay)})`);
+      fail(
+        `"swingDelay" must be a non-negative number of beats (got ${JSON.stringify(raw.swingDelay)})`,
+      );
     }
     swingDelay = raw.swingDelay;
   }
@@ -238,7 +242,7 @@ function parseTrapFamilySpec(raw: Record<string, unknown>): TrapFamilyStyleSpec 
     family: "trap",
     kickCells,
     ...(snareBeat !== undefined ? { snareBeat } : {}),
-    ...(raw.clapWithSnare !== undefined ? { clapWithSnare: raw.clapWithSnare as boolean } : {}),
+    ...(raw.clapWithSnare !== undefined ? { clapWithSnare: raw.clapWithSnare } : {}),
     ...(hatBases !== undefined ? { hatBases } : {}),
     ...(rollDensity !== undefined ? { rollDensity } : {}),
     ...(openHatChance !== undefined ? { openHatChance } : {}),
@@ -246,6 +250,9 @@ function parseTrapFamilySpec(raw: Record<string, unknown>): TrapFamilyStyleSpec 
   };
 }
 
+// Over the length limit since formatting; split with the shared spec-parser
+// helpers (quality plan, cleanup).
+// oxlint-disable-next-line max-lines-per-function
 function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpec {
   for (const key of Object.keys(raw)) {
     if (!HOUSE_TOP_LEVEL_KEYS.has(key)) {
@@ -271,7 +278,10 @@ function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpe
       fail(`"backbeat" must be an array (got ${JSON.stringify(raw.backbeat)})`);
     }
     backbeat = (raw.backbeat as unknown[]).map((r, i) => {
-      if (typeof r !== "string" || !VALID_BACKBEAT_ROLES.includes(r as (typeof VALID_BACKBEAT_ROLES)[number])) {
+      if (
+        typeof r !== "string" ||
+        !VALID_BACKBEAT_ROLES.includes(r as (typeof VALID_BACKBEAT_ROLES)[number])
+      ) {
         fail(
           `backbeat[${i}]: unknown value ${JSON.stringify(r)} (expected one of ${VALID_BACKBEAT_ROLES.join(", ")})`,
         );
@@ -312,9 +322,14 @@ function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpe
       }
     }
     if (typeof hg.low !== "string" || !VALID_HAT_LOW_MODES.includes(hg.low as HouseHatLowMode)) {
-      fail(`hatGrid.low: unknown value ${JSON.stringify(hg.low)} (expected one of ${VALID_HAT_LOW_MODES.join(", ")})`);
+      fail(
+        `hatGrid.low: unknown value ${JSON.stringify(hg.low)} (expected one of ${VALID_HAT_LOW_MODES.join(", ")})`,
+      );
     }
-    if (typeof hg.high !== "string" || !VALID_HAT_HIGH_MODES.includes(hg.high as HouseHatHighMode)) {
+    if (
+      typeof hg.high !== "string" ||
+      !VALID_HAT_HIGH_MODES.includes(hg.high as HouseHatHighMode)
+    ) {
       fail(
         `hatGrid.high: unknown value ${JSON.stringify(hg.high)} (expected one of ${VALID_HAT_HIGH_MODES.join(", ")})`,
       );
@@ -350,7 +365,10 @@ function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpe
       fail(`"ghostRoles" must be an array (got ${JSON.stringify(raw.ghostRoles)})`);
     }
     ghostRoles = (raw.ghostRoles as unknown[]).map((r, i) => {
-      if (typeof r !== "string" || !VALID_GHOST_ROLES.includes(r as (typeof VALID_GHOST_ROLES)[number])) {
+      if (
+        typeof r !== "string" ||
+        !VALID_GHOST_ROLES.includes(r as (typeof VALID_GHOST_ROLES)[number])
+      ) {
         fail(
           `ghostRoles[${i}]: unknown value ${JSON.stringify(r)} (expected one of ${VALID_GHOST_ROLES.join(", ")})`,
         );
@@ -385,7 +403,9 @@ function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpe
   let swingDelay: number | undefined;
   if (raw.swingDelay !== undefined) {
     if (typeof raw.swingDelay !== "number" || Number.isNaN(raw.swingDelay) || raw.swingDelay < 0) {
-      fail(`"swingDelay" must be a non-negative number of beats (got ${JSON.stringify(raw.swingDelay)})`);
+      fail(
+        `"swingDelay" must be a non-negative number of beats (got ${JSON.stringify(raw.swingDelay)})`,
+      );
     }
     swingDelay = raw.swingDelay;
   }
@@ -412,7 +432,7 @@ function parseHouseFamilySpec(raw: Record<string, unknown>): HouseFamilyStyleSpe
  * catches typos instead of silently ignoring a misspelled field.
  */
 export function parseDrumStyleSpec(yamlText: string): DrumStyleSpec {
-  const doc = parseYaml(yamlText);
+  const doc: unknown = parseYaml(yamlText);
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
     fail("expected a YAML mapping at the top level");
   }

@@ -1,11 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { makeRng, variantSeed } from "../src/transforms/rng.js";
 import { parseScale, shiftDegrees, snapToScale } from "../src/transforms/scales.js";
-import {
-  applyPipeline,
-  listTransforms,
-  parsePipeline,
-} from "../src/transforms/registry.js";
+import { applyPipeline, listTransforms, parsePipeline } from "../src/transforms/registry.js";
 import type { TransformContext } from "../src/transforms/types.js";
 import { BridgeError, type NoteSpec } from "../src/bridge/types.js";
 
@@ -52,7 +48,7 @@ describe("pipeline", () => {
     const steps = parsePipeline("transpose:semitones=12 retrograde");
     const out = applyPipeline(steps, motif, ctx());
     // transposed up an octave, then reversed within 8 beats
-    expect(out.map((n) => n.pitch).sort((a, b) => a - b)).toEqual([72, 75, 79]);
+    expect(out.map((n) => n.pitch).toSorted((a, b) => a - b)).toEqual([72, 75, 79]);
     expect(out[0]).toMatchObject({ pitch: 79, start: 2 }); // 8 - 4 - 2
   });
 

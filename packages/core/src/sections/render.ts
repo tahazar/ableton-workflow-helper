@@ -19,7 +19,7 @@ export interface RenderOptions {
 
 /**
  * Render a sections plan into concrete clip-create instructions.
- * PURE: sources are provided as a map (the CLI fetches them via the gateway);
+ * Pure: sources are provided as a map (the CLI fetches them via the gateway);
  * all randomness is seeded per (section, track) so re-rendering the same plan
  * reproduces the same skeleton exactly.
  *
@@ -41,7 +41,7 @@ export function renderSections(
 
   plan.sections.forEach((section, sectionIndex) => {
     const sectionLength = section.bars * beatsPerBar;
-    const trackNames = Object.keys(section.tracks).sort();
+    const trackNames = Object.keys(section.tracks).toSorted();
 
     trackNames.forEach((trackName, trackIndex) => {
       const directive = section.tracks[trackName]!;

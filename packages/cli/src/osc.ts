@@ -1,10 +1,10 @@
 /**
  * Minimal OSC-over-UDP client for the M4L capture tap and Ducker
  * (m4l/README.md). Hand-rolled: we send/receive a handful of simple
- * messages on localhost — no dependency warranted. Plain JS numbers encode
- * as 'i' when they're whole numbers, 'f' otherwise; strings as 's'. Wrap a
- * whole-number arg in `oscFloat()` to force the 'f' tag (the Ducker
- * protocol calls for floats even at values like `0.0` or `4.0` — see
+ * messages on localhost, so no dependency is warranted. Plain JS numbers
+ * encode as 'i' when they're whole numbers, 'f' otherwise; strings as 's'.
+ * Wrap a whole-number arg in `oscFloat()` to force the 'f' tag (the Ducker
+ * protocol calls for floats even at values like `0.0` or `4.0`; see
  * m4l/README.md's protocol table).
  */
 import { createSocket } from "node:dgram";
@@ -110,10 +110,10 @@ export async function sendToTap(
 /**
  * Send one OSC message and wait for a specific reply address on a bound
  * UDP port (used by `mix duck push` to confirm the Ducker device is loaded
- * before pushing an envelope — see duck.ts). Binds `replyPort`, sends from
+ * before pushing an envelope; see duck.ts). Binds `replyPort`, sends from
  * that same socket, and resolves with the reply's args, or rejects if
  * `timeoutMs` elapses first. The socket is always closed before returning
- * so the process can exit — mirrors sendToTap's close-in-finally discipline.
+ * so the process can exit, as in sendToTap.
  */
 export async function sendAndAwaitReply(params: {
   address: string;
@@ -128,11 +128,10 @@ export async function sendAndAwaitReply(params: {
 }
 
 /**
- * Like `sendAndAwaitReply`, but resolves on the FIRST reply whose address is
- * any of `matchAddresses` (also returning which one matched) — used by
- * remote.ts, where a single sent command (e.g. `/awh/fire`) can come back as
- * either `/awh/status` (success) or `/awh/error` (bad indices), and the
- * caller needs to tell those apart.
+ * Like `sendAndAwaitReply`, but resolves on the first reply whose address is
+ * any of `matchAddresses` and also returns which one matched. remote.ts
+ * needs this because a single sent command (e.g. `/awh/fire`) can come back
+ * as either `/awh/status` (success) or `/awh/error` (bad indices).
  */
 export async function sendAndAwaitAnyReply(params: {
   address: string;

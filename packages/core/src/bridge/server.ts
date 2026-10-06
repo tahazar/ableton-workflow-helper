@@ -7,7 +7,7 @@ export const DEFAULT_GATEWAY_PORT = 8720;
 
 export interface GatewayOptions {
   port?: number;
-  /** Loopback only — never expose the gateway beyond the local machine. */
+  /** Loopback only: never expose the gateway beyond the local machine. */
   host?: "127.0.0.1";
 }
 
@@ -18,15 +18,15 @@ export interface GatewayServer {
 }
 
 /**
- * Plain node:http server (no framework — this must bundle cleanly into the
+ * Plain node:http server (no framework, so it bundles cleanly into the
  * extension). Routes:
  *   GET  /ping               → ping op
  *   GET  /api/ops            → list registered ops
  *   POST /api/ops/{name}     → invoke op with JSON body as args
  *
- * Security posture (M0): bind loopback only and reject any request carrying a
- * non-localhost Origin header (blocks drive-by browser CSRF). M1 adds the
- * token handshake via the extension storage directory (loophole pattern).
+ * Security posture: bind loopback only and reject any request carrying a
+ * non-localhost Origin header (blocks drive-by browser CSRF). There is no
+ * per-request auth token, so any local process can call the gateway.
  */
 export function createGatewayServer(
   bridge: LiveBridge,
@@ -40,10 +40,7 @@ export function createGatewayServer(
   let server: http.Server | undefined;
   let boundPort: number | undefined;
 
-  const handler = async (
-    req: http.IncomingMessage,
-    res: http.ServerResponse,
-  ): Promise<void> => {
+  const handler = async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     const origin = req.headers.origin;
     if (origin && !/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
       return sendJson(res, 403, { error: "forbidden_origin" });
@@ -112,8 +109,7 @@ export function createGatewayServer(
         server.once("error", reject);
         server.listen(port, host, () => {
           const address = server!.address();
-          const actual =
-            typeof address === "object" && address ? address.port : port;
+          const actual = typeof address === "object" && address ? address.port : port;
           boundPort = actual;
           resolve(actual);
         });
@@ -129,11 +125,7 @@ export function createGatewayServer(
   };
 }
 
-function sendJson(
-  res: http.ServerResponse,
-  status: number,
-  body: unknown,
-): void {
+function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
     "content-type": "application/json",

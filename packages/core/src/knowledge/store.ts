@@ -1,17 +1,13 @@
 /**
  * File-backed knowledge store: `knowledge/<topic-path>/<slug>.md`, topics
- * discovered from the directory tree (open-ended — owner requirement).
+ * discovered from the directory tree, so the topic set is open-ended.
  * Measurement records (library/measurements/*.json) are knowledge citizens:
  * indexed and listed alongside entries.
  */
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { basename, dirname, join, sep } from "node:path";
-import {
-  parseKnowledgeEntry,
-  serializeKnowledgeEntry,
-  type KnowledgeEntry,
-} from "./entry.js";
+import { parseKnowledgeEntry, serializeKnowledgeEntry, type KnowledgeEntry } from "./entry.js";
 
 export interface StoredKnowledgeEntry extends KnowledgeEntry {
   /** Path relative to the knowledge root. */
@@ -50,11 +46,19 @@ export interface DrumStatsRecordSummary {
   nSources: number;
 }
 
+export interface ChopMapRecordSummary {
+  name: string;
+  saved: string;
+  file: string;
+  nSlices: number;
+  bpm: number;
+}
+
 export class KnowledgeStore {
   /**
    * @param root the knowledge/ directory
    * @param measurementsDir library/measurements (records surface); optional
-   * @param referencesDir library/references (M8 reference maps); optional
+   * @param referencesDir library/references (reference-track maps); optional
    */
   constructor(
     readonly root: string,
@@ -72,7 +76,7 @@ export class KnowledgeStore {
       .map(String)
       .filter((f) => f.endsWith(".md") && !f.endsWith("INDEX.md") && basename(f) !== "README.md");
     const entries: StoredKnowledgeEntry[] = [];
-    for (const rel of files.sort()) {
+    for (const rel of files.toSorted()) {
       const abs = join(this.root, rel);
       if (!(await stat(abs)).isFile()) continue;
       try {
@@ -85,7 +89,7 @@ export class KnowledgeStore {
         }
         entries.push({ ...entry, relPath: rel });
       } catch (err) {
-        throw new Error(`Bad knowledge entry ${abs}: ${(err as Error).message}`);
+        throw new Error(`Bad knowledge entry ${abs}: ${(err as Error).message}`, { cause: err });
       }
     }
     return entries.filter(
@@ -102,9 +106,7 @@ export class KnowledgeStore {
     const matches = (await this.listEntries()).filter((e) => e.slug === slug);
     if (matches.length === 0) throw new Error(`No knowledge entry with slug "${slug}"`);
     if (matches.length > 1) {
-      throw new Error(
-        `Slug "${slug}" is ambiguous: ${matches.map((m) => m.relPath).join(", ")}`,
-      );
+      throw new Error(`Slug "${slug}" is ambiguous: ${matches.map((m) => m.relPath).join(", ")}`);
     }
     return matches[0]!;
   }
@@ -126,22 +128,25 @@ export class KnowledgeStore {
   /** Topics currently present (discovered, never hardcoded). */
   async listTopics(): Promise<string[]> {
     const topics = new Set((await this.listEntries()).map((e) => e.topic));
-    return [...topics].sort();
+    return [...topics].toSorted();
   }
 
   /**
-   * library/measurements/ holds TWO record kinds sharing one directory:
-   * single-file mix reports (`report.save_record`, no `kind` field) and
+   * library/measurements/ holds three record kinds sharing one directory:
+   * single-file mix reports (`report.save_record`, no `kind` field),
    * multi-file drum-stats records (`drumstats.save_record`, `kind:
-   * "drumstats"` — see `awh drums mine --save`). This lists only the
-   * mix-report kind (its own shape); drum-stats records are skipped here
-   * and surfaced separately by `listDrumStatsRecords`, so neither crashes
-   * trying to read fields the other kind doesn't have.
+   * "drumstats"`, from `awh drums mine --save`) and chop maps (`kind:
+   * "chopmap"`, from `awh breaks chop --save`). This lists only the
+   * mix-report kind; the others are surfaced by `listDrumStatsRecords` and
+   * `listChopMapRecords`, so no reader crashes on fields another kind
+   * doesn't have.
    */
   async listMeasurementRecords(): Promise<MeasurementRecordSummary[]> {
     if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
     const out: MeasurementRecordSummary[] = [];
-    for (const f of (await readdir(this.measurementsDir)).filter((x) => x.endsWith(".json")).sort()) {
+    for (const f of (await readdir(this.measurementsDir))
+      .filter((x) => x.endsWith(".json"))
+      .toSorted()) {
       try {
         const raw = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
           kind?: string;
@@ -154,7 +159,7 @@ export class KnowledgeStore {
           };
           findings: unknown[];
         };
-        if (raw.kind === "drumstats") continue;
+        if (raw.kind === "drumstats" || raw.kind === "chopmap") continue;
         out.push({
           name: f.replace(/\.json$/, ""),
           saved: raw.saved,
@@ -165,18 +170,20 @@ export class KnowledgeStore {
           findingsCount: raw.findings.length,
         });
       } catch (err) {
-        throw new Error(`Bad measurement record ${f}: ${(err as Error).message}`);
+        throw new Error(`Bad measurement record ${f}: ${(err as Error).message}`, { cause: err });
       }
     }
     return out;
   }
 
-  /** The `awh drums mine --save` half of library/measurements/ — see
-   * `listMeasurementRecords` for why the two kinds are split. */
+  /** The `awh drums mine --save` records in library/measurements/. See
+   * `listMeasurementRecords` for why the kinds are split. */
   async listDrumStatsRecords(): Promise<DrumStatsRecordSummary[]> {
     if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
     const out: DrumStatsRecordSummary[] = [];
-    for (const f of (await readdir(this.measurementsDir)).filter((x) => x.endsWith(".json")).sort()) {
+    for (const f of (await readdir(this.measurementsDir))
+      .filter((x) => x.endsWith(".json"))
+      .toSorted()) {
       try {
         const raw = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
           kind?: string;
@@ -193,7 +200,38 @@ export class KnowledgeStore {
           nSources: raw.n_sources,
         });
       } catch (err) {
-        throw new Error(`Bad drum-stats record ${f}: ${(err as Error).message}`);
+        throw new Error(`Bad drum-stats record ${f}: ${(err as Error).message}`, { cause: err });
+      }
+    }
+    return out;
+  }
+
+  /** The `awh breaks chop --save` records (`kind: "chopmap"`) in
+   *  library/measurements/. See `listMeasurementRecords` for why the kinds
+   *  are split. */
+  async listChopMapRecords(): Promise<ChopMapRecordSummary[]> {
+    if (!this.measurementsDir || !existsSync(this.measurementsDir)) return [];
+    const out: ChopMapRecordSummary[] = [];
+    for (const f of (await readdir(this.measurementsDir))
+      .filter((x) => x.endsWith(".json"))
+      .toSorted()) {
+      try {
+        const raw = JSON.parse(await readFile(join(this.measurementsDir, f), "utf8")) as {
+          kind?: string;
+          saved: string;
+          file: string;
+          chopmap: { n_slices: number; bpm: number };
+        };
+        if (raw.kind !== "chopmap") continue;
+        out.push({
+          name: f.replace(/\.json$/, ""),
+          saved: raw.saved,
+          file: raw.file,
+          nSlices: raw.chopmap.n_slices,
+          bpm: raw.chopmap.bpm,
+        });
+      } catch (err) {
+        throw new Error(`Bad chop-map record ${f}: ${(err as Error).message}`, { cause: err });
       }
     }
     return out;
@@ -202,7 +240,9 @@ export class KnowledgeStore {
   async listReferenceRecords(): Promise<ReferenceRecordSummary[]> {
     if (!this.referencesDir || !existsSync(this.referencesDir)) return [];
     const out: ReferenceRecordSummary[] = [];
-    for (const f of (await readdir(this.referencesDir)).filter((x) => x.endsWith(".json")).sort()) {
+    for (const f of (await readdir(this.referencesDir))
+      .filter((x) => x.endsWith(".json"))
+      .toSorted()) {
       try {
         const raw = JSON.parse(await readFile(join(this.referencesDir, f), "utf8")) as {
           saved?: string;
@@ -220,7 +260,7 @@ export class KnowledgeStore {
           ...(analysis.sections ? { sectionCount: analysis.sections.length } : {}),
         });
       } catch (err) {
-        throw new Error(`Bad reference record ${f}: ${(err as Error).message}`);
+        throw new Error(`Bad reference record ${f}: ${(err as Error).message}`, { cause: err });
       }
     }
     return out;
@@ -241,8 +281,14 @@ export class KnowledgeStore {
       `${entries.length} entries · generated by \`awh kb index\` — do not edit by hand.`,
       "Cite slug + tier when applying an entry. Executable sections are the contract.",
     ];
-    for (const topic of [...byTopic.keys()].sort()) {
-      lines.push("", `## ${topic}`, "", "| slug | tier | tags | executable | sources |", "|---|---|---|---|---|");
+    for (const topic of [...byTopic.keys()].toSorted()) {
+      lines.push(
+        "",
+        `## ${topic}`,
+        "",
+        "| slug | tier | tags | executable | sources |",
+        "|---|---|---|---|---|",
+      );
       for (const e of byTopic.get(topic)!) {
         lines.push(
           `| [${e.slug}](${e.relPath.split(sep).join("/")}) | ${e.tier} | ${e.tags.join(", ")} | ` +
@@ -280,6 +326,22 @@ export class KnowledgeStore {
         lines.push(
           `| [${r.name}](../library/measurements/${r.name}.json) | ${r.saved} | ` +
             `${r.dataset} | ${r.nLoops} | ${r.nSources} |`,
+        );
+      }
+    }
+    const chopMaps = await this.listChopMapRecords();
+    if (chopMaps.length > 0) {
+      lines.push(
+        "",
+        "## chop maps (library/measurements/ — `awh breaks chop --save` records)",
+        "",
+        "| record | saved | slices | bpm | source file |",
+        "|---|---|---|---|---|",
+      );
+      for (const r of chopMaps) {
+        lines.push(
+          `| [${r.name}](../library/measurements/${r.name}.json) | ${r.saved} | ` +
+            `${r.nSlices} | ${r.bpm.toFixed(1)} | ${basename(r.file)} |`,
         );
       }
     }

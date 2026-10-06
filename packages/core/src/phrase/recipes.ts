@@ -1,5 +1,5 @@
 /**
- * M9 response recipes: five deterministic (callNotes, scale, spec, rng) ->
+ * Response recipes: five deterministic (callNotes, scale, spec, rng) ->
  * response transforms, per docs/design/phrase-engine.md's recipe table.
  * Built on the existing transform vocabulary (../transforms/) where it
  * fits; phrase-specific timing/pitch machinery lives in util.ts.
@@ -7,8 +7,8 @@
  * Every recipe enters after a delay drawn from spec.responseDelayBeats,
  * ends on a spec.resolveDegrees pitch in spec.responseRegister, and leaves
  * spec.restMinBeats of tail before the returned lengthBeats (rounded up to
- * a whole bar) — the "rest is the question mark" / "answers resolve"
- * principles from knowledge/arrangement/call-response-rest-placement.md and
+ * a whole bar). These are the "rest is the question mark" / "answers
+ * resolve" principles from knowledge/arrangement/call-response-rest-placement.md and
  * call-response-drop-grammar.md.
  */
 import type { NoteSpec } from "../bridge/types.js";
@@ -26,7 +26,7 @@ import {
 
 export interface RecipeResult {
   /** Response notes; `start` shares callNotes' own time coordinate (0 = the
-   *  call's own clip/cell origin), NOT re-based to 0 at the response entry. */
+   *  call's own clip/cell origin), not re-based to 0 at the response entry. */
   notes: NoteSpec[];
   /** Container length in beats (whole bars) that fits call end + delay +
    *  response content + the trailing rest budget. */
@@ -49,11 +49,15 @@ interface ResponseWindow {
 /**
  * Shared entry-point math for every recipe: where does the response start,
  * and does the call itself leave the bar-tail rest that
- * call-response-rest-placement.md calls for? (Negative control: a call that
- * fills its own cell still gets a fully legal, non-overlapping response —
- * this only WARNS, it never blocks generation.)
+ * call-response-rest-placement.md calls for? A call that fills its own cell
+ * still gets a legal, non-overlapping response: this only warns, it never
+ * blocks generation.
  */
-function deriveResponseWindow(callNotes: NoteSpec[], spec: PhraseSpec, rng: () => number): ResponseWindow {
+function deriveResponseWindow(
+  callNotes: NoteSpec[],
+  spec: PhraseSpec,
+  rng: () => number,
+): ResponseWindow {
   const warnings: string[] = [];
   const end = callEndBeat(callNotes);
   const barEnd = ceilToBar(Math.max(end, 1e-9));
@@ -69,16 +73,28 @@ function deriveResponseWindow(callNotes: NoteSpec[], spec: PhraseSpec, rng: () =
   return { responseStart: end + delay, warnings };
 }
 
-/** Force the LAST note (by start) onto an allowed resolve-degree pitch and
+/** Force the last note (by start) onto an allowed resolve-degree pitch and
  *  compute the bar-rounded container length. Shared tail for every recipe. */
-function finalizeResponse(notes: NoteSpec[], scale: ScaleContext, spec: PhraseSpec, warnings: string[]): RecipeResult {
+function finalizeResponse(
+  notes: NoteSpec[],
+  scale: ScaleContext,
+  spec: PhraseSpec,
+  warnings: string[],
+): RecipeResult {
   if (notes.length === 0) {
     return { notes: [], lengthBeats: ceilToBar(spec.restMinBeats), warnings };
   }
   const sorted = sortNotes(notes);
   const last = sorted[sorted.length - 1]!;
-  const candidates = resolveDegreePitches(spec.responseRegister, scale.rootNote, spec.resolveDegrees);
-  const resolved: NoteSpec[] = [...sorted.slice(0, -1), { ...last, pitch: nearestPitch(last.pitch, candidates) }];
+  const candidates = resolveDegreePitches(
+    spec.responseRegister,
+    scale.rootNote,
+    spec.resolveDegrees,
+  );
+  const resolved: NoteSpec[] = [
+    ...sorted.slice(0, -1),
+    { ...last, pitch: nearestPitch(last.pitch, candidates) },
+  ];
   const lengthBeats = ceilToBar(last.start + last.duration + spec.restMinBeats);
   return { notes: resolved, lengthBeats, warnings };
 }
@@ -133,9 +149,9 @@ export const invertAnswer: ResponseRecipe = (callNotes, scale, spec, rng) => {
 };
 
 /**
- * `displaced-echo`: rhythm rotated onto complementary beats (hocketing —
+ * `displaced-echo`: rhythm rotated onto complementary beats (hocketing, see
  * knowledge/arrangement/call-response-drop-grammar.md); the first hit lands
- * ON the beat (kick alignment).
+ * on the beat (kick alignment).
  */
 export const displacedEcho: ResponseRecipe = (callNotes, scale, spec, rng) => {
   const { responseStart, warnings } = deriveResponseWindow(callNotes, spec, rng);
@@ -185,14 +201,16 @@ export function applyResponseRecipe(
 ): RecipeResult {
   const recipe = RECIPES[name];
   if (!recipe) {
-    throw new Error(`unknown response recipe "${name}" (known: ${Object.keys(RECIPES).join(", ")})`);
+    throw new Error(
+      `unknown response recipe "${name}" (known: ${Object.keys(RECIPES).join(", ")})`,
+    );
   }
   return recipe(callNotes, scale, spec, rng);
 }
 
 /**
- * Fit a (naturally-sized) recipe result into a FIXED window ending at
- * `windowEndBeats` — used by the cold-start phrase generator (phrase.ts),
+ * Fit a (naturally-sized) recipe result into a fixed window ending at
+ * `windowEndBeats`. Used by the cold-start phrase generator (phrase.ts),
  * where every cell must tile at the spec's fixed cellBars grid. Truncates
  * trailing notes that would overrun the window, re-resolving whatever note
  * ends up last; drop-respond's freestanding candidates never need this
@@ -217,11 +235,17 @@ export function fitResponseToWindow(
         "consider a shorter call cell or a smaller responseDelayBeats range",
     );
   }
-  notes = notes.map((n) => (n.start + n.duration > limit ? { ...n, duration: Math.max(0.05, limit - n.start) } : n));
+  notes = notes.map((n) =>
+    n.start + n.duration > limit ? { ...n, duration: Math.max(0.05, limit - n.start) } : n,
+  );
   const sorted = sortNotes(notes);
   if (sorted.length > 0) {
     const last = sorted[sorted.length - 1]!;
-    const candidates = resolveDegreePitches(spec.responseRegister, scale.rootNote, spec.resolveDegrees);
+    const candidates = resolveDegreePitches(
+      spec.responseRegister,
+      scale.rootNote,
+      spec.resolveDegrees,
+    );
     sorted[sorted.length - 1] = { ...last, pitch: nearestPitch(last.pitch, candidates) };
   }
   return { notes: sorted, lengthBeats: windowEndBeats, warnings };

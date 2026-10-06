@@ -1,8 +1,7 @@
 /**
- * B1 — pure helpers for `awh clip from-audio` (SDK-free: seconds/beats math
- * and grid quantization for transcribed notes). DSP itself (the actual
- * pitch/onset detection) lives in analysis/awh_analysis/a2m.py — this module
- * only does the deterministic arithmetic on the note list the Python side
+ * Pure helpers for `awh clip from-audio` (SDK-free: seconds/beats math and
+ * grid quantization for transcribed notes). The DSP (pitch/onset detection)
+ * lives in analysis/awh_analysis/a2m.py; this module only does the deterministic arithmetic on the note list the Python side
  * returns before it's written to Live.
  */
 import type { NoteSpec } from "../bridge/types.js";
@@ -40,8 +39,8 @@ export function parseQuantizeGrid(spec: string): number | null {
 }
 
 /**
- * Snap note starts to the nearest grid line. Durations are ALSO snapped, but
- * only when the note is already at least one grid unit long — short
+ * Snap note starts to the nearest grid line. Durations are also snapped, but
+ * only when the note is already at least one grid unit long. Short
  * ornaments/blips (e.g. a 32nd-note grace note under a 1/8 grid) keep their
  * transcribed length rather than being forced up to the grid, which would
  * turn a short note into an audibly longer one. A duration that would
@@ -78,10 +77,9 @@ export function clipLengthBeats(lastNoteEndBeats: number, beatsPerBar: number): 
 /**
  * Drop notes at/after `lengthBeats` and shorten any note that would
  * otherwise extend past it. Used when a transcription is written into an
- * EXISTING clip slot whose length can't be changed via the gateway (there is
- * no clip-resize op) — notes past the clip's own boundary would never sound
- * in Live anyway, so this makes that explicit instead of silently sending
- * out-of-range note data.
+ * existing clip slot whose length can't be changed via the gateway (there is
+ * no clip-resize op). Notes past the clip's boundary would never sound in
+ * Live, so this trims them instead of sending out-of-range note data.
  */
 export function clampNotesToLength(notes: readonly NoteSpec[], lengthBeats: number): NoteSpec[] {
   if (!(lengthBeats > 0)) {

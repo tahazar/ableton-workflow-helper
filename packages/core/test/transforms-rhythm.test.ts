@@ -123,10 +123,7 @@ describe("syncopate", () => {
 
   it("clamps at 0 for a negative offset", () => {
     const transform = syncopate.make({ probability: 1, offset: -5 });
-    const out = transform(
-      [{ pitch: 60, start: 0, duration: 0.5 }],
-      ctx({ rng: makeRng(7) }),
-    );
+    const out = transform([{ pitch: 60, start: 0, duration: 0.5 }], ctx({ rng: makeRng(7) }));
     expect(out[0]!.start).toBe(0);
   });
 

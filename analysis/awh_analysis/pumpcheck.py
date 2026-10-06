@@ -1,33 +1,31 @@
-"""Pump v2 — trigger-locked sidechain verification (M6 follow-up).
+"""Trigger-locked sidechain verification.
 
-v1 (`dynamics.pump`) folds the RMS envelope against the beat period and
-reads off a peak/trough shape. Live falsification showed that shape read
-alone cannot distinguish genuine ducking from a retriggered note's own
-decay on a full-mix capture (disabling the shaper barely moved the folded
-trough — see knowledge/setup/sidechain-template.md). The retriggered
-decay case is beat-synced too, so a beat-fold sees the same periodicity
-either way.
+`dynamics.pump` folds the RMS envelope against the beat period and reads
+off a peak/trough shape. That shape read alone cannot distinguish ducking
+from a retriggered note's own decay on a full-mix capture (disabling the
+shaper barely moves the folded trough; see
+knowledge/setup/sidechain-template.md). The retriggered decay case is
+beat-synced too, so a beat-fold sees the same periodicity either way.
 
-Pump v2 fixes this two ways:
+This module addresses that two ways:
 
-1. Align on the ACTUAL trigger note times (`duck.trigger_aligned_envelope`)
-   instead of a generic beat period — Kick & Snare patterns aren't
+1. Align on the actual trigger note times (`duck.trigger_aligned_envelope`)
+   instead of a generic beat period. Kick & Snare patterns aren't
    one-per-beat, so a period-fold measures the wrong thing on this
    template regardless of the shape question.
-2. FIT the fixed duck model (instant dip, hold, exponential release) to
+2. Fit the fixed duck model (instant dip, hold, exponential release) to
    the trigger-aligned envelope instead of reading off statistics. Volume
-   Shaper applies the identical user-drawn envelope on every hit — a
-   parametric fit against that exact shape is the honest model, and a good
-   fit (high r^2) at a shape a natural decay cannot produce (early trough,
-   not one drifting to the end of the window) is real evidence, not a
-   coincidental periodicity.
+   Shaper applies the identical user-drawn envelope on every hit, so a
+   parametric fit against that exact shape is the right model. A good fit
+   (high r^2) at a shape a natural decay cannot produce (early trough, not
+   one drifting to the end of the window) is evidence, not a coincidental
+   periodicity.
 
-Still HONEST SCOPE: this is a single-capture check. The single-capture
-shape argument is now much stronger (decay physically cannot produce an
-early trough with a flat hold and posterior exponential RECOVERY back to
-the tail level — it only falls), but a real A/B (shaper on vs Device On
--> 0, `ab_compare`) remains the definitive verification the design doc
-calls for; that stays a separate `awh mix duck`/`ab` flow.
+Scope: this is a single-capture check. Decay cannot produce an early
+trough with a flat hold and exponential recovery back to the tail level
+(it only falls), but an A/B (shaper on vs Device On -> 0, `ab_compare`)
+remains the definitive verification; that is a separate `awh mix duck`/`ab`
+flow.
 """
 
 from __future__ import annotations
@@ -36,7 +34,7 @@ import numpy as np
 
 from .duck import trigger_aligned_envelope
 
-# 25 ms envelope window / 5 ms hop: same as duck.measure_duck_depth — long
+# 25 ms envelope window / 5 ms hop: same as duck.measure_duck_depth. Long
 # enough to average out sub-bass carrier ripple, short enough to resolve a
 # real duck.
 ENV_WINDOW_S = 0.025
@@ -44,7 +42,7 @@ ENV_HOP_S = 0.005
 
 TAIL_FRACTION = 0.15  # last 15% of the window = the stable "recovered" reference
 
-# Grid search over the fixed-shape fit (coarse, deterministic — no
+# Grid search over the fixed-shape fit (coarse, deterministic, no
 # scipy.optimize randomness).
 HOLD_STEPS = 24
 HOLD_MAX_FRACTION = 0.6  # hold searched over 0..60% of the window
@@ -59,7 +57,9 @@ DUCKING_MAX_MIN_FRACTION = 0.6  # envelope minimum must land in the first 60% of
 NO_DUCK_DEPTH_DB = 1.0
 NO_DUCK_MIN_MIN_FRACTION = 0.75  # minimum in the last 25% = still falling at wrap = decay, not duck
 
-HONEST_LIMIT_SPAN_DB = 20.0  # peak-to-tail beyond this suggests a full-mix / bleed-dominated capture
+HONEST_LIMIT_SPAN_DB = (
+    20.0  # peak-to-tail beyond this suggests a full-mix / bleed-dominated capture
+)
 
 
 def _dip_basis(times: np.ndarray, hold_s: float, tau_s: float) -> np.ndarray:
@@ -156,12 +156,12 @@ def check_pump(x: np.ndarray, sr: int, trigger_times_s: list[float]) -> dict:
     """Trigger-locked pump/duck verification.
 
     Aligns the low-band envelope to each trigger note (not a beat-period
-    fold), then FITS the fixed Volume-Shaper-shaped dip model (instant
+    fold), then fits the fixed Volume-Shaper-shaped dip model (instant
     attack / hold / exponential release) to it by a coarse deterministic
     grid search. A confident fit at an early-trough shape is evidence a
     real duck is engaged; a late-trough (still-falling) shape or near-zero
-    depth is the retriggered-decay negative control the v1 beat-fold
-    heuristic could not rule out.
+    depth is the retriggered-decay negative control the `dynamics.pump`
+    beat-fold heuristic cannot rule out.
     """
     aligned = trigger_aligned_envelope(x, sr, trigger_times_s, ENV_WINDOW_S, ENV_HOP_S)
     times = aligned["times"]

@@ -1,22 +1,22 @@
-"""Operator sound matching (B2 half 2): audio-sample -> Operator patch
+"""Operator sound matching: audio-sample -> Operator patch
 reconstruction, tiered by reachability. See docs/design/operator-assistant.md
 for the full design (science stance, tier semantics, non-goals).
 
 Pipeline: analyze (f0 track, harmonicity ratio, 16-partial harmonic vector,
 ADSR envelope fit, spectral-centroid brightness trajectory) -> gate
-(reachability: is this sound even IN Operator's gamut) -> propose (tier 1/2:
+(reachability: is this sound in Operator's gamut at all) -> propose (tier 1/2:
 a JSON patch proposal) or refuse (tier 3: "outside the reachable set" +
-the measured numbers that say so, a PASSING negative-control state, not an
+the measured numbers that say so, a passing negative-control state, not an
 error).
 
-All numbers are measured, never invented — same discipline as duck.py /
-pumpcheck.py. Raw device.param values Operator would need are NOT a solved
-problem (no verified raw<->display curve beyond the single Volume point in
+All numbers are measured, never invented, as in duck.py / pumpcheck.py.
+Raw device.param values Operator would need are not a solved problem (no
+verified raw<->display curve beyond the single Volume point in
 knowledge/setup/device-parameter-surface.md; see compressor-raw-display-
-mapping.md for why one point isn't a curve) — `propose()`'s `addressable`
-values are an explicitly-labeled HEURISTIC normalization, not a calibrated
-mapping, and the drawn-partials list is always reported for the owner
-regardless of tier so nothing is silently dropped.
+mapping.md for why one point isn't a curve). `propose()`'s `addressable`
+values are an explicitly labeled heuristic normalization, not a calibrated
+mapping, and the drawn-partials list is always reported regardless of tier
+so nothing is silently dropped.
 """
 
 from __future__ import annotations
@@ -35,13 +35,13 @@ N_FFT = 4096
 FRAME_LENGTH = 2048
 HOP_LENGTH = 512
 F0_FMIN_HZ = 43.1  # ~F1; pyin's own frame_length=2048 needs >= 2 periods per
-# frame to track cleanly (its warning threshold is exactly here) — this
+# frame to track cleanly (its warning threshold is exactly here). This
 # still covers everything from a low bass note up
 F0_FMAX_HZ = 1050.0  # ~C6
 
 SUSTAIN_WINDOW_REL_DB = 6.0  # harmonic/centroid analysis window: within this many dB of the peak
 
-# Reachability gate thresholds (named, honest numbers — see design doc):
+# Reachability gate thresholds (see design doc):
 F0_MIN_VOICED_FRACTION = 0.15  # below this: "no stable pitch" (percussion/noise)
 F0_DRIFT_MAX_SEMITONES = 1.0  # f0 std across voiced frames, semitones
 HARMONICITY_MIN = 0.55  # harmonic energy / total energy — below this: tier 3
@@ -51,8 +51,8 @@ INHARMONIC_PARTIAL_DEVIATION_SEMITONES = 1.0  # avg partial deviation from an
 # integer harmonic series, semitones — above this: tier 3 (stretched partials)
 
 # `propose()`'s addressable-param heuristic (explicitly labeled, see module
-# docstring): Operator's envelope raw range's real time span is UNVERIFIED —
-# this is an assumption, not a measurement.
+# docstring): Operator's envelope raw range's real time span is unverified.
+# This is an assumption, not a measurement.
 ASSUMED_MAX_ENVELOPE_S = 10.0
 FILTER_SHAPING_HZ = 200.0  # centroid movement beyond this reads as "filter shaping happened"
 
@@ -102,7 +102,7 @@ def estimate_f0(mono: np.ndarray, sr: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# ADSR envelope fit (grid-fit honesty: reports r_squared, same discipline as
+# ADSR envelope fit (reports r_squared, same approach as
 # duck.fit_duck_envelope / pumpcheck._fit_dip_model)
 # ---------------------------------------------------------------------------
 
@@ -141,9 +141,8 @@ def _adsr_model_db(
 def fit_adsr(times: np.ndarray, env_db: np.ndarray) -> dict:
     """Detect attack/decay/sustain/release breakpoints from a broadband
     amplitude envelope (dB) and report a fit quality (r_squared) against the
-    piecewise-linear-dB model reconstructed from those breakpoints — the
-    same "grid fits with reported quality" honesty as duck.py/pumpcheck.py,
-    not a vibe.
+    piecewise-linear-dB model reconstructed from those breakpoints, the
+    same "fit with reported quality" approach as duck.py/pumpcheck.py.
     """
     n = len(env_db)
     if n < 2:
@@ -158,7 +157,7 @@ def fit_adsr(times: np.ndarray, env_db: np.ndarray) -> dict:
     attack_s = float(times[attack_idx])
 
     # Sustain: the longest contiguous run (starting at/after the peak) whose
-    # span stays within ADSR_SUSTAIN_STABLE_DB of itself — the flattest
+    # span stays within ADSR_SUSTAIN_STABLE_DB of itself: the flattest
     # stretch, found by a deterministic linear scan (no optimizer).
     best_run = (peak_idx, peak_idx)
     best_len = 0
@@ -235,8 +234,8 @@ def harmonic_vector_and_ratio(
     if not sustain_mask.any():
         return [0.0] * N_PARTIALS, 0.0, [0.0] * N_PARTIALS
 
-    # STFT mainlobe half-width (Hz) for the analysis window — a band
-    # narrower than this would clip a genuine partial's own energy and
+    # STFT mainlobe half-width (Hz) for the analysis window. A band
+    # narrower than this would clip a partial's own energy and
     # under-read harmonicity even on a perfectly harmonic tone.
     mainlobe_half_hz = 2.0 * sr / FRAME_LENGTH
 
@@ -245,9 +244,9 @@ def harmonic_vector_and_ratio(
     # Per-frame energy captured within the enumerated harmonic bands (summed
     # across every bin in each band, so a partial's spread mainlobe/sidelobe
     # energy counts, not just its single peak bin) vs. the frame's total
-    # broadband energy — this is the actual "how much of the spectrum is
-    # harmonic" ratio; the peak-per-band value below is used only to recover
-    # each partial's RELATIVE amplitude for the harmonic vector.
+    # broadband energy. This is the "how much of the spectrum is harmonic"
+    # ratio; the peak-per-band value below is used only to recover each
+    # partial's relative amplitude for the harmonic vector.
     harmonic_energy_per_frame = np.zeros(windowed.shape[1])
     for k in range(1, N_PARTIALS + 1):
         center = k * f0_hz
@@ -266,7 +265,9 @@ def harmonic_vector_and_ratio(
 
     total_energy = float(np.mean(np.sum(windowed**2, axis=0)))
     total_energy = max(total_energy, 1e-12)
-    harmonicity_ratio = float(np.clip(float(np.mean(harmonic_energy_per_frame)) / total_energy, 0.0, 1.0))
+    harmonicity_ratio = float(
+        np.clip(float(np.mean(harmonic_energy_per_frame)) / total_energy, 0.0, 1.0)
+    )
 
     amps_arr = np.asarray(amps)
     peak_amp = float(amps_arr.max())
@@ -280,22 +281,21 @@ def partial_deviation_semitones(
     """Energy-weighted average |deviation| (semitones) between the actual
     spectral peak near k*f0 (searched in a window tolerant of stretched
     partials) and the ideal integer-harmonic k*f0, for k=2..k_max. Near 0 for
-    a genuinely harmonic tone; large for inharmonic content (bells, stretched
+    a harmonic tone; large for inharmonic content (bells, stretched
     partials) where the true peaks sit off the integer-harmonic grid.
 
     The search half-width is capped at 0.45*f0_hz (< half the spacing
     between adjacent harmonics) so a search band can never bleed into a
-    NEIGHBORING partial and misreport its (correct) position as this
-    partial's deviation — found live in this module's own test synthesis: a
-    plain harmonic stack's low partials were mis-flagged as "inharmonic"
-    when a wider, center-scaled window let partial k's search band catch
-    partial k-1's much stronger peak.
+    neighboring partial and misreport its (correct) position as this
+    partial's deviation. With a wider, center-scaled window, a plain
+    harmonic stack's low partials get mis-flagged as "inharmonic" because
+    partial k's search band catches partial k-1's much stronger peak.
     """
     if not sustain_mask.any():
         return None
     frame_mag = np.median(mag[:, sustain_mask], axis=1)
-    # A partial only counts if it's actually PRESENT (well above the noise
-    # floor of this spectrum) — otherwise a pure sine or a sparse harmonic
+    # A partial only counts if it's present (well above the noise floor of
+    # this spectrum). Otherwise a pure sine or a sparse harmonic
     # series (silent higher partials) picks up a random noise-floor bump in
     # the search window and reports a spurious "inharmonic" deviation.
     presence_floor = float(np.max(frame_mag)) * 0.02
@@ -326,7 +326,7 @@ def partial_deviation_semitones(
 def classify_waveform(vector: list[float]) -> tuple[str, float]:
     """Cosine-match the normalized harmonic vector against Operator's stock
     wave families; residual = 1 - best cosine similarity (how much a stock
-    wave alone doesn't explain — the drawn-partials caveat trigger)."""
+    wave alone doesn't explain; triggers the drawn-partials caveat)."""
     v = np.asarray(vector, dtype=np.float64)
     if np.linalg.norm(v) < 1e-9:
         return "sine", 1.0
@@ -348,7 +348,7 @@ def classify_waveform(vector: list[float]) -> tuple[str, float]:
 
 
 def centroid_trajectory(mag: np.ndarray, freqs: np.ndarray, times: np.ndarray) -> dict:
-    """Spectral centroid over time on the ACTIVE (non-silent) frames only —
+    """Spectral centroid over time on the active (non-silent) frames only:
     a filter-envelope direction hint (rising/falling/flat brightness), not a
     raw Filter Freq/Env value."""
     energy = np.sum(mag, axis=0)
@@ -418,7 +418,11 @@ def analyze(path: str) -> dict:
         )
         deviation = partial_deviation_semitones(mag, freqs, sustain_mask, f0["hz"])
     else:
-        harmonic_vector, harmonicity_ratio, harmonic_amps = [0.0] * N_PARTIALS, 0.0, [0.0] * N_PARTIALS
+        harmonic_vector, harmonicity_ratio, harmonic_amps = (
+            [0.0] * N_PARTIALS,
+            0.0,
+            [0.0] * N_PARTIALS,
+        )
         deviation = None
 
     return {
@@ -438,7 +442,7 @@ def analyze(path: str) -> dict:
 
 def gate(analysis_result: dict) -> dict:
     """Reachability gate: tier 3 = outside Operator's reachable set (a
-    PASSING negative-control state, not an error) with the specific
+    passing negative-control state, not an error) with the specific
     measured properties that say so."""
     reasons: list[str] = []
     f0 = analysis_result["f0"]
@@ -513,7 +517,10 @@ def propose(analysis_result: dict) -> dict:
         "Ae Sustain": _level_to_raw(adsr["sustain_db"], adsr["floor_db"], adsr["peak_db"]),
         "Ae Release": _time_to_raw(adsr["release_s"]),
     }
-    if centroid["start_hz"] is not None and abs(centroid["end_hz"] - centroid["start_hz"]) > FILTER_SHAPING_HZ:
+    if (
+        centroid["start_hz"] is not None
+        and abs(centroid["end_hz"] - centroid["start_hz"]) > FILTER_SHAPING_HZ
+    ):
         addressable["Filter On"] = 1.0
 
     return {
@@ -582,7 +589,7 @@ def match(path: str) -> dict:
 def compare(ref_path: str, cand_path: str) -> dict:
     """log-spectrogram L2 + harmonic-vector cosine, blended into one score
     in [0, 1] (higher = closer match). Reported as a distance/score with the
-    numbers, never a pass/fail verdict — the design doc's "ears decide"."""
+    numbers, never a pass/fail verdict; listening decides."""
     from . import audio
 
     ref_x, ref_sr = audio.load(ref_path)
@@ -600,8 +607,12 @@ def compare(ref_path: str, cand_path: str) -> dict:
     ref_mono = ref_mono[:n]
     cand_mono = cand_mono[:n]
 
-    ref_S = np.abs(librosa.stft(ref_mono, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=FRAME_LENGTH))
-    cand_S = np.abs(librosa.stft(cand_mono, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=FRAME_LENGTH))
+    ref_S = np.abs(
+        librosa.stft(ref_mono, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=FRAME_LENGTH)
+    )
+    cand_S = np.abs(
+        librosa.stft(cand_mono, n_fft=N_FFT, hop_length=HOP_LENGTH, win_length=FRAME_LENGTH)
+    )
     m = min(ref_S.shape[1], cand_S.shape[1])
     ref_S = ref_S[:, :m]
     cand_S = cand_S[:, :m]

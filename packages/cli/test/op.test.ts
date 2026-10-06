@@ -20,9 +20,9 @@ import {
 
 /**
  * Fake-Operator apply engine tests (against a real gateway server backed by
- * FakeLiveBridge — same pattern as packages/core/test/server.test.ts) and
- * `op recipes` listing tests (against an isolated tmp KnowledgeStore — same
- * pattern as packages/core/test/knowledge.test.ts). See docs/design/
+ * FakeLiveBridge, as in packages/core/test/server.test.ts) and `op recipes`
+ * listing tests (against an isolated tmp KnowledgeStore, as in
+ * packages/core/test/knowledge.test.ts). See docs/design/
  * operator-assistant.md's verification bar.
  */
 
@@ -39,7 +39,7 @@ interface GatewayBody {
 }
 
 async function startFakeGateway(): Promise<OpCaller> {
-  server = createGatewayServer(new FakeLiveBridge(), { port: 0 as number });
+  server = createGatewayServer(new FakeLiveBridge(), { port: 0 });
   const port = await server.start();
   const base = `http://127.0.0.1:${port}`;
   return async (name, args) => {
@@ -79,7 +79,11 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
 
     const results = await applyRecipePlan(caller, plan);
     expect(results.every((r) => r.matched)).toBe(true);
-    expect(results.map((r) => r.param).sort()).toEqual(["Ae Attack", "Algorithm", "Osc-A Coarse"]);
+    expect(results.map((r) => r.param).toSorted()).toEqual([
+      "Ae Attack",
+      "Algorithm",
+      "Osc-A Coarse",
+    ]);
 
     const after = (await caller("device.get", { path: devicePath })) as DeviceDetail;
     const byName = new Map(after.params.map((p) => [p.name, p.value]));
@@ -94,8 +98,8 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
     const before = (await caller("device.get", { path: devicePath })) as DeviceDetail;
     const beforeValues = new Map(before.params.map((p) => [p.name, p.value]));
 
-    // "Osc-A Corase" is a typo for "Osc-A Coarse" — must NOT silently no-op
-    // that one param while writing the rest; the whole apply is refused.
+    // "Osc-A Corase" is a typo for "Osc-A Coarse". Instead of skipping that
+    // one param while writing the rest, the whole apply is refused.
     const recipe: OperatorRecipe = {
       name: "typo-recipe",
       device: "Operator",
@@ -127,8 +131,8 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
     const plan = planRecipeApply(before, recipe, devicePath);
     expect(plan.moves).toEqual([{ param: "Volume", from: beforeVolume, to: beforeVolume + 0.05 }]);
 
-    // dry-run never calls applyRecipePlan — confirm the live value is
-    // genuinely untouched.
+    // dry-run never calls applyRecipePlan; confirm the live value is
+    // untouched.
     const after = (await caller("device.get", { path: devicePath })) as DeviceDetail;
     expect(after.params.find((p) => p.name === "Volume")!.value).toBe(beforeVolume);
   });
@@ -145,7 +149,11 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
     const caller = await startFakeGateway();
     const devicePath = await insertOperator(caller);
     const before = (await caller("device.get", { path: devicePath })) as DeviceDetail;
-    const recipe: OperatorRecipe = { name: "out-of-range", device: "Operator", params: { Volume: 5.0 } };
+    const recipe: OperatorRecipe = {
+      name: "out-of-range",
+      device: "Operator",
+      params: { Volume: 5.0 },
+    };
     const plan = planRecipeApply(before, recipe, devicePath);
     await expect(applyRecipePlan(caller, plan)).rejects.toThrow(/outside \[/);
   });
@@ -195,7 +203,13 @@ describe("op recipes listing (summarizeRecipeEntries)", () => {
 
     const entries = await store.listEntries();
     expect(summarizeRecipeEntries(entries)).toEqual([
-      { slug: "operator-recipe-growl-bass", title: "Growl bass", tier: "draft", paramCount: 2, hasPlayNotes: true },
+      {
+        slug: "operator-recipe-growl-bass",
+        title: "Growl bass",
+        tier: "draft",
+        paramCount: 2,
+        hasPlayNotes: true,
+      },
     ]);
   });
 

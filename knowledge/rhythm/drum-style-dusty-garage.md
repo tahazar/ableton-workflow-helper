@@ -8,11 +8,12 @@ related: [rhythm/burial-2step-skeleton, rhythm/burial-swing-feel]
 ---
 # Drum style: dusty garage
 
-First HOUSE-FAMILY data style (four-on-the-floor engine, house/techno share
-it): a garage-leaning four-floor — clap-only backbeat, sparse chancy open
-hats, offbeat closed hats at low density flipping to swung 16ths, shaker
-ghosts, late rumble kicks. Draft until auditioned; edit the YAML and re-gen,
-no rebuild. Pairs with the sourced Burial entries (swing/palette context).
+A house-family data style (the four-on-the-floor engine that house and
+techno share), leaning garage: clap-only backbeat, sparse chance-based open
+hats, offbeat closed hats at low density that flip to swung 16ths, shaker
+ghosts, late rumble kicks. Draft until auditioned. Edit the YAML and re-gen;
+no rebuild needed. Pairs with the sourced Burial entries for swing and
+palette context.
 
 ## Executable
 
@@ -39,7 +40,8 @@ swingDelay: 0.05
 
 ## The rule
 
-Four-floor kick fixed; the top end carries the garage: swingDelay 0.05 on
-off-16ths at density >= 0.55, clap (no snare) backbeat, open hats by chance
-(0.45) instead of every offbeat, shaker ghosts scaled to 0.7. Compare
-`--density 0.4` vs `0.7` — the hat grid flip is the character change.
+The four-floor kick is fixed; the top end carries the garage feel:
+swingDelay 0.05 on off-16ths at density >= 0.55, clap (no snare) backbeat,
+open hats by chance (0.45) instead of every offbeat, shaker ghosts scaled to
+0.7. Compare `--density 0.4` with `0.7`: the hat-grid flip is the character
+change.

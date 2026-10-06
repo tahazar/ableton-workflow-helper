@@ -1,10 +1,10 @@
-"""pitch.py tests (M6b masking toolkit) — synthetic signals with known
-ground truth. The headline regression test reproduces the exact live
-failure the gap report (docs/design/analysis-engine.md, 2026-08-23)
-describes: a naive "loudest FFT bin" picker reported a growl's 2nd
-harmonic as the note once it outgrew the fundamental. `estimate_f0`'s
-periodicity tracking (pyin) must still land on the fundamental — AND the
-honesty feature must separately flag the dominance, not hide it.
+"""pitch.py tests (masking toolkit): synthetic signals with known ground
+truth. The main regression test reproduces the failure described in
+docs/design/analysis-engine.md: a naive "loudest FFT bin" picker reports a
+growl's 2nd harmonic as the note once it outgrows the fundamental.
+`estimate_f0`'s periodicity tracking (pyin) must still land on the
+fundamental, and the harmonic-dominance check must separately flag the
+dominance rather than hide it.
 """
 
 from __future__ import annotations
@@ -26,9 +26,9 @@ SR = 44100
 def _growl_with_dominant_2nd_harmonic(
     f0: float, sr: int, duration_s: float, fund_amp: float = 1.0
 ) -> np.ndarray:
-    """Fundamental + a 2nd harmonic that RAMPS from quiet to well past the
-    fundamental's own amplitude partway through — the exact live-caught
-    shape (docs/design/analysis-engine.md 2026-08-23 gap report)."""
+    """Fundamental + a 2nd harmonic that ramps from quiet to well past the
+    fundamental's own amplitude partway through, the shape described in
+    docs/design/analysis-engine.md."""
     t = np.arange(int(round(duration_s * sr))) / sr
     harmonic_amp = np.linspace(0.3, 1.6, len(t))  # ends louder than fund_amp
     sig = fund_amp * np.sin(2 * np.pi * f0 * t) + harmonic_amp * np.sin(2 * np.pi * 2 * f0 * t)
@@ -48,8 +48,8 @@ def test_growl_dominant_2nd_harmonic_f0_stays_at_fundamental_and_gets_flagged(tm
 
     result = P.pitch(str(path))
     assert result["state"] == "voiced"
-    # THE regression: f0 must land on the fundamental, not the 2nd harmonic
-    # a naive spectral-peak picker was caught reporting live.
+    # The regression: f0 must land on the fundamental, not the 2nd harmonic
+    # a naive spectral-peak picker reports.
     assert result["f0_hz"] == pytest.approx(f0, rel=0.02)
     assert result["f0_hz"] < 1.5 * f0  # sanity margin: nowhere near 2*f0
 
@@ -64,8 +64,8 @@ def test_growl_dominant_2nd_harmonic_f0_stays_at_fundamental_and_gets_flagged(tm
 
 def test_growl_negative_control_constant_subordinate_2nd_harmonic_not_flagged(tmp_path):
     """Negative control (docs/lessons-learned.md rule 2): a 2nd harmonic
-    that stays well BELOW the fundamental the whole time must NOT be
-    flagged — the detector isn't just always-on."""
+    that stays well below the fundamental the whole time must not be
+    flagged, so the detector isn't always-on."""
     t = np.arange(int(round(2.0 * SR))) / SR
     sig = 1.0 * np.sin(2 * np.pi * 100.0 * t) + 0.2 * np.sin(2 * np.pi * 200.0 * t)
     x = sig / np.max(np.abs(sig)) * 0.8
@@ -113,7 +113,7 @@ def test_hz_to_note_known_values():
 
 
 # ---------------------------------------------------------------------------
-# Silence / unvoiced -> a STATE, not an error (docs/lessons-learned.md #5)
+# Silence / unvoiced -> a state, not an error (docs/lessons-learned.md #5)
 # ---------------------------------------------------------------------------
 
 

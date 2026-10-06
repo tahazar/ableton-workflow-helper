@@ -1,10 +1,10 @@
 /**
- * .alc generation via TEMPLATE CAPTURE (docs/research/alc-live-library.md).
+ * .alc generation via template capture (docs/research/alc-live-library.md).
  *
- * We never hand-construct Live's clip schema: the owner saves ONE real MIDI
+ * We never hand-construct Live's clip schema: the user saves one real MIDI
  * clip from Live 12 to the User Library (`awh lib capture-template`), and we
- * keep its gunzipped XML as the golden template. Rendering a library clip =
- * string surgery on that template — replace the KeyTracks note data, clip
+ * keep its gunzipped XML as the golden template. Rendering a library clip is
+ * string surgery on that template: replace the KeyTracks note data, clip
  * name, loop/length markers, and time signature; leave everything else
  * byte-for-byte as Live wrote it (unknown elements are rejected by older
  * Lives and wrong values crash silently, so we don't improvise).
@@ -106,10 +106,7 @@ export interface RenderClipSpec {
 
 /** Replace `<Elem Value="...">` for every occurrence of elem inside text. */
 function setValues(text: string, elem: string, value: string | number): string {
-  return text.replace(
-    new RegExp(`(<${elem} Value=")[^"]*(")`, "g"),
-    `$1${value}$2`,
-  );
+  return text.replace(new RegExp(`(<${elem} Value=")[^"]*(")`, "g"), `$1${value}$2`);
 }
 
 function formatNoteEvent(
@@ -156,12 +153,11 @@ export function renderAlcClip(templateXml: string, spec: RenderClipSpec): string
   // Template child order inside KeyTrack (Live writes Notes before MidiKey).
   const firstKeyTrack = clip.match(/<KeyTrack Id="\d+">([\s\S]*?)<\/KeyTrack>/);
   const midiKeyFirst = firstKeyTrack
-    ? firstKeyTrack[1]!.indexOf("<MidiKey") <
-      firstKeyTrack[1]!.indexOf("<Notes")
+    ? firstKeyTrack[1]!.indexOf("<MidiKey") < firstKeyTrack[1]!.indexOf("<Notes")
     : false;
 
   const byPitch = new Map<number, NoteSpec[]>();
-  for (const note of [...spec.notes].sort((a, b) => a.start - b.start || a.pitch - b.pitch)) {
+  for (const note of [...spec.notes].toSorted((a, b) => a.start - b.start || a.pitch - b.pitch)) {
     const list = byPitch.get(note.pitch) ?? [];
     list.push(note);
     byPitch.set(note.pitch, list);
@@ -173,7 +169,7 @@ export function renderAlcClip(templateXml: string, spec: RenderClipSpec): string
   let nextNoteId = 1;
   const keyTrackBlocks: string[] = [];
   let trackId = 0;
-  for (const pitch of [...byPitch.keys()].sort((a, b) => a - b)) {
+  for (const pitch of [...byPitch.keys()].toSorted((a, b) => a - b)) {
     const events = byPitch
       .get(pitch)!
       .map((n) => formatNoteEvent(pattern, n, hasNoteIds ? nextNoteId++ : undefined, i3))

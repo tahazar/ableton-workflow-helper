@@ -16,40 +16,39 @@ related: [rhythm/burial-2step-skeleton, rhythm/burial-swing-feel, rhythm/burial-
 
 Producer breakdowns of the Burial-style workflow (MusicRadar's tutorial,
 summarized independently on the Waveformless blog; Attack Magazine's Ghost
-Hardware beat-dissection) converge on three velocity-driven moves layered on
-top of the skeleton and off-grid timing:
+Hardware beat dissection) converge on three velocity moves layered on top of
+the skeleton and off-grid timing:
 
-1. **Kick velocity variation** — don't fire every kick at a fixed velocity;
-   vary hit-to-hit so the four-to-floor-plus figure (see
-   `rhythm/burial-2step-skeleton` [sourced]) doesn't read as machine-locked.
-2. **Ghost notes** — softer snare/rimshot hits placed between the main
-   backbeat hits, at low velocity, adding rhythmic detail without competing
-   with the 2/4 backbeat.
-3. **Hat/percussion velocity shaping** — vary the volume of each hi-hat or
-   shaker hit "to mimic the feel of a live drummer" (Waveformless's summary
-   of the MusicRadar tutorial), rather than a flat-velocity 16th roll.
+1. **Kick velocity variation**: vary velocity hit to hit so the
+   four-to-floor-plus figure (see `rhythm/burial-2step-skeleton` [sourced])
+   does not read as machine-locked.
+2. **Ghost notes**: soft snare/rimshot hits between the main backbeat hits,
+   adding detail without competing with the 2/4 backbeat.
+3. **Hat/percussion velocity shaping**: vary each hi-hat or shaker hit "to
+   mimic the feel of a live drummer" (Waveformless's summary of the
+   MusicRadar tutorial) instead of a flat-velocity 16th roll.
 
-These are general production-technique guidance for achieving a Burial-
-adjacent groove (secondhand tutorials, not Burial's own words) — cite
-accordingly; don't present as his stated method the way the Sound Forge/
-no-quantize claims in `rhythm/burial-swing-feel` [sourced] can be.
+This is secondhand tutorial guidance for a Burial-adjacent groove, not
+Burial's own words. Cite it as such, unlike the Sound Forge/no-quantize
+claims in `rhythm/burial-swing-feel` [sourced], which are his stated
+method.
 
 ## Executable
 
-Ghost-note layer added to Skeleton A from `rhythm/burial-2step-skeleton`
-[sourced] — low-velocity rimshot hits between the main backbeat:
+Ghost-note layer for Skeleton A from `rhythm/burial-2step-skeleton`
+[sourced]: low-velocity rimshot hits between the main backbeat.
 
 ```awh-notation
 sig 4/4
-# ILLUSTRATIVE ghost-note layer, constructed from the cited technique
-# descriptions (MusicRadar tutorial; Waveformless summary) — not a
+# Illustrative ghost-note layer, constructed from the cited technique
+# descriptions (MusicRadar tutorial; Waveformless summary), not a
 # transcription of a specific Burial track's ghost placement.
 1|1.75  C#1  1/4  v35  p70   # ghost rimshot before beat 2, low velocity + probability
 1|3.25  C#1  1/4  v30  p60   # ghost rimshot after beat 3
 ```
 
-Pipeline form for applying velocity variation + ghosts to an existing drum
+Pipeline form for adding velocity variation and ghosts to an existing drum
 clip: `velocity-shape:mode=accent humanize:velocity=15`. Pair with
-`awh drums humanize <clipPath> --velocity 10-15` for role-aware velocity
-variation across kick/hat/snare roles at once (kicks and hats get
-independent variation rather than one flat humanize amount).
+`awh drums humanize <clipPath> --velocity 10-15` for role-aware variation
+across kick/hat/snare at once (kicks and hats vary independently instead of
+sharing one humanize amount).

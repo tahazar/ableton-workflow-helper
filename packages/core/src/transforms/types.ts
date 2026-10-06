@@ -1,16 +1,16 @@
 import { BridgeError, type NoteSpec } from "../bridge/types.js";
 
 /**
- * Deterministic note transforms — the heart of the variation engine (M3).
+ * Deterministic note transforms: the core of the variation engine.
  *
- * A Transform is a PURE function: (notes, ctx) -> new notes. All randomness
+ * A Transform is a pure function: (notes, ctx) -> new notes. All randomness
  * flows through ctx.rng (seeded), so the same seed + params + input always
- * yields the same variation — variations are reproducible and diffable.
+ * yields the same variation; variations are reproducible and diffable.
  *
- * Authorship discipline (spec R7): transforms REWORK the user's material.
- * They may drop, move, reshape, double (octave/repeat) existing notes, but
- * must not invent unrelated new melodic content — co-writing is the LLM's
- * job, above this layer.
+ * Authorship rule: transforms rework the user's material. They may drop,
+ * move, reshape, double (octave/repeat) existing notes, but must not invent
+ * unrelated new melodic content. Co-writing belongs to the LLM agent layer
+ * above this one.
  */
 
 export interface ScaleContext {
@@ -76,5 +76,5 @@ export function clampPitch(pitch: number): number {
 
 /** Sort order used everywhere: time, then pitch. */
 export function sortNotes(notes: NoteSpec[]): NoteSpec[] {
-  return [...notes].sort((a, b) => a.start - b.start || a.pitch - b.pitch);
+  return [...notes].toSorted((a, b) => a.start - b.start || a.pitch - b.pitch);
 }

@@ -1,17 +1,17 @@
-"""M11b semantic sample search tests (docs/design/sample-semantic.md's
+"""Semantic sample search tests (docs/design/sample-semantic.md's
 verification bar, Python side):
 
 - stub-mode determinism (same file -> same vector; different content ->
   different vector)
 - text-vs-audio cosine sanity in stub space (unit-norm, finite, not a
   degenerate all-zero vector)
-- the "model not installed" error path (real, non-stub mode — never
+- the "model not installed" error path (real, non-stub mode; never
   touches torch/laion_clap, since the checkpoint file is checked for
-  BEFORE the lazy import)
+  before the lazy import)
 - batch JSONL shape through the `clapembed` CLI subcommand + sanitize_json
 
 Every stub test runs with AWH_CLAP_STUB=1 so this file never imports torch
-or laion_clap — see clapembed.py's module docstring.
+or laion_clap; see clapembed.py's module docstring.
 """
 
 from __future__ import annotations
@@ -65,7 +65,7 @@ def test_stub_different_content_different_vector(tmp_path):
 
 def test_stub_byte_identical_copy_embeds_identically(tmp_path):
     """The exact property `similar --semantic`'s Node negative control
-    relies on: a byte-for-byte copy of an indexed file embeds to the SAME
+    relies on: a byte-for-byte copy of an indexed file embeds to the same
     vector (content-hash-derived, not path-derived)."""
     path_a = _wav(tmp_path, "a.wav", 440.0)
     path_copy = tmp_path / "a_copy.wav"
@@ -126,7 +126,7 @@ def test_stub_text_different_phrase_different_vector():
 
 
 def test_stub_text_vs_audio_cosine_is_sane(tmp_path):
-    """Stub space has no real semantics, so this is a SANITY check, not a
+    """Stub space has no real semantics, so this is a sanity check, not a
     meaningfulness check: text and audio vectors live in the same (fake)
     512-dim unit-sphere space, so their cosine similarity is finite and
     bounded in [-1, 1] — never NaN, never out of range."""
@@ -142,7 +142,7 @@ def test_stub_text_vs_audio_cosine_is_sane(tmp_path):
 
 
 # ---------------------------------------------------------------------------
-# model-not-installed error path — REAL mode (never touches torch/laion_clap:
+# model-not-installed error path, real mode (never touches torch/laion_clap:
 # the checkpoint-file check happens before the lazy import)
 # ---------------------------------------------------------------------------
 
@@ -196,9 +196,9 @@ def test_cli_clapembed_batch_jsonl_shape(tmp_path):
         env=env,
     )
     assert proc.returncode == 0, proc.stderr
-    lines = [l for l in proc.stdout.splitlines() if l.strip()]
+    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
     assert len(lines) == 2
-    for line, path in zip(lines, [path_a, path_b]):
+    for line, path in zip(lines, [path_a, path_b], strict=True):
         obj = json.loads(line)
         assert obj["path"] == path
         assert obj["unreadable"] is False
@@ -240,8 +240,8 @@ def test_cli_clapembed_stdin_mode(tmp_path):
 
 
 def test_cli_clapembed_no_nan_or_infinity_tokens(tmp_path):
-    """sanitize_json's whole purpose (docs/lessons-learned.md pattern from
-    samplescan) — output must be strict, parseable JSON on every line."""
+    """sanitize_json's purpose (docs/lessons-learned.md pattern from
+    samplescan): output must be strict, parseable JSON on every line."""
     path_a = _wav(tmp_path, "a.wav", 440.0)
     env = dict(os.environ, AWH_CLAP_STUB="1")
     proc = subprocess.run(

@@ -1,14 +1,14 @@
 /**
- * M10 EndlessSpec: the per-song `endless.yaml` project file that drives
+ * EndlessSpec: the per-song `endless.yaml` project file that drives
  * `awh endless build` (see docs/design/endless-player.md). Same
  * typo-rejecting/unknown-key-rejecting YAML conventions as PhraseSpec
- * (../phrase/spec.ts) and DrumStyleSpec (../drums/styleSpec.ts) — a
+ * (../phrase/spec.ts) and DrumStyleSpec (../drums/styleSpec.ts): a
  * hand-written spec catches a misspelled field instead of silently
  * ignoring it.
  *
  * `parseEndlessSpec` does structural parsing/validation only (types,
  * ranges, unknown keys, internal cross-references like transitions ->
- * to a known section, pools -> a known layer). It does NOT touch the
+ * to a known section, pools -> a known layer). It does not touch the
  * filesystem. `validateEndlessSpec` runs the two graph/pool checks that
  * are pure functions of the parsed spec (reachability, empty pools) and
  * returns every problem found (not just the first) so the CLI can report
@@ -39,7 +39,7 @@ export interface EndlessSection {
    * but empty is a build-time error (zero-variant pool), not silence. */
   pools: Record<string, string[]>;
   /** 0..1 per-layer chance of a one-layer thin-out mute this section (not
-   * cumulative across layers — each non-protected layer with a pool here
+   * cumulative across layers; each non-protected layer with a pool here
    * rolls independently). Default 0. */
   layerMuteProbability: number;
 }
@@ -66,7 +66,7 @@ export interface EndlessFluctuation {
 export interface EndlessSpec {
   name: string;
   bpm: number;
-  /** v1: "4/4" only (validated literally), like the other engines. */
+  /** "4/4" only (validated literally), like the other engines. */
   sig: "4/4";
   /** 0/absent = fresh random seed each load; N = reproducible performance. */
   seed: number;
@@ -74,11 +74,10 @@ export interface EndlessSpec {
   layers: EndlessLayer[];
   sections: EndlessSection[];
   /** sectionId -> weighted outgoing edges. A section absent here (or with
-   * an empty edge list) has no outgoing edges — the player self-loops on
-   * it rather than crash (see player.js `pickNextSection`), but that is a
-   * dead end worth knowing about, so a section with zero declared edges
-   * still passes reachability as long as something else transitions INTO
-   * it; the player-level self-loop is a runtime safety net, not something
+   * an empty edge list) has no outgoing edges. The player self-loops on
+   * it rather than crash (see player.js `pickNextSection`). A section with
+   * zero declared edges still passes reachability as long as something
+   * else transitions into it; the player-level self-loop is a runtime safety net, not something
    * validation should encourage authors to rely on. */
   transitions: Record<string, EndlessTransitionEdge[]>;
   rules: EndlessRules;
@@ -219,7 +218,10 @@ function parseSections(raw: unknown, layerIds: Set<string>): EndlessSection[] {
   });
 }
 
-function parseTransitions(raw: unknown, sectionIds: Set<string>): Record<string, EndlessTransitionEdge[]> {
+function parseTransitions(
+  raw: unknown,
+  sectionIds: Set<string>,
+): Record<string, EndlessTransitionEdge[]> {
   const obj = asPlainObject(raw, `"transitions"`);
   const transitions: Record<string, EndlessTransitionEdge[]> = {};
   for (const [fromId, edgesRaw] of Object.entries(obj)) {
@@ -231,7 +233,9 @@ function parseTransitions(raw: unknown, sectionIds: Set<string>): Record<string,
       const edge = asPlainObject(rawEdge, `transitions.${fromId}[${j}]`);
       checkUnknownKeys(edge, EDGE_KEYS, `transitions.${fromId}[${j}]`);
       if (typeof edge.to !== "string" || !sectionIds.has(edge.to)) {
-        fail(`transitions.${fromId}[${j}]: "to" (${JSON.stringify(edge.to)}) is not a declared section id`);
+        fail(
+          `transitions.${fromId}[${j}]: "to" (${JSON.stringify(edge.to)}) is not a declared section id`,
+        );
       }
       if (typeof edge.weight !== "number" || Number.isNaN(edge.weight) || edge.weight <= 0) {
         fail(`transitions.${fromId}[${j}] (-> "${edge.to}"): "weight" must be a positive number`);
@@ -254,21 +258,30 @@ function parseRules(raw: unknown, layerIds: Set<string>): EndlessRules {
   checkUnknownKeys(obj, RULES_KEYS, `"rules"`);
   let noRepeatVariant = DEFAULT_NO_REPEAT_VARIANT;
   if (obj.noRepeatVariant !== undefined) {
-    if (typeof obj.noRepeatVariant !== "number" || !Number.isInteger(obj.noRepeatVariant) || obj.noRepeatVariant < 0) {
+    if (
+      typeof obj.noRepeatVariant !== "number" ||
+      !Number.isInteger(obj.noRepeatVariant) ||
+      obj.noRepeatVariant < 0
+    ) {
       fail(`rules.noRepeatVariant must be a non-negative integer`);
     }
     noRepeatVariant = obj.noRepeatVariant;
   }
   let maxConsecutive = DEFAULT_MAX_CONSECUTIVE;
   if (obj.maxConsecutive !== undefined) {
-    if (typeof obj.maxConsecutive !== "number" || !Number.isInteger(obj.maxConsecutive) || obj.maxConsecutive < 1) {
+    if (
+      typeof obj.maxConsecutive !== "number" ||
+      !Number.isInteger(obj.maxConsecutive) ||
+      obj.maxConsecutive < 1
+    ) {
       fail(`rules.maxConsecutive must be a positive integer`);
     }
     maxConsecutive = obj.maxConsecutive;
   }
   let protectedLayers: string[] = [];
   if (obj.protectedLayers !== undefined) {
-    if (!Array.isArray(obj.protectedLayers)) fail(`rules.protectedLayers must be an array of layer ids`);
+    if (!Array.isArray(obj.protectedLayers))
+      fail(`rules.protectedLayers must be an array of layer ids`);
     protectedLayers = obj.protectedLayers.map((id, i) => {
       if (typeof id !== "string" || !layerIds.has(id)) {
         fail(`rules.protectedLayers[${i}]: "${id}" is not a declared layer id`);
@@ -296,13 +309,13 @@ function parseFluctuation(raw: unknown): EndlessFluctuation {
 /**
  * Parse and structurally validate an EndlessSpec from a YAML document.
  * Rejects unknown top-level (and nested) keys, and rejects any internal
- * cross-reference to an undeclared layer/section id — all a typo check,
- * same discipline as parsePhraseSpec/parseDrumStyleSpec. Does not touch
- * the filesystem or check graph reachability/empty pools — see
- * `validateEndlessSpec` for those.
+ * cross-reference to an undeclared layer/section id, as typo checks like
+ * parsePhraseSpec/parseDrumStyleSpec. Does not touch the filesystem or
+ * check graph reachability/empty pools; see `validateEndlessSpec` for
+ * those.
  */
 export function parseEndlessSpec(yamlText: string): EndlessSpec {
-  const doc = parseYaml(yamlText);
+  const doc: unknown = parseYaml(yamlText);
   const raw = asPlainObject(doc, "expected a YAML mapping at the top level");
   checkUnknownKeys(raw, TOP_LEVEL_KEYS, "top level");
 
@@ -324,7 +337,11 @@ export function parseEndlessSpec(yamlText: string): EndlessSpec {
   }
   let crossfadeMs = DEFAULT_CROSSFADE_MS;
   if (raw.crossfadeMs !== undefined) {
-    if (typeof raw.crossfadeMs !== "number" || Number.isNaN(raw.crossfadeMs) || raw.crossfadeMs < 0) {
+    if (
+      typeof raw.crossfadeMs !== "number" ||
+      Number.isNaN(raw.crossfadeMs) ||
+      raw.crossfadeMs < 0
+    ) {
       fail(`"crossfadeMs" must be a non-negative number`);
     }
     crossfadeMs = raw.crossfadeMs;
@@ -357,7 +374,7 @@ export function parseEndlessSpec(yamlText: string): EndlessSpec {
  * Pure post-parse checks that don't need the filesystem: every section
  * must be reachable in the transition graph (from the first section,
  * which is the performance's entry point), and every pool a section
- * declares must have at least one variant. Returns EVERY problem found
+ * declares must have at least one variant. Returns every problem found
  * (not just the first) so `awh endless build` can report the whole list
  * in one loud pass before writing anything (per docs/lessons-learned.md:
  * validate before write, loud failures before partial output).

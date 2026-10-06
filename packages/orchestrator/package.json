@@ -1,0 +1,19 @@
+{
+  "name": "@awh/orchestrator",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Runs quality-plan items through stateless Claude Code workers with deterministic checks and an evaluator loop",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p test/tsconfig.json",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

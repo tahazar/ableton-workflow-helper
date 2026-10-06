@@ -62,7 +62,10 @@ def ab_compare(path_a: str, path_b: str, bpm: float | None = None) -> dict:
     width_b = meas_b["width_db"]
     width_delta = (
         width_b - width_a
-        if width_a is not None and width_b is not None and np.isfinite(width_a) and np.isfinite(width_b)
+        if width_a is not None
+        and width_b is not None
+        and np.isfinite(width_a)
+        and np.isfinite(width_b)
         else None
     )
 
@@ -83,7 +86,7 @@ def ab_compare(path_a: str, path_b: str, bpm: float | None = None) -> dict:
         "changed_findings": [],
     }
 
-    for f, d in zip(freqs, band_delta):
+    for f, d in zip(freqs, band_delta, strict=True):
         if np.isfinite(d) and abs(d) > BAND_CHANGE_FLAG_DB:
             result["changed_findings"].append(
                 {

@@ -178,12 +178,12 @@ describe("devices", () => {
     const after = (await call("device.get", { path })) as typeof device;
     expect(after.params.find((p) => p.name === "Freq")!.value).toBe(0.25);
 
-    await expect(
-      call("device.param", { path, param: "Freq", value: 99 }),
-    ).rejects.toThrowError(/outside/);
-    await expect(
-      call("device.param", { path, param: "Nope", value: 0.5 }),
-    ).rejects.toThrowError(/no param/);
+    await expect(call("device.param", { path, param: "Freq", value: 99 })).rejects.toThrowError(
+      /outside/,
+    );
+    await expect(call("device.param", { path, param: "Nope", value: 0.5 })).rejects.toThrowError(
+      /no param/,
+    );
   });
 
   it("supports drum racks: chains, pad notes, nested devices", async () => {
@@ -235,10 +235,10 @@ describe("audio clips", () => {
 
 describe("library.outbox", () => {
   it("drains right-click captures once (drain clears)", async () => {
-    const bridge = new FakeLiveBridge();
+    const outboxBridge = new FakeLiveBridge();
     const registry = buildOpRegistry();
     const outboxOp = registry.get("library.outbox")!;
-    bridge.addOutboxEntry({
+    outboxBridge.addOutboxEntry({
       name: "Captured Hats",
       notes: [{ pitch: 42, start: 0, duration: 0.25, velocity: 90 }],
       lengthBeats: 4,
@@ -247,9 +247,9 @@ describe("library.outbox", () => {
       scale: { rootNote: 9, name: "Minor", active: true },
       capturedAt: "2026-08-18T00:00:00.000Z",
     });
-    const first = (await outboxOp.handler({}, { bridge })) as unknown[];
+    const first = (await outboxOp.handler({}, { bridge: outboxBridge })) as unknown[];
     expect(first).toHaveLength(1);
-    const second = (await outboxOp.handler({}, { bridge })) as unknown[];
+    const second = (await outboxOp.handler({}, { bridge: outboxBridge })) as unknown[];
     expect(second).toHaveLength(0);
   });
 });

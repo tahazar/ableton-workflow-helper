@@ -1,8 +1,8 @@
 /**
- * M9 PhraseSpec: data-driven call-and-response phrase styles, sibling to B4's
- * DrumStyleSpec (see ../drums/styleSpec.ts) — same parsing conventions
- * (typo-rejecting, unknown-key rejection, sensible defaults so a knowledge
- * entry only needs to state what it changes).
+ * PhraseSpec: data-driven call-and-response phrase styles, sibling to
+ * DrumStyleSpec (../drums/styleSpec.ts) with the same parsing conventions:
+ * unknown keys are rejected, and defaults let a knowledge entry state only
+ * what it changes.
  *
  * Craft ground truth for the shape below: knowledge/arrangement/
  * call-response-drop-grammar.md, call-response-rest-placement.md,
@@ -46,7 +46,7 @@ export interface EvolutionStep {
 
 export interface PhraseSpec {
   name: string;
-  /** Only "call-response" is supported today; validated literally (field reserved). */
+  /** Only "call-response" is supported; validated literally (field reserved). */
   family: "call-response";
   /** One phrase unit; a drop = 1-2+ units. The evolution plan repeats every phraseBars. */
   phraseBars: number;
@@ -54,7 +54,7 @@ export interface PhraseSpec {
   cellBars: number;
   /** MIDI range [lo, hi] the call is fitted into. */
   callRegister: [number, number];
-  /** MIDI range [lo, hi] the response is fitted into — low, dominant. */
+  /** MIDI range [lo, hi] the response is fitted into: low, dominant. */
   responseRegister: [number, number];
   /** Onset-grid templates for the call, weighted. */
   callCells: CallCell[];
@@ -154,7 +154,9 @@ function parseCallCells(raw: unknown): CallCell[] {
     const cell = rawCell as Record<string, unknown>;
     for (const key of Object.keys(cell)) {
       if (!CELL_KEYS.has(key)) {
-        fail(`callCells[${i}]: unknown field "${key}" (expected one of ${[...CELL_KEYS].join(", ")})`);
+        fail(
+          `callCells[${i}]: unknown field "${key}" (expected one of ${[...CELL_KEYS].join(", ")})`,
+        );
       }
     }
     if (typeof cell.name !== "string" || cell.name.trim() === "") {
@@ -224,7 +226,11 @@ function parseResolveDegrees(raw: unknown): number[] {
 }
 
 function parseEvolution(raw: unknown): EvolutionStep[] {
-  if (raw === undefined) return DEFAULT_EVOLUTION.map((s) => ({ bars: [...s.bars] as [number, number], action: s.action }));
+  if (raw === undefined)
+    return DEFAULT_EVOLUTION.map((s) => ({
+      bars: [...s.bars] as [number, number],
+      action: s.action,
+    }));
   if (!Array.isArray(raw) || raw.length === 0) {
     fail(`"evolution" must be a non-empty array`);
   }
@@ -248,23 +254,33 @@ function parseEvolution(raw: unknown): EvolutionStep[] {
       step.bars[0] < 1 ||
       step.bars[1] < step.bars[0]
     ) {
-      fail(`evolution[${i}]: "bars" must be [a, b] with integers 1 <= a <= b (got ${JSON.stringify(step.bars)})`);
+      fail(
+        `evolution[${i}]: "bars" must be [a, b] with integers 1 <= a <= b (got ${JSON.stringify(step.bars)})`,
+      );
     }
-    if (typeof step.action !== "string" || !VALID_ACTIONS.includes(step.action as EvolutionAction)) {
-      fail(`evolution[${i}]: unknown action ${JSON.stringify(step.action)} (expected ${VALID_ACTIONS.join(" or ")})`);
+    if (
+      typeof step.action !== "string" ||
+      !VALID_ACTIONS.includes(step.action as EvolutionAction)
+    ) {
+      fail(
+        `evolution[${i}]: unknown action ${JSON.stringify(step.action)} (expected ${VALID_ACTIONS.join(" or ")})`,
+      );
     }
-    return { bars: [step.bars[0], step.bars[1]] as [number, number], action: step.action as EvolutionAction };
+    return {
+      bars: [step.bars[0], step.bars[1]] as [number, number],
+      action: step.action as EvolutionAction,
+    };
   });
 }
 
 /**
  * Parse and validate a PhraseSpec from a YAML document. Rejects unknown
  * top-level (and nested) keys so hand-written data catches typos instead of
- * silently ignoring a misspelled field — same discipline as
- * parseDrumStyleSpec (../drums/styleSpec.ts).
+ * silently ignoring a misspelled field, like parseDrumStyleSpec
+ * (../drums/styleSpec.ts).
  */
 export function parsePhraseSpec(yamlText: string): PhraseSpec {
-  const doc = parseYaml(yamlText);
+  const doc: unknown = parseYaml(yamlText);
   if (doc === null || typeof doc !== "object" || Array.isArray(doc)) {
     fail("expected a YAML mapping at the top level");
   }
@@ -290,9 +306,11 @@ export function parsePhraseSpec(yamlText: string): PhraseSpec {
   }
 
   const callRegister = checkMidiRange(raw.callRegister, "callRegister") ?? DEFAULT_CALL_REGISTER;
-  const responseRegister = checkMidiRange(raw.responseRegister, "responseRegister") ?? DEFAULT_RESPONSE_REGISTER;
+  const responseRegister =
+    checkMidiRange(raw.responseRegister, "responseRegister") ?? DEFAULT_RESPONSE_REGISTER;
   const callCells = parseCallCells(raw.callCells);
-  const restMinBeats = checkNonNegNumber(raw.restMinBeats, "restMinBeats") ?? DEFAULT_REST_MIN_BEATS;
+  const restMinBeats =
+    checkNonNegNumber(raw.restMinBeats, "restMinBeats") ?? DEFAULT_REST_MIN_BEATS;
 
   let responseDelayBeats: [number, number] = DEFAULT_RESPONSE_DELAY;
   if (raw.responseDelayBeats !== undefined) {
@@ -307,7 +325,9 @@ export function parsePhraseSpec(yamlText: string): PhraseSpec {
       v[0] < 0 ||
       v[1] < v[0]
     ) {
-      fail(`"responseDelayBeats" must be [min, max] with 0 <= min <= max (got ${JSON.stringify(v)})`);
+      fail(
+        `"responseDelayBeats" must be [min, max] with 0 <= min <= max (got ${JSON.stringify(v)})`,
+      );
     }
     responseDelayBeats = [v[0], v[1]];
   }
@@ -323,8 +343,13 @@ export function parsePhraseSpec(yamlText: string): PhraseSpec {
 
   let turnaround: TurnaroundKind = DEFAULT_TURNAROUND;
   if (raw.turnaround !== undefined) {
-    if (typeof raw.turnaround !== "string" || !VALID_TURNAROUNDS.includes(raw.turnaround as TurnaroundKind)) {
-      fail(`"turnaround" must be one of ${VALID_TURNAROUNDS.join(", ")} (got ${JSON.stringify(raw.turnaround)})`);
+    if (
+      typeof raw.turnaround !== "string" ||
+      !VALID_TURNAROUNDS.includes(raw.turnaround as TurnaroundKind)
+    ) {
+      fail(
+        `"turnaround" must be one of ${VALID_TURNAROUNDS.join(", ")} (got ${JSON.stringify(raw.turnaround)})`,
+      );
     }
     turnaround = raw.turnaround as TurnaroundKind;
   }
@@ -347,8 +372,8 @@ export function parsePhraseSpec(yamlText: string): PhraseSpec {
 }
 
 /**
- * The built-in "bass-music-cr" style — the design doc's own example spec,
- * verbatim (docs/design/phrase-engine.md).
+ * The built-in "bass-music-cr" style: the example spec from
+ * docs/design/phrase-engine.md, verbatim.
  */
 export const BASS_MUSIC_CR_SPEC: PhraseSpec = {
   name: "bass-music-cr",

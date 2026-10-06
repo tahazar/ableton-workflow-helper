@@ -61,7 +61,7 @@ function roleFromGmNote(note: number): DrumRole | undefined {
 /**
  * Build a DrumKit from a Drum Rack's pads. Names are matched case-insensitively
  * by keyword first; pads with no usable name fall back to a GM note match;
- * anything left over is "perc". The first pad to claim a role wins — later
+ * anything left over is "perc". The first pad to claim a role wins; later
  * pads matching the same role are left unassigned (they can still be reached
  * directly by note/path, just not through the role kit).
  */

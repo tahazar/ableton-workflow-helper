@@ -21,12 +21,7 @@ export {
   type UpdateClipArgs,
   type UpdateTrackArgs,
 } from "./bridge/types.js";
-export {
-  childPath,
-  formatPath,
-  parsePath,
-  type PathSegment,
-} from "./bridge/paths.js";
+export { childPath, formatPath, parsePath, type PathSegment } from "./bridge/paths.js";
 export {
   buildOpRegistry,
   type OpContext,
@@ -156,6 +151,7 @@ export {
 export {
   KnowledgeStore,
   type KnowledgeFilter,
+  type ChopMapRecordSummary,
   type DrumStatsRecordSummary,
   type MeasurementRecordSummary,
   type ReferenceRecordSummary,
@@ -206,6 +202,62 @@ export {
 } from "./phrase/phrase.js";
 export { parseOperatorRecipe, type OperatorRecipe } from "./operator/recipe.js";
 export {
+  BASIC_UP_SPEC,
+  MELODIC_TECHNO_16THS_SPEC,
+  arpRateBeats,
+  checkArpGate,
+  listArpStyles,
+  listArpVariants,
+  parseArpSpec,
+  type ArpContour,
+  type ArpEuclidSpec,
+  type ArpSpec,
+  type ArpVelocitySpec,
+  type ArpWalkSpec,
+  type VelocityShape,
+} from "./arp/spec.js";
+export {
+  ARP_BEATS_PER_BAR,
+  chordsFromNotes,
+  euclideanMask,
+  generateArp,
+  type ArpChordSpan,
+  type ChordsFromNotesResult,
+  type GenerateArpOptions,
+  type GeneratedArp,
+} from "./arp/engine.js";
+export {
+  HALFTIME_SPEC,
+  JUNGLE_CLASSIC_SPEC,
+  listBreakStyles,
+  parseBreakSpec,
+  type BreakSpec,
+} from "./breaks/spec.js";
+export {
+  DRUM_RACK_PAD_COUNT,
+  SLICE_NOTE_BASE,
+  noteToSliceIndex,
+  parseChopMap,
+  sliceNote,
+  type ChopMap,
+  type ChopMapSlice,
+  type ChopRole,
+  type SliceNoteMode,
+} from "./breaks/chopmap.js";
+export {
+  DEFAULT_FILL_SPEC,
+  LOW_CONFIDENCE_THRESHOLD,
+  generateBreakFill,
+  generateBreakPattern,
+  type BreakFillSpec,
+  type FillDevice,
+  type GenerateBreakFillOptions,
+  type GenerateBreakPatternOptions,
+  type GeneratedBreakFill,
+  type GeneratedBreakFillCandidate,
+  type GeneratedBreakPattern,
+} from "./breaks/engine.js";
+export {
   parseEndlessSpec,
   validateEndlessSpec,
   type EndlessFluctuation,
@@ -216,3 +268,22 @@ export {
   type EndlessSpec,
   type EndlessTransitionEdge,
 } from "./endless/spec.js";
+export {
+  TRAP_LONG_SPEC,
+  TRAP_SYNCOPATED_SPEC,
+  TRIPLET_FLOW_SPEC,
+  bass808BuiltinSpec,
+  listBass808Styles,
+  listBass808Variants,
+  parseBass808Spec,
+  type Bass808Cell,
+  type Bass808Spec,
+  type Bass808Step,
+  type Bass808Velocity,
+} from "./bass/spec.js";
+export {
+  BASS808_BEATS_PER_BAR,
+  generate808,
+  type GenerateBass808Options,
+  type GeneratedBass808,
+} from "./bass/engine.js";

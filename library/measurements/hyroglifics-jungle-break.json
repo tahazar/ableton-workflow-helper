@@ -1,0 +1,663 @@
+{
+  "schema": 1,
+  "kind": "chopmap",
+  "saved": "2026-08-26",
+  "file": "Hyroglifics (Diffrent Music) - Jungle Break [172bpm].wav",
+  "sha256": "f083e01bfc5bee812200065f86e16f008beae36c5dcd38b6f65e94706d0bf1a3",
+  "chopmap": {
+    "file": "Hyroglifics (Diffrent Music) - Jungle Break [172bpm].wav",
+    "samplerate": 44100,
+    "duration_s": 5.58140589569161,
+    "bpm": 172.26562499999997,
+    "bpm_confidence": 0.1361608302440407,
+    "bpm_source": "estimated",
+    "bpm_runner_up": 86.13281249999999,
+    "grid_steps_per_bar": 16,
+    "beats_per_bar": 4,
+    "min_gap_s": 0.025,
+    "ghost_threshold_db": -18.0,
+    "n_slices": 33,
+    "slices": [
+      {
+        "index": 0,
+        "start_s": 0.1509297052154195,
+        "end_s": 0.3250793650793651,
+        "duration_s": 0.17414965986394557,
+        "grid_step": 2,
+        "bar": 0,
+        "pos": 2,
+        "offset_ms": -23.21995464852608,
+        "role": "kick",
+        "confidence": 0.8601899013054509,
+        "is_ghost": false,
+        "peak_db_rel": -1.496251295005537,
+        "bands": {
+          "low": 0.8601899013054509,
+          "mid": 0.13973288771990927,
+          "high": 7.7210974639761e-05
+        }
+      },
+      {
+        "index": 1,
+        "start_s": 0.3250793650793651,
+        "end_s": 0.4992290249433107,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 4,
+        "bar": 0,
+        "pos": 4,
+        "offset_ms": -23.21995464852611,
+        "role": "hat",
+        "confidence": 0.6967486431229998,
+        "is_ghost": false,
+        "peak_db_rel": -4.200661959367232,
+        "bands": {
+          "low": 0.13939018344682585,
+          "mid": 0.16386117343017442,
+          "high": 0.6967486431229998
+        }
+      },
+      {
+        "index": 2,
+        "start_s": 0.4992290249433107,
+        "end_s": 0.6733786848072563,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 6,
+        "bar": 0,
+        "pos": 6,
+        "offset_ms": -23.21995464852611,
+        "role": "kick",
+        "confidence": 0.8880080192586343,
+        "is_ghost": false,
+        "peak_db_rel": -0.00029587619910047876,
+        "bands": {
+          "low": 0.8880080192586343,
+          "mid": 0.1110636194204227,
+          "high": 0.0009283613209429924
+        }
+      },
+      {
+        "index": 3,
+        "start_s": 0.6733786848072563,
+        "end_s": 0.8591383219954649,
+        "duration_s": 0.18575963718820865,
+        "grid_step": 8,
+        "bar": 0,
+        "pos": 8,
+        "offset_ms": -23.21995464852611,
+        "role": "kick",
+        "confidence": 0.8604176026909971,
+        "is_ghost": false,
+        "peak_db_rel": -1.49642704268399,
+        "bands": {
+          "low": 0.8604176026909971,
+          "mid": 0.13950481546011276,
+          "high": 7.75818488901027e-05
+        }
+      },
+      {
+        "index": 4,
+        "start_s": 0.8591383219954649,
+        "end_s": 1.1261678004535147,
+        "duration_s": 0.2670294784580498,
+        "grid_step": 10,
+        "bar": 0,
+        "pos": 10,
+        "offset_ms": -11.609977324263054,
+        "role": "hat",
+        "confidence": 0.5506690746909395,
+        "is_ghost": false,
+        "peak_db_rel": -4.200661959367232,
+        "bands": {
+          "low": 0.318714590413703,
+          "mid": 0.13061633489535748,
+          "high": 0.5506690746909395
+        }
+      },
+      {
+        "index": 5,
+        "start_s": 1.1261678004535147,
+        "end_s": 1.207437641723356,
+        "duration_s": 0.08126984126984138,
+        "grid_step": 13,
+        "bar": 0,
+        "pos": 13,
+        "offset_ms": -5.804988662131638,
+        "role": "hat",
+        "confidence": 0.5739186587970165,
+        "is_ghost": false,
+        "peak_db_rel": -9.807078865844895,
+        "bands": {
+          "low": 0.24877677548757698,
+          "mid": 0.17730456571540634,
+          "high": 0.5739186587970165
+        }
+      },
+      {
+        "index": 6,
+        "start_s": 1.207437641723356,
+        "end_s": 1.3699773242630386,
+        "duration_s": 0.16253968253968254,
+        "grid_step": 14,
+        "bar": 0,
+        "pos": 14,
+        "offset_ms": -11.609977324263054,
+        "role": "hat",
+        "confidence": 0.7286926984504938,
+        "is_ghost": false,
+        "peak_db_rel": -4.201621779207765,
+        "bands": {
+          "low": 0.10156515151562752,
+          "mid": 0.16974215003387863,
+          "high": 0.7286926984504938
+        }
+      },
+      {
+        "index": 7,
+        "start_s": 1.3699773242630386,
+        "end_s": 1.5441269841269842,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 16,
+        "bar": 1,
+        "pos": 0,
+        "offset_ms": -23.21995464852611,
+        "role": "kick",
+        "confidence": 0.8878886550172708,
+        "is_ghost": false,
+        "peak_db_rel": -0.00029587619910047876,
+        "bands": {
+          "low": 0.8878886550172708,
+          "mid": 0.11117513825241504,
+          "high": 0.0009362067303142003
+        }
+      },
+      {
+        "index": 8,
+        "start_s": 1.5441269841269842,
+        "end_s": 1.5789569160997732,
+        "duration_s": 0.03482993197278894,
+        "grid_step": 18,
+        "bar": 1,
+        "pos": 2,
+        "offset_ms": -23.21995464852611,
+        "role": "snare",
+        "confidence": 0.8571172457998318,
+        "is_ghost": false,
+        "peak_db_rel": -1.5235347149904306,
+        "bands": {
+          "low": 0.1418964375552409,
+          "mid": 0.8571172457998318,
+          "high": 0.0009863166449273347
+        }
+      },
+      {
+        "index": 9,
+        "start_s": 1.5789569160997732,
+        "end_s": 1.7298866213151929,
+        "duration_s": 0.1509297052154197,
+        "grid_step": 18,
+        "bar": 1,
+        "pos": 2,
+        "offset_ms": 11.609977324262832,
+        "role": "kick",
+        "confidence": 0.9004637304073592,
+        "is_ghost": false,
+        "peak_db_rel": -1.4958998103163479,
+        "bands": {
+          "low": 0.9004637304073592,
+          "mid": 0.09950919937360908,
+          "high": 2.7070219031748586e-05
+        }
+      },
+      {
+        "index": 10,
+        "start_s": 1.7298866213151929,
+        "end_s": 1.8924263038548754,
+        "duration_s": 0.16253968253968254,
+        "grid_step": 20,
+        "bar": 1,
+        "pos": 4,
+        "offset_ms": -11.609977324263054,
+        "role": "hat",
+        "confidence": 0.7174230885603797,
+        "is_ghost": false,
+        "peak_db_rel": -4.201381814304013,
+        "bands": {
+          "low": 0.11494105248115065,
+          "mid": 0.1676358589584697,
+          "high": 0.7174230885603797
+        }
+      },
+      {
+        "index": 11,
+        "start_s": 1.8924263038548754,
+        "end_s": 2.078185941043084,
+        "duration_s": 0.18575963718820843,
+        "grid_step": 22,
+        "bar": 1,
+        "pos": 6,
+        "offset_ms": -23.21995464852611,
+        "role": "kick",
+        "confidence": 0.8881900858963594,
+        "is_ghost": false,
+        "peak_db_rel": 0.0,
+        "bands": {
+          "low": 0.8881900858963594,
+          "mid": 0.11086818776289419,
+          "high": 0.0009417263407464647
+        }
+      },
+      {
+        "index": 12,
+        "start_s": 2.078185941043084,
+        "end_s": 2.10140589569161,
+        "duration_s": 0.02321995464852611,
+        "grid_step": 24,
+        "bar": 1,
+        "pos": 8,
+        "offset_ms": -11.609977324263276,
+        "role": "snare",
+        "confidence": 0.8881417486031639,
+        "is_ghost": false,
+        "peak_db_rel": -1.8856942130360612,
+        "bands": {
+          "low": 0.1104229141545491,
+          "mid": 0.8881417486031639,
+          "high": 0.00143533724228698
+        }
+      },
+      {
+        "index": 13,
+        "start_s": 2.10140589569161,
+        "end_s": 2.2523356009070294,
+        "duration_s": 0.15092970521541949,
+        "grid_step": 24,
+        "bar": 1,
+        "pos": 8,
+        "offset_ms": 11.609977324262832,
+        "role": "kick",
+        "confidence": 0.8879271862290422,
+        "is_ghost": false,
+        "peak_db_rel": -1.496602793918542,
+        "bands": {
+          "low": 0.8879271862290422,
+          "mid": 0.11204610374942267,
+          "high": 2.6710021535250806e-05
+        }
+      },
+      {
+        "index": 14,
+        "start_s": 2.2523356009070294,
+        "end_s": 2.5193650793650795,
+        "duration_s": 0.26702947845805003,
+        "grid_step": 26,
+        "bar": 1,
+        "pos": 10,
+        "offset_ms": -11.609977324263276,
+        "role": "hat",
+        "confidence": 0.5495985240580813,
+        "is_ghost": false,
+        "peak_db_rel": -4.200422020978574,
+        "bands": {
+          "low": 0.3200347563726553,
+          "mid": 0.1303667195692634,
+          "high": 0.5495985240580813
+        }
+      },
+      {
+        "index": 15,
+        "start_s": 2.5193650793650795,
+        "end_s": 2.589024943310658,
+        "duration_s": 0.06965986394557833,
+        "grid_step": 29,
+        "bar": 1,
+        "pos": 13,
+        "offset_ms": -5.804988662131638,
+        "role": "hat",
+        "confidence": 0.6561352370709576,
+        "is_ghost": false,
+        "peak_db_rel": -9.807078865844895,
+        "bands": {
+          "low": 0.1425838121916836,
+          "mid": 0.20128095073735902,
+          "high": 0.6561352370709576
+        }
+      },
+      {
+        "index": 16,
+        "start_s": 2.589024943310658,
+        "end_s": 2.7631746031746034,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 30,
+        "bar": 1,
+        "pos": 14,
+        "offset_ms": -23.21995464852611,
+        "role": "kick",
+        "confidence": 0.6012788094546675,
+        "is_ghost": false,
+        "peak_db_rel": -0.8176669175615005,
+        "bands": {
+          "low": 0.6012788094546675,
+          "mid": 0.3403209669515883,
+          "high": 0.05840022359374429
+        }
+      },
+      {
+        "index": 17,
+        "start_s": 2.7631746031746034,
+        "end_s": 2.948934240362812,
+        "duration_s": 0.18575963718820843,
+        "grid_step": 32,
+        "bar": 2,
+        "pos": 0,
+        "offset_ms": -23.21995464852611,
+        "role": "kick",
+        "confidence": 0.8863959356987912,
+        "is_ghost": false,
+        "peak_db_rel": -0.00029587619910047876,
+        "bands": {
+          "low": 0.8863959356987912,
+          "mid": 0.11254004568172701,
+          "high": 0.0010640186194818115
+        }
+      },
+      {
+        "index": 18,
+        "start_s": 2.948934240362812,
+        "end_s": 3.1230839002267574,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 34,
+        "bar": 2,
+        "pos": 2,
+        "offset_ms": -11.609977324263276,
+        "role": "kick",
+        "confidence": 0.8601437317503052,
+        "is_ghost": false,
+        "peak_db_rel": -1.49642704268399,
+        "bands": {
+          "low": 0.8601437317503052,
+          "mid": 0.13977918018219357,
+          "high": 7.708806750119461e-05
+        }
+      },
+      {
+        "index": 19,
+        "start_s": 3.1230839002267574,
+        "end_s": 3.297233560090703,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 36,
+        "bar": 2,
+        "pos": 4,
+        "offset_ms": -11.609977324263276,
+        "role": "hat",
+        "confidence": 0.6853652091301267,
+        "is_ghost": false,
+        "peak_db_rel": -4.200661959367232,
+        "bands": {
+          "low": 0.1536512443110457,
+          "mid": 0.16098354655882757,
+          "high": 0.6853652091301267
+        }
+      },
+      {
+        "index": 20,
+        "start_s": 3.297233560090703,
+        "end_s": 3.4713832199546486,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 38,
+        "bar": 2,
+        "pos": 6,
+        "offset_ms": -11.609977324263276,
+        "role": "kick",
+        "confidence": 0.8879713540667462,
+        "is_ghost": false,
+        "peak_db_rel": -0.00029587619910047876,
+        "bands": {
+          "low": 0.8879713540667462,
+          "mid": 0.11118119199763803,
+          "high": 0.0008474539356157448
+        }
+      },
+      {
+        "index": 21,
+        "start_s": 3.4713832199546486,
+        "end_s": 3.645532879818594,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 40,
+        "bar": 2,
+        "pos": 8,
+        "offset_ms": -11.609977324263276,
+        "role": "kick",
+        "confidence": 0.8601387628386131,
+        "is_ghost": false,
+        "peak_db_rel": -1.49642704268399,
+        "bands": {
+          "low": 0.8601387628386131,
+          "mid": 0.13978415453812454,
+          "high": 7.708262326229277e-05
+        }
+      },
+      {
+        "index": 22,
+        "start_s": 3.645532879818594,
+        "end_s": 3.9125623582766442,
+        "duration_s": 0.26702947845805003,
+        "grid_step": 42,
+        "bar": 2,
+        "pos": 10,
+        "offset_ms": -11.609977324263276,
+        "role": "hat",
+        "confidence": 0.5441627316641213,
+        "is_ghost": false,
+        "peak_db_rel": -4.200661959367232,
+        "bands": {
+          "low": 0.32655576460323205,
+          "mid": 0.1292815037326467,
+          "high": 0.5441627316641213
+        }
+      },
+      {
+        "index": 23,
+        "start_s": 3.9125623582766442,
+        "end_s": 3.9938321995464854,
+        "duration_s": 0.08126984126984116,
+        "grid_step": 45,
+        "bar": 2,
+        "pos": 13,
+        "offset_ms": -5.804988662131638,
+        "role": "hat",
+        "confidence": 0.5764426181212357,
+        "is_ghost": false,
+        "peak_db_rel": -9.80616383928223,
+        "bands": {
+          "low": 0.2451759318742637,
+          "mid": 0.17838145000450073,
+          "high": 0.5764426181212357
+        }
+      },
+      {
+        "index": 24,
+        "start_s": 3.9938321995464854,
+        "end_s": 4.167981859410431,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 46,
+        "bar": 2,
+        "pos": 14,
+        "offset_ms": -11.609977324263276,
+        "role": "hat",
+        "confidence": 0.7084735041010963,
+        "is_ghost": false,
+        "peak_db_rel": -4.201141856029586,
+        "bands": {
+          "low": 0.12585529396900583,
+          "mid": 0.16567120192989782,
+          "high": 0.7084735041010963
+        }
+      },
+      {
+        "index": 25,
+        "start_s": 4.167981859410431,
+        "end_s": 4.342131519274377,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 48,
+        "bar": 3,
+        "pos": 0,
+        "offset_ms": -11.609977324263276,
+        "role": "kick",
+        "confidence": 0.8879862219129185,
+        "is_ghost": false,
+        "peak_db_rel": -0.0008876588352052231,
+        "bands": {
+          "low": 0.8879862219129185,
+          "mid": 0.11115767999746526,
+          "high": 0.0008560980896162131
+        }
+      },
+      {
+        "index": 26,
+        "start_s": 4.342131519274377,
+        "end_s": 4.516281179138322,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 50,
+        "bar": 3,
+        "pos": 2,
+        "offset_ms": -11.609977324263276,
+        "role": "kick",
+        "confidence": 0.8601425759169891,
+        "is_ghost": false,
+        "peak_db_rel": -1.4960755508830377,
+        "bands": {
+          "low": 0.8601425759169891,
+          "mid": 0.13978040639908615,
+          "high": 7.701768392483244e-05
+        }
+      },
+      {
+        "index": 27,
+        "start_s": 4.516281179138322,
+        "end_s": 4.690430839002268,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 52,
+        "bar": 3,
+        "pos": 4,
+        "offset_ms": -11.609977324263276,
+        "role": "hat",
+        "confidence": 0.6871126776583901,
+        "is_ghost": false,
+        "peak_db_rel": -4.201381814304013,
+        "bands": {
+          "low": 0.15154380025758699,
+          "mid": 0.16134352208402294,
+          "high": 0.6871126776583901
+        }
+      },
+      {
+        "index": 28,
+        "start_s": 4.690430839002268,
+        "end_s": 4.864580498866213,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 54,
+        "bar": 3,
+        "pos": 6,
+        "offset_ms": -11.609977324263276,
+        "role": "kick",
+        "confidence": 0.8879667593777656,
+        "is_ghost": false,
+        "peak_db_rel": -0.000591762477273958,
+        "bands": {
+          "low": 0.8879667593777656,
+          "mid": 0.11116432547334092,
+          "high": 0.0008689151488935257
+        }
+      },
+      {
+        "index": 29,
+        "start_s": 4.864580498866213,
+        "end_s": 5.038730158730159,
+        "duration_s": 0.1741496598639456,
+        "grid_step": 56,
+        "bar": 3,
+        "pos": 8,
+        "offset_ms": -11.609977324263276,
+        "role": "kick",
+        "confidence": 0.8601795207627454,
+        "is_ghost": false,
+        "peak_db_rel": -1.49642704268399,
+        "bands": {
+          "low": 0.8601795207627454,
+          "mid": 0.1397434657255247,
+          "high": 7.70135117299193e-05
+        }
+      },
+      {
+        "index": 30,
+        "start_s": 5.038730158730159,
+        "end_s": 5.317369614512471,
+        "duration_s": 0.2786394557823124,
+        "grid_step": 58,
+        "bar": 3,
+        "pos": 10,
+        "offset_ms": -11.609977324263276,
+        "role": "hat",
+        "confidence": 0.5401314852373021,
+        "is_ghost": false,
+        "peak_db_rel": -4.200661959367232,
+        "bands": {
+          "low": 0.33105940920352184,
+          "mid": 0.128809105559176,
+          "high": 0.5401314852373021
+        }
+      },
+      {
+        "index": 31,
+        "start_s": 5.317369614512471,
+        "end_s": 5.38702947845805,
+        "duration_s": 0.06965986394557877,
+        "grid_step": 61,
+        "bar": 3,
+        "pos": 13,
+        "offset_ms": 5.804988662130306,
+        "role": "hat",
+        "confidence": 0.5928534644243583,
+        "is_ghost": false,
+        "peak_db_rel": -9.807078865844895,
+        "bands": {
+          "low": 0.22497504327590653,
+          "mid": 0.1821714922997353,
+          "high": 0.5928534644243583
+        }
+      },
+      {
+        "index": 32,
+        "start_s": 5.38702947845805,
+        "end_s": 5.58140589569161,
+        "duration_s": 0.1943764172335598,
+        "grid_step": 62,
+        "bar": 3,
+        "pos": 14,
+        "offset_ms": -11.609977324263276,
+        "role": "kick",
+        "confidence": 0.6033509992401412,
+        "is_ghost": false,
+        "peak_db_rel": -0.8173418468414755,
+        "bands": {
+          "low": 0.6033509992401412,
+          "mid": 0.33826247677062055,
+          "high": 0.058386523989238166
+        }
+      }
+    ],
+    "downbeat_check": {
+      "assumption": "file starts on beat 1 (downbeat at t=0s)",
+      "loops_checked": 1,
+      "loops_near_zero": 0,
+      "near_zero_threshold_s": 0.1306122448979592
+    },
+    "assumptions": [
+      "4/4 time signature and a 16th-note grid are assumed for grid-step math (same convention as awh_analysis.drumstats).",
+      "the file is assumed to start on beat 1 (downbeat at t=0s) \u2014 see downbeat_check.",
+      "role guess (kick/snare/hat) is a low/mid/high BAND-ENERGY PROXY (same one drumstats.py mines across a whole loop), not source separation or ground truth \u2014 treat it as a GUESS, tier it with its own confidence.",
+      "a slice whose peak sits 18 dB or more below the file's loudest slice is labeled 'ghost' regardless of its band balance."
+    ],
+    "tail_decay_s": null
+  }
+}

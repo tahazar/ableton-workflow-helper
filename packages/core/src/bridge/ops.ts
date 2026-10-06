@@ -110,9 +110,11 @@ function midiClipTarget(a: Record<string, unknown>, op: string): MidiClipTarget 
 /**
  * Deterministic operation registry: one op = one logical, undoable action.
  * (SDK constraint: create-then-configure ops such as clip.create-midi with
- * notes land as two undo steps — create, then configure — because the
+ * notes land as two undo steps (create, then configure) because the
  * instance only resolves after the async create.)
  */
+// A flat table of op definitions; length tracks the op count, not complexity.
+// oxlint-disable-next-line max-lines-per-function
 export function buildOpRegistry(): Map<string, OpDefinition> {
   const ops = new Map<string, OpDefinition>();
   const add = (op: OpDefinition) => ops.set(op.name, op);
@@ -141,13 +143,15 @@ export function buildOpRegistry(): Map<string, OpDefinition> {
   add({
     name: "set.tempo",
     description: "Set the Set tempo. Args: {bpm}",
-    handler: async (args, ctx) => ctx.bridge.setTempo(num(obj(args, "set.tempo"), "bpm", "set.tempo")),
+    handler: async (args, ctx) =>
+      ctx.bridge.setTempo(num(obj(args, "set.tempo"), "bpm", "set.tempo")),
   });
 
   add({
     name: "clip.get",
     description: "Read one clip incl. MIDI notes. Args: {path}",
-    handler: async (args, ctx) => ctx.bridge.getClip(str(obj(args, "clip.get"), "path", "clip.get")),
+    handler: async (args, ctx) =>
+      ctx.bridge.getClip(str(obj(args, "clip.get"), "path", "clip.get")),
   });
 
   add({

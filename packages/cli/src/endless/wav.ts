@@ -1,12 +1,11 @@
 /**
- * Pure-TS WAV (RIFF/PCM) reading and writing for M10 (`awh endless`).
- * `awh endless build` needs each pool file's exact duration (bar-exact
- * loops, checked to +-25ms against bars*4*60/bpm — see spec.ts docs), and
- * `awh endless demo` needs to synthesize tiny WAV files without pulling in
- * an audio library — both are simple enough to do as direct chunk math, no
- * dependency needed (docs/design/endless-player.md: "RIFF fmt/data chunk
- * math"; zero-dep is a hard constraint for the player, and this keeps the
- * whole `endless` feature dependency-free).
+ * Pure-TS WAV (RIFF/PCM) reading and writing for the endless player
+ * (`awh endless`). `awh endless build` needs each pool file's exact duration
+ * (bar-exact loops, checked to +-25ms against bars*4*60/bpm; see spec.ts),
+ * and `awh endless demo` synthesizes tiny WAV files. Both are direct chunk
+ * math, so no audio library is needed (docs/design/endless-player.md: "RIFF
+ * fmt/data chunk math"). Zero dependencies is a hard constraint for the
+ * player, and this keeps the whole `endless` feature dependency-free.
  */
 
 export interface WavInfo {
@@ -21,10 +20,14 @@ export interface WavInfo {
  * Parse a WAV file's `fmt ` and `data` chunks (generic chunk walk, so extra
  * chunks like LIST/JUNK/fact don't confuse it) and compute its duration.
  * Throws a clear, non-WAV-specific message for anything that isn't a
- * RIFF/WAVE file (v1 doesn't support other formats — see design doc).
+ * RIFF/WAVE file (v1 doesn't support other formats; see design doc).
  */
 export function parseWavHeader(buf: Buffer): WavInfo {
-  if (buf.length < 12 || buf.toString("ascii", 0, 4) !== "RIFF" || buf.toString("ascii", 8, 12) !== "WAVE") {
+  if (
+    buf.length < 12 ||
+    buf.toString("ascii", 0, 4) !== "RIFF" ||
+    buf.toString("ascii", 8, 12) !== "WAVE"
+  ) {
     throw new Error("not a WAV file (missing RIFF/WAVE header) — v1 only supports PCM WAV audio");
   }
   let offset = 12;
@@ -48,8 +51,9 @@ export function parseWavHeader(buf: Buffer): WavInfo {
     }
     offset = body + size + (size % 2); // chunks are word-aligned; odd sizes get a pad byte
   }
-  if (!fmt) throw new Error("WAV file has no \"fmt \" chunk — cannot determine sample rate/channels");
-  if (dataLength === undefined) throw new Error("WAV file has no \"data\" chunk — cannot determine duration");
+  if (!fmt) throw new Error('WAV file has no "fmt " chunk — cannot determine sample rate/channels');
+  if (dataLength === undefined)
+    throw new Error('WAV file has no "data" chunk — cannot determine duration');
   if (fmt.sampleRate <= 0 || fmt.numChannels <= 0 || fmt.bitsPerSample <= 0) {
     throw new Error("WAV file's fmt chunk has an invalid sample rate/channels/bit depth");
   }

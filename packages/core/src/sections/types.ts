@@ -1,10 +1,10 @@
 import { BridgeError, type NoteSpec } from "../bridge/types.js";
 
 /**
- * Section specs (M4): the structure language for building an arrangement
+ * Section specs: the structure language for building an arrangement
  * skeleton from source clips. Parsed from YAML by the CLI; core only sees
- * plain objects. Rendering is PURE and seeded — same spec + sources + seed
- * always produces the same skeleton (spec R1 + determinism principle).
+ * plain objects. Rendering is pure and seeded: the same spec + sources +
+ * seed always produces the same skeleton.
  */
 
 /** What one track does during one section. */
@@ -64,11 +64,16 @@ export function validateSectionsPlan(input: unknown): SectionsPlan {
   const sections = (o.sections as unknown[]).map((raw, i): SectionSpec => {
     if (typeof raw !== "object" || raw === null) fail(`sections[${i}] must be an object`);
     const s = raw as Record<string, unknown>;
-    const sectionName = typeof s.name === "string" && s.name ? s.name : fail(`sections[${i}].name required`);
-    const bars = typeof s.bars === "number" && s.bars > 0 && Number.isInteger(s.bars)
-      ? s.bars
-      : fail(`sections[${i}].bars must be a positive integer`);
-    const tracksRaw = typeof s.tracks === "object" && s.tracks !== null ? s.tracks : fail(`sections[${i}].tracks required`);
+    const sectionName =
+      typeof s.name === "string" && s.name ? s.name : fail(`sections[${i}].name required`);
+    const bars =
+      typeof s.bars === "number" && s.bars > 0 && Number.isInteger(s.bars)
+        ? s.bars
+        : fail(`sections[${i}].bars must be a positive integer`);
+    const tracksRaw =
+      typeof s.tracks === "object" && s.tracks !== null
+        ? s.tracks
+        : fail(`sections[${i}].tracks required`);
     const tracks: Record<string, LayerDirective> = {};
     for (const [trackName, directive] of Object.entries(tracksRaw as Record<string, unknown>)) {
       if (!(trackName in trackMap)) {
@@ -90,7 +95,7 @@ export function validateSectionsPlan(input: unknown): SectionsPlan {
         fail(`sections[${i}].tracks.${trackName} must be "off" or {source, ops?, fill?}`);
       }
     }
-    return { name: sectionName as string, bars: bars as number, tracks };
+    return { name: sectionName, bars, tracks };
   });
   return { name, trackMap, sections };
 }

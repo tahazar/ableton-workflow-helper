@@ -3,15 +3,15 @@
  * clip" gap the Extensions SDK leaves open (docs/design/live-remote.md,
  * docs/sdk-feedback.md). This module is the OSC send/receive logic behind
  * `awh play`/`awh stop`/`awh jump`/`awh launch`/`awh stop-clips`/`awh lib
- * audition`, split out of packages/cli/src/index.ts so it's testable
- * against a real UDP socket without spawning the CLI — same spirit as
- * duck.ts (packages/cli/test/remote.test.ts).
+ * audition`, kept out of packages/cli/src/index.ts so it's testable
+ * against a real UDP socket without spawning the CLI
+ * (packages/cli/test/remote.test.ts).
  *
- * Ports and the on-wire protocol are unchanged from the AWH Capture Tap
- * this device supersedes (9720 listen / 9721 reply) — a superset: record/
- * stop/loop/play keep their old fire-and-forget semantics (no reply besides
- * pong), while the new fire/scene/stopclips/jump messages each reply with
- * `/awh/status ...` (success) or `/awh/error <text>` (bad indices).
+ * Ports and protocol are a superset of the AWH Capture Tap this device
+ * supersedes (9720 listen / 9721 reply). record/stop/loop/play are
+ * fire-and-forget (no reply besides pong). fire/scene/stopclips/jump each
+ * reply with `/awh/status ...` (success) or `/awh/error <text>` (bad
+ * indices).
  */
 import type { OpCaller } from "./op.js";
 import type { SetSummary } from "@awh/core";
@@ -25,7 +25,7 @@ import {
   type OscArg,
 } from "./osc.js";
 
-export const REMOTE_PORT = TAP_PORT; // 9720 — same port as the AWH Capture Tap it supersedes
+export const REMOTE_PORT = TAP_PORT; // 9720, same port as the AWH Capture Tap it supersedes
 export const REMOTE_REPLY_PORT = 9721;
 
 export interface RemoteOscOpts {
@@ -34,7 +34,11 @@ export interface RemoteOscOpts {
   timeoutMs?: number;
 }
 
-function resolveOscOpts(opts: RemoteOscOpts): { port: number; replyPort: number; timeoutMs: number } {
+function resolveOscOpts(opts: RemoteOscOpts): {
+  port: number;
+  replyPort: number;
+  timeoutMs: number;
+} {
   return {
     port: opts.port ?? REMOTE_PORT,
     replyPort: opts.replyPort ?? REMOTE_REPLY_PORT,
@@ -45,7 +49,7 @@ function resolveOscOpts(opts: RemoteOscOpts): { port: number; replyPort: number;
 /** Ping the AWH Remote device; resolves with its reported version, or
  *  throws a clear "requires the AWH Remote device" error within ~1s. Every
  *  remote-send function below calls this first (ping-first convention,
- *  same as `mix duck push` — docs/design/live-remote.md's CLI section). */
+ *  as in `mix duck push`; see docs/design/live-remote.md's CLI section). */
 export async function remotePing(opts: RemoteOscOpts = {}): Promise<string> {
   const { port, replyPort, timeoutMs } = resolveOscOpts(opts);
   const pongArgs = await sendAndAwaitReply({
@@ -63,10 +67,10 @@ export async function remotePing(opts: RemoteOscOpts = {}): Promise<string> {
   return pongArgs.length > 0 ? String(pongArgs[0]) : "";
 }
 
-/** Send one of the new (fire/scene/stopclips/jump) action messages: ping
- *  first, then await EITHER `/awh/status ...` (resolves with its args) or
- *  `/awh/error <text>` (thrown as an Error) — the device replies to both
- *  the same way regardless of which action was sent. */
+/** Send one of the replying action messages (fire/scene/stopclips/jump):
+ *  ping first, then await either `/awh/status ...` (resolves with its args)
+ *  or `/awh/error <text>` (thrown as an Error). The device replies the same
+ *  way regardless of which action was sent. */
 async function sendRemoteAction(
   address: string,
   args: OscArg[],
@@ -94,8 +98,8 @@ export interface RemotePlayResult {
 }
 
 /** Start the transport (`/awh/play 1`), optionally jumping the arrangement
- *  playhead first. `/awh/play` itself keeps its old (Capture Tap) fire-and-
- *  forget semantics — no reply beyond the ping's pong. */
+ *  playhead first. `/awh/play` itself is fire-and-forget, as on the Capture
+ *  Tap: no reply beyond the ping's pong. */
 export async function remotePlay(
   params: RemoteOscOpts & { fromBeats?: number },
 ): Promise<RemotePlayResult> {
@@ -113,7 +117,7 @@ export async function remotePlay(
   return { jumped };
 }
 
-/** Stop the transport (`/awh/play 0`) — same unchanged, no-reply semantics. */
+/** Stop the transport (`/awh/play 0`). Fire-and-forget, no reply. */
 export async function remoteStop(opts: RemoteOscOpts = {}): Promise<void> {
   const { port, replyPort, timeoutMs } = resolveOscOpts(opts);
   await remotePing({ port, replyPort, timeoutMs });
@@ -158,8 +162,8 @@ export type LaunchTarget =
   | { kind: "scene"; sceneIdx: number };
 
 /** Parse `awh launch`'s target argument: `track:N/slot:M` (fire) or
- *  `scene:N` (scene fire) — same path grammar as everywhere else in the CLI
- *  (packages/core/src/bridge/paths.ts), not a bespoke format. */
+ *  `scene:N` (scene fire), using the CLI's shared path grammar
+ *  (packages/core/src/bridge/paths.ts). */
 export function parseLaunchTarget(target: string): LaunchTarget {
   const fireMatch = target.match(/^track:(\d+)\/slot:(\d+)$/);
   if (fireMatch) {
@@ -175,14 +179,15 @@ export function parseLaunchTarget(target: string): LaunchTarget {
 }
 
 // ---------------------------------------------------------------------------
-// `awh lib audition` — place (gateway) + fire (OSC), with sweep-on-next
+// `awh lib audition`: place (gateway) + fire (OSC), with sweep-on-next
 // cleanup for auditions that weren't --keep (docs/design/live-remote.md).
 // ---------------------------------------------------------------------------
 
-/** The one clip the CLI is tracking as "auditioned, not yet swept" — enough
- *  to find and delete it later by its EXACT clip name (never a prefix
- *  sweep, docs/lessons-learned.md's `--prefix ""` lesson). Persisted between
- *  CLI invocations by the caller (index.ts) — this module has no file I/O. */
+/** The one clip the CLI is tracking as "auditioned, not yet swept": enough
+ *  to find and delete it later by its exact clip name (never a prefix
+ *  sweep; see docs/lessons-learned.md's `--prefix ""` lesson). The caller
+ *  (index.ts) persists it between CLI invocations; this module has no file
+ *  I/O. */
 export interface AuditionState {
   trackPath: string;
   name: string;
@@ -202,17 +207,17 @@ export interface AuditionOutcome {
   trackIdx: number;
   slotIdx: number;
   fireArgs: (string | number)[];
-  /** Paths deleted because a PREVIOUS (non---keep) audition was pending. */
+  /** Paths deleted because a previous (non---keep) audition was pending. */
   swept?: string[];
   /** Persist this as the new pending state (undefined when --keep was
    *  passed: nothing to auto-sweep later). */
   nextPending?: AuditionState;
 }
 
-/** Delete every clip on `trackPath` (session AND arrangement) whose name is
- *  EXACTLY `name` — not a prefix match. Silently does nothing if the track
- *  no longer exists or nothing matches (the caller decides whether that's
- *  worth reporting). */
+/** Delete every clip on `trackPath` (session and arrangement) whose name is
+ *  exactly `name` (not a prefix match). Does nothing if the track no longer
+ *  exists or nothing matches; the caller decides whether that's worth
+ *  reporting. */
 async function sweepByExactName(
   caller: OpCaller,
   trackPath: string,
@@ -232,12 +237,12 @@ async function sweepByExactName(
   return doomed.map((c) => c.path);
 }
 
-/** `awh lib audition <slug> <track>`: sweep a pending PREVIOUS audition (if
+/** `awh lib audition <slug> <track>`: sweep a pending previous audition (if
  *  any), place `source` into an empty session slot on `trackPath`, and fire
  *  it over OSC. The clip is named "audition: <slug>" (not the bare slug) so
- *  it can't collide with a same-named clip the owner placed by hand. Zero
- *  empty slots is a thrown error (same convention as `lib place`/`drop
- *  respond`'s track-target resolution), not a silent skip. */
+ *  it can't collide with a same-named clip placed by hand. Zero empty
+ *  slots is a thrown error, as in `lib place`/`drop respond`'s track-target
+ *  resolution. */
 export async function auditionSlug(params: {
   caller: OpCaller;
   source: AuditionSource;
@@ -260,19 +265,23 @@ export async function auditionSlug(params: {
     : undefined;
 
   const summary = (await params.caller("set.summary")) as SetSummary;
-  const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === params.trackPath);
-  if (!track) throw new Error(`track not found: ${params.trackPath}`);
-  const occupied = new Set(
-    track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])),
+  const track = [...summary.tracks, ...summary.returnTracks].find(
+    (t) => t.path === params.trackPath,
   );
-  const slotIdx = Array.from({ length: track.slotCount }, (_, i) => i).find((i) => !occupied.has(i));
+  if (!track) throw new Error(`track not found: ${params.trackPath}`);
+  const occupied = new Set(track.sessionClips.map((c) => Number(c.path.match(/slot:(\d+)$/)?.[1])));
+  const slotIdx = Array.from({ length: track.slotCount }, (_, i) => i).find(
+    (i) => !occupied.has(i),
+  );
   if (slotIdx === undefined) {
     throw new Error(
       `no empty session slot on ${params.trackPath} — free one up (or \`awh sweep\`) before auditioning`,
     );
   }
 
-  const { notes } = parseNotation(params.source.notation, { beatsPerBar: params.source.beatsPerBar });
+  const { notes } = parseNotation(params.source.notation, {
+    beatsPerBar: params.source.beatsPerBar,
+  });
   const name = `audition: ${params.source.slug}`;
   const path = `${params.trackPath}/slot:${slotIdx}`;
   await params.caller("clip.create-midi", {
@@ -284,9 +293,12 @@ export async function auditionSlug(params: {
 
   let fireArgs: (string | number)[];
   try {
-    fireArgs = await remoteFire({ trackIdx, slotIdx, ...(params.osc ?? {}) });
+    fireArgs = await remoteFire({ trackIdx, slotIdx, ...params.osc });
   } catch (err) {
-    throw new Error(`placed ${params.source.slug} -> ${path} but could not fire it: ${(err as Error).message}`);
+    throw new Error(
+      `placed ${params.source.slug} -> ${path} but could not fire it: ${(err as Error).message}`,
+      { cause: err },
+    );
   }
 
   return {
@@ -296,14 +308,16 @@ export async function auditionSlug(params: {
     slotIdx,
     fireArgs,
     swept,
-    nextPending: params.keep ? undefined : { trackPath: params.trackPath, name, slug: params.source.slug },
+    nextPending: params.keep
+      ? undefined
+      : { trackPath: params.trackPath, name, slug: params.source.slug },
   };
 }
 
 /** `awh lib audition --end`: sweep the pending (non---keep) audition, if
  *  any. No pending state is a normal state, not an error (returns
- *  undefined) — the same "zero items" discipline as `mix duck push`'s
- *  empty-trigger no-op (docs/lessons-learned.md rule 5). */
+ *  undefined), like `mix duck push`'s empty-trigger no-op
+ *  (docs/lessons-learned.md rule 5). */
 export async function auditionEnd(params: {
   caller: OpCaller;
   pending?: AuditionState;

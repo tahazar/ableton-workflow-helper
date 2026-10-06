@@ -1,7 +1,7 @@
-"""opmatch tests — synthetic signals with known ground truth, including the
+"""opmatch tests: synthetic signals with known ground truth, including the
 two negative controls the design doc calls for (white noise + an inharmonic
-"bell", docs/design/operator-assistant.md): a reachability refusal is a
-PASSING state here, not an error.
+"bell", docs/design/operator-assistant.md). A reachability refusal is a
+passing state here, not an error.
 """
 
 from __future__ import annotations
@@ -29,7 +29,9 @@ def _harmonic_stack(f0: float, amps: list[float], sr: int, duration_s: float) ->
     return sig / np.max(np.abs(sig)) * 0.8
 
 
-def _stretched_partial_bell(f0: float, stretch: float, n_partials: int, sr: int, duration_s: float) -> np.ndarray:
+def _stretched_partial_bell(
+    f0: float, stretch: float, n_partials: int, sr: int, duration_s: float
+) -> np.ndarray:
     """A "bell": partial k sits at f0*k*stretch^(k-1) (k=1 unstretched, each
     higher partial pulled progressively further off the integer-harmonic
     grid — the classic stretched-partial/inharmonic timbre), amplitude 1/k.
@@ -150,7 +152,7 @@ def test_harmonic_vector_recovers_known_partial_amplitudes(tmp_path):
 
     expected = (np.array(amps_true) / amps_true[0]).tolist()
     recovered = result["harmonic_vector"]
-    for i, (exp, got) in enumerate(zip(expected, recovered)):
+    for i, (exp, got) in enumerate(zip(expected, recovered, strict=True)):
         assert got == pytest.approx(exp, abs=0.08), f"partial {i + 1}: expected {exp}, got {got}"
 
     gated = opmatch.gate(result)
@@ -168,14 +170,19 @@ def test_match_reports_tier1_summary_for_a_harmonic_stack(tmp_path):
     assert result["reasons"] == []
     assert result["proposal"] is not None
     assert "good Operator candidate" in result["summary"]
-    # drawThesePartials is ALWAYS present, regardless of tier/residual.
+    # drawThesePartials is always present, regardless of tier/residual.
     assert len(result["proposal"]["drawThesePartials"]) == opmatch.N_PARTIALS
-    assert set(result["proposal"]["addressable"]) >= {"Ae Attack", "Ae Decay", "Ae Sustain", "Ae Release"}
+    assert set(result["proposal"]["addressable"]) >= {
+        "Ae Attack",
+        "Ae Decay",
+        "Ae Sustain",
+        "Ae Release",
+    }
 
 
 # ---------------------------------------------------------------------------
 # Negative controls: white noise + an inharmonic bell -> tier-3 refusal.
-# A PASSING state, not an error (docs/design/operator-assistant.md).
+# A passing state, not an error (docs/design/operator-assistant.md).
 # ---------------------------------------------------------------------------
 
 
@@ -210,9 +217,9 @@ def test_inharmonic_stretched_partial_bell_is_tier3_refused(tmp_path):
 
 
 def test_partial_deviation_semitones_direct_known_truth():
-    """Unit-level check of the inharmonicity measure against a HAND-BUILT
-    magnitude spectrum at a known f0 (bypasses pyin entirely) — a clean
-    harmonic comb reads ~0 deviation; a comb with k=3 deliberately shifted
+    """Unit-level check of the inharmonicity measure against a hand-built
+    magnitude spectrum at a known f0 (bypasses pyin entirely). A clean
+    harmonic comb reads ~0 deviation; a comb with k=3 shifted
     off-grid reads a large, correctly-signed deviation."""
     sr = 44100
     n_fft = opmatch.N_FFT
@@ -235,10 +242,10 @@ def test_partial_deviation_semitones_direct_known_truth():
     assert dev_harmonic < 0.15
 
     # partial_deviation_semitones caps its search window at 0.45*f0 (so it
-    # can never bleed into a NEIGHBORING harmonic's band, see the function's
-    # docstring) — shift every non-fundamental partial (k=2..8) by an
+    # can never bleed into a neighboring harmonic's band, see the function's
+    # docstring). Shift every non-fundamental partial (k=2..8) by an
     # absolute 70 Hz, well inside that ~99 Hz cap for f0=220, so this
-    # deliberately tests the mechanism within its rated operating range
+    # tests the mechanism within its rated operating range
     # rather than past its own search radius.
     shifted = spectrum_with_partials([f0] + [f0 * k + 70.0 for k in range(2, 9)])
     dev_shifted = opmatch.partial_deviation_semitones(shifted, freqs, mask, f0)
@@ -308,7 +315,7 @@ def test_cli_opmatch_json_smoke(tmp_path):
 
 
 def test_cli_opmatch_tier3_exits_zero(tmp_path):
-    """Tier-3 refusal is exit 0 — a passing negative-control state, not an
+    """Tier-3 refusal is exit 0: a passing negative-control state, not an
     error (docs/design/operator-assistant.md)."""
     x = white_noise(SR, DURATION_S, amp=0.2)
     path = tmp_path / "noise.wav"

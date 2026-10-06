@@ -60,9 +60,7 @@ if (cliTarball) {
   console.log(`    npm install -g "${cliTarball}"`);
   console.log(`  Then run the extension in dev mode with: extensions-cli run`);
 } else {
-  console.log(
-    `\nNote: no CLI tarball ("...cli...tgz") found — dev-mode hot reload needs it.`,
-  );
+  console.log(`\nNote: no CLI tarball ("...cli...tgz") found — dev-mode hot reload needs it.`);
 }
 
 function findFiles(dir, predicate, acc = []) {

@@ -17,6 +17,7 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+coverage/
 
 # --- Built extension artifacts (rebuilt from source) ---
 *.ablx
@@ -26,8 +27,10 @@ build/
 
 # --- Python (analysis engine) ---
 .venv/
+.coverage
 __pycache__/
 *.pyc
+*.egg-info/
 
 # --- Generated Live-browser mirror (regenerate with `awh lib export-alc`) ---
 live-mirror/
@@ -46,3 +49,6 @@ Thumbs.db
 
 # Claude Code agent worktrees (transient)
 .claude/worktrees/
+
+# Orchestrator run reports (packages/orchestrator)
+.claude/orchestrator/

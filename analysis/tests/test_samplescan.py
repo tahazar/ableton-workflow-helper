@@ -1,4 +1,4 @@
-"""M11 sample-library scanning tests (docs/design/sample-library.md's
+"""Sample-library scanning tests (docs/design/sample-library.md's
 verification bar): a synthetic corpus of a sine-bass one-shot, a
 noise-burst hat one-shot, and a kick loop at a known BPM."""
 
@@ -164,7 +164,7 @@ def test_empty_audio_is_unreadable_record(tmp_path):
 
 
 def test_silence_does_not_crash(tmp_path):
-    """Digital silence is a legitimate (if useless) sample — must scan
+    """Digital silence is a legitimate (if useless) sample and must scan
     cleanly, never NaN/crash (docs/lessons-learned.md #5 generalized)."""
     path = _write(tmp_path, "silence.wav", np.zeros(int(round(1.0 * SR))))
     rec = samplescan.scan_file(path)
@@ -196,7 +196,7 @@ def test_cli_samplescan_args_emits_jsonl(tmp_path):
 
     proc = _run_samplescan([good, missing])
     assert proc.returncode == 0, proc.stderr
-    lines = [json.loads(l) for l in proc.stdout.strip().splitlines()]
+    lines = [json.loads(ln) for ln in proc.stdout.strip().splitlines()]
     assert len(lines) == 2
     assert lines[0]["unreadable"] is False
     assert lines[1]["unreadable"] is True
@@ -206,16 +206,16 @@ def test_cli_samplescan_stdin_emits_jsonl(tmp_path):
     good = _write(tmp_path, "hat.wav", _noise_hat_oneshot())
     proc = _run_samplescan([], stdin=good + "\n")
     assert proc.returncode == 0, proc.stderr
-    lines = [json.loads(l) for l in proc.stdout.strip().splitlines()]
+    lines = [json.loads(ln) for ln in proc.stdout.strip().splitlines()]
     assert len(lines) == 1
     assert lines[0]["type_guess"] == "oneshot"
 
 
 def test_cli_samplescan_never_emits_nan_or_infinity_tokens(tmp_path):
-    """Every record goes through `audio.sanitize_json` — non-finite floats
+    """Every record goes through `audio.sanitize_json`: non-finite floats
     must come out as JSON `null`, never the invalid `NaN`/`Infinity`
-    tokens Python's json module would otherwise happily write (M6 finding,
-    see audio.sanitize_json's docstring)."""
+    tokens Python's json module would otherwise write (see
+    audio.sanitize_json's docstring)."""
     silent = _write(tmp_path, "silence.wav", np.zeros(int(round(1.0 * SR))))
     proc = _run_samplescan([silent])
     assert proc.returncode == 0, proc.stderr

@@ -1,11 +1,11 @@
 import { BridgeError } from "../bridge/types.js";
 
 /**
- * Chord progressions, entirely in-scale (M7): every chord's root AND its
- * stacked quality are DERIVED from the scale's own step pattern (never a
+ * Chord progressions, entirely in-scale: every chord's root and its stacked
+ * quality are derived from the scale's own step pattern (never a
  * chromatic/equal-tempered assumption), so a given progression text + scale
- * always yields the same chords — deterministic and diffable, same spirit as
- * the M3 transforms (see transforms/scales.ts).
+ * always yields the same chords. Deterministic and diffable, like the note
+ * transforms (see transforms/scales.ts).
  */
 
 export interface ChordSpec {
@@ -22,7 +22,7 @@ export interface ChordSpec {
 }
 
 /** Matches transforms/types.ts ScaleContext structurally, without importing
- *  it — harmony only needs rootNote + intervals. */
+ *  it; harmony only needs rootNote + intervals. */
 export interface ScaleContextLike {
   rootNote: number;
   intervals: number[];
@@ -38,9 +38,9 @@ const ROMAN_DEGREES: Record<string, number> = {
   vii: 6,
 };
 
-// [accidental?][roman numeral][suffix?] — suffixes are mutually exclusive
-// (grammar decision: "V7sus4" etc. is not supported, keeping the grammar
-// simple and the derivation unambiguous).
+// [accidental?][roman numeral][suffix?]. Suffixes are mutually exclusive
+// ("V7sus4" etc. is not supported), keeping the grammar simple and the
+// derivation unambiguous.
 const CHORD_RE = /^([b#]?)([ivIV]+)(7|sus2|sus4|dim|aug|maj|min)?$/;
 
 function mod(n: number, m: number): number {
@@ -50,7 +50,7 @@ function mod(n: number, m: number): number {
 /**
  * Absolute semitone offset from the scale root for a (possibly negative or
  * >= scale-length) scale-degree index. Octaves are lifted so the result is
- * monotonic as `degree` increases — same technique as shiftDegrees in
+ * monotonic as `degree` increases: the same technique as shiftDegrees in
  * transforms/scales.ts, but degree-indexed rather than pitch-indexed.
  */
 function scaleStepOffset(degree: number, scale: ScaleContextLike): number {
@@ -62,8 +62,8 @@ function scaleStepOffset(degree: number, scale: ScaleContextLike): number {
 
 /** Label a stacked third+fifth pair. Falls back to a third-size guess for
  *  non-tertian stacks (e.g. thirds built on a scale whose step pattern
- *  doesn't yield a plain triad) — not exercised by diatonic 7-note scales,
- *  documented as a grammar decision rather than spec-tested behavior. */
+ *  doesn't yield a plain triad). Diatonic 7-note scales never reach this
+ *  path, so it is untested. */
 function classifyTriad(third: number, fifth: number): string {
   if (third === 4 && fifth === 7) return "maj";
   if (third === 3 && fifth === 7) return "min";
@@ -100,17 +100,17 @@ function parseChord(symbol: string, scale: ScaleContextLike): ChordSpec {
   let intervals: number[];
   let quality: string;
   if (suffix === "maj") {
-    // Explicit quality override (owner request): the deterministic
-    // scale-stacking default makes e.g. the conventional major V in a
-    // natural-minor progression unreachable without switching to harmonic
-    // minor — "Vmaj" forces the major triad while the root stays diatonic.
+    // Explicit quality override: the deterministic scale-stacking default
+    // makes e.g. the conventional major V in a natural-minor progression
+    // unreachable without switching to harmonic minor. "Vmaj" forces the
+    // major triad while the root stays diatonic.
     intervals = [0, 4, 7];
     quality = "maj";
   } else if (suffix === "min") {
     intervals = [0, 3, 7];
     quality = "min";
   } else if (suffix === "dim") {
-    // Explicit override: leaves the scale entirely (spec).
+    // Explicit override: leaves the scale entirely.
     intervals = [0, 3, 6];
     quality = "dim";
   } else if (suffix === "aug") {
@@ -135,8 +135,8 @@ function parseChord(symbol: string, scale: ScaleContextLike): ChordSpec {
   }
 
   // Borrowed root (b/#): shift the pitch class only, keep the stacked
-  // interval STRUCTURE from the original (diatonic) degree — the numeral's
-  // case never overrides the scale-derived quality (spec).
+  // interval structure from the original (diatonic) degree. The numeral's
+  // case never overrides the scale-derived quality.
   const accidentalShift = accidental === "b" ? -1 : accidental === "#" ? 1 : 0;
   const rootPc = mod(scale.rootNote + rootOffset + accidentalShift, 12);
 
@@ -149,7 +149,10 @@ function parseChord(symbol: string, scale: ScaleContextLike): ChordSpec {
  * whitespace (or both).
  */
 export function parseProgression(text: string, scale: ScaleContextLike): ChordSpec[] {
-  const tokens = text.trim().split(/[\s-]+/).filter((t) => t.length > 0);
+  const tokens = text
+    .trim()
+    .split(/[\s-]+/)
+    .filter((t) => t.length > 0);
   if (tokens.length === 0) {
     throw new BridgeError("bad_request", `empty progression`);
   }
