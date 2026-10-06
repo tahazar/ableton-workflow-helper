@@ -7,6 +7,7 @@ determinism; a negative-control ghost hit; zero-onset state.
 
 from __future__ import annotations
 
+import itertools
 import json
 import subprocess
 import sys
@@ -123,7 +124,7 @@ def test_synthetic_break_slice_count_roles_and_small_offsets(tmp_path):
     # every slice's end is the next slice's start (contiguous spans), and
     # the final slice's end is the file's own end (never truncated early;
     # see module docstring's slicing convention).
-    for a, b in zip(result["slices"], result["slices"][1:]):
+    for a, b in itertools.pairwise(result["slices"]):
         assert a["end_s"] == b["start_s"]
     assert result["slices"][-1]["end_s"] == result["duration_s"]
 
@@ -137,7 +138,7 @@ def test_shifted_hits_offsets_are_measured_not_snapped(tmp_path):
     shifted = breakchop.analyze_break(_write(tmp_path, "shifted.wav", _synthetic_break(shift_s)), bpm_override=BPM)
 
     assert on_grid["n_slices"] == shifted["n_slices"] == len(EVENTS)
-    for a, b in zip(on_grid["slices"], shifted["slices"]):
+    for a, b in zip(on_grid["slices"], shifted["slices"], strict=True):
         delta_ms = b["offset_ms"] - a["offset_ms"]
         # allow generous slack for onset-detection quantization (~1 STFT
         # hop, see ref.ONSET_HOP). The point is the shift shows up at all.
@@ -186,7 +187,7 @@ def test_export_byte_lengths_match_slice_spans(tmp_path):
 
     assert len(exported["files"]) == result["n_slices"]
     sr = sf.info(path).samplerate
-    for f, sl in zip(exported["files"], result["slices"]):
+    for f, sl in zip(exported["files"], result["slices"], strict=True):
         expected_frames = round((sl["end_s"] - sl["start_s"]) * sr)
         assert f["frames"] == expected_frames
         actual_frames = sf.info(f["path"]).frames

@@ -157,7 +157,7 @@ def analyze_break(
     ends = [*starts[1:], duration_s]
 
     peaks = []
-    for s, e in zip(starts, ends):
+    for s, e in zip(starts, ends, strict=True):
         i0 = int(round(s * sr))
         i1 = max(i0 + 1, int(round(e * sr)))
         seg = mono[i0:i1]
@@ -167,7 +167,7 @@ def analyze_break(
     slices: list[dict[str, Any]] = []
     downbeat_checked = 0
     downbeat_near_zero = 0
-    for idx, (s, e) in enumerate(zip(starts, ends)):
+    for idx, (s, e) in enumerate(zip(starts, ends, strict=True)):
         i0 = int(round(s * sr))
         i1 = max(i0 + 1, int(round(e * sr)))
 

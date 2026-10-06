@@ -196,9 +196,9 @@ def test_cli_clapembed_batch_jsonl_shape(tmp_path):
         env=env,
     )
     assert proc.returncode == 0, proc.stderr
-    lines = [l for l in proc.stdout.splitlines() if l.strip()]
+    lines = [ln for ln in proc.stdout.splitlines() if ln.strip()]
     assert len(lines) == 2
-    for line, path in zip(lines, [path_a, path_b]):
+    for line, path in zip(lines, [path_a, path_b], strict=True):
         obj = json.loads(line)
         assert obj["path"] == path
         assert obj["unreadable"] is False

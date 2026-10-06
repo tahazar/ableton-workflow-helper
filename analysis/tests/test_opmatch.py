@@ -150,7 +150,7 @@ def test_harmonic_vector_recovers_known_partial_amplitudes(tmp_path):
 
     expected = (np.array(amps_true) / amps_true[0]).tolist()
     recovered = result["harmonic_vector"]
-    for i, (exp, got) in enumerate(zip(expected, recovered)):
+    for i, (exp, got) in enumerate(zip(expected, recovered, strict=True)):
         assert got == pytest.approx(exp, abs=0.08), f"partial {i + 1}: expected {exp}, got {got}"
 
     gated = opmatch.gate(result)

@@ -182,9 +182,9 @@ def _cmd_duck(args: argparse.Namespace) -> int:
             f"between-hit floor; body ends {k['body_end_ms']:.0f} ms; "
             f"tail gone by {k['decay_done_ms']:.0f} ms",
             "",
-            f"Recommended Volume Shaper envelope (per trigger):",
+            "Recommended Volume Shaper envelope (per trigger):",
             f"  depth    {rec['depth_db']:.1f} dB   ({rec['depth_source']})",
-            f"  attack   0 ms (instant — trigger-locked)",
+            "  attack   0 ms (instant — trigger-locked)",
             f"  hold     {rec['hold_ms']:.0f} ms at full depth",
             f"  release  {rec['release_ms']:.0f} ms, {rec['release_curve']} — fully "
             f"recovered by {rec['fully_recovered_by_ms']:.0f} ms "

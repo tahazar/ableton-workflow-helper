@@ -196,7 +196,7 @@ def test_cli_samplescan_args_emits_jsonl(tmp_path):
 
     proc = _run_samplescan([good, missing])
     assert proc.returncode == 0, proc.stderr
-    lines = [json.loads(l) for l in proc.stdout.strip().splitlines()]
+    lines = [json.loads(ln) for ln in proc.stdout.strip().splitlines()]
     assert len(lines) == 2
     assert lines[0]["unreadable"] is False
     assert lines[1]["unreadable"] is True
@@ -206,7 +206,7 @@ def test_cli_samplescan_stdin_emits_jsonl(tmp_path):
     good = _write(tmp_path, "hat.wav", _noise_hat_oneshot())
     proc = _run_samplescan([], stdin=good + "\n")
     assert proc.returncode == 0, proc.stderr
-    lines = [json.loads(l) for l in proc.stdout.strip().splitlines()]
+    lines = [json.loads(ln) for ln in proc.stdout.strip().splitlines()]
     assert len(lines) == 1
     assert lines[0]["type_guess"] == "oneshot"
 

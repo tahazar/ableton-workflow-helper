@@ -58,7 +58,8 @@ def _add(sig: np.ndarray, start_s: float, sr: int, burst: np.ndarray) -> None:
 HOUSE_BPM = 128.0
 HOUSE_OFFSET_S = 0.25
 HOUSE_SECTIONS = [
-    # (name, n_bars, has_kick, kick_gain_db_range, hat_gain_db_range)
+    # Each row: name, bar count, whether the kick plays, kick gain range (dB),
+    # hat gain range (dB).
     ("intro", 16, False, None, (-14.0, -14.0)),
     ("build", 16, False, None, (-14.0, -6.0)),  # ramping, sub-light
     ("drop", 32, True, (0.0, 0.0), (0.0, 0.0)),
@@ -345,7 +346,7 @@ def _make_arc(full_vals: list[float], sub_vals: list[float]) -> list[dict]:
     consumes, so this is a legitimate synthetic construction of it, just
     built by hand instead of derived from audio."""
     return [
-        {"bar": i + 1, "full_db": f, "sub_db": s, "high_db": 0.0} for i, (f, s) in enumerate(zip(full_vals, sub_vals))
+        {"bar": i + 1, "full_db": f, "sub_db": s, "high_db": 0.0} for i, (f, s) in enumerate(zip(full_vals, sub_vals, strict=True))
     ]
 
 

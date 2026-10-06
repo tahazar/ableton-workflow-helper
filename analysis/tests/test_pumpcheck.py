@@ -63,7 +63,6 @@ def _decaying_bass(
     ducking.
     Pattern copied from test_duck.py's _kick_drums."""
     n = int(round(duration_s * sr))
-    t = np.arange(n) / sr
     rng = np.random.default_rng(11)
     sig = floor_amp * rng.standard_normal(n)
     for trig in trigger_times:

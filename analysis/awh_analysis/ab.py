@@ -83,7 +83,7 @@ def ab_compare(path_a: str, path_b: str, bpm: float | None = None) -> dict:
         "changed_findings": [],
     }
 
-    for f, d in zip(freqs, band_delta):
+    for f, d in zip(freqs, band_delta, strict=True):
         if np.isfinite(d) and abs(d) > BAND_CHANGE_FLAG_DB:
             result["changed_findings"].append(
                 {

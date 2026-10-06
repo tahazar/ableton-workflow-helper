@@ -1,3 +1,5 @@
+import itertools
+
 import numpy as np
 import pytest
 
@@ -17,7 +19,6 @@ def _kick_drums(
     """Synthetic drums: a 55 Hz kick burst with known exponential decay at
     each trigger, over a quiet noise floor."""
     n = int(round(duration_s * sr))
-    t = np.arange(n) / sr
     rng = np.random.default_rng(11)
     sig = floor_amp * rng.standard_normal(n)
     for trig in trigger_times:
@@ -59,7 +60,7 @@ def test_duck_fit_tracks_the_kick_decay():
     points = rec["points"]
     assert points[0]["gain_db"] == -rec["depth_db"]
     gains = [p["gain_db"] for p in points]
-    assert all(b >= a - 1e-9 for a, b in zip(gains, gains[1:]))
+    assert all(b >= a - 1e-9 for a, b in itertools.pairwise(gains))
     assert points[-1]["gain_db"] == 0.0
     assert points[-1]["frac"] == 1.0
 
@@ -221,5 +222,5 @@ def test_detect_onsets_finds_real_hit_positions():
     x = _kick_drums(SR, TRIGGERS, 4.5, decay_tau_s=0.05)
     onsets = duck.detect_onsets(x, SR)
     assert len(onsets) == len(TRIGGERS)
-    for detected, true in zip(onsets, TRIGGERS):
+    for detected, true in zip(onsets, TRIGGERS, strict=True):
         assert abs(detected - true) < 0.03  # within 30 ms

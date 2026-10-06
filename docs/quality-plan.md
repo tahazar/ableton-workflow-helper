@@ -543,6 +543,10 @@ Small, independent commits; take them whenever convenient.
 - `refactor(analysis): Share ffmpeg decode between drumstats and
   samplescan`, and make `_band_split` public or move it.
 - `refactor(analysis): Merge samplescan and samplepitch CLI handlers`.
+- `fix(analysis): Reject or weight loudness input past five channels`
+  (`loudness.py` has BS.1770 gains for L, R, C, Ls, Rs only, and the
+  weighted sum drops any further channels without a word; found by
+  Ruff's `B905` in L10).
 - `chore(m4l): Remove diagnostic tap from AWH Ducker` (comment box marked
   "remove before shipping").
 - `docs: Drop milestone tags from test titles` (`ops.test.ts`,

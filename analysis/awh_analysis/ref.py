@@ -1022,7 +1022,7 @@ def detect_sections(arc: list[dict], phrase_bars: int = 4) -> list[dict]:
     # overlap on insertion order alone and the outro never surfaces.
     events.sort(key=lambda e: e["start"])
     outro_start = next((e["start"] for e in events if e["name"] == "outro"), n)
-    for i, ev in enumerate(events):
+    for ev in events:
         if ev["extend"]:
             later_starts = [e["start"] for e in events if e["start"] > ev["start"]]
             cap = min(later_starts) if later_starts else n

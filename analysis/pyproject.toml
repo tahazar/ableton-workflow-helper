@@ -49,6 +49,8 @@ clap = [
 dev = [
     "pytest",
     "pytest-cov",
+    # Pre-1.0: a minor release can change lint or format output, so pin.
+    "ruff==0.16.10",
 ]
 
 [project.scripts]
@@ -60,6 +62,22 @@ include = ["awh_analysis*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+# F: unused names; E: pycodestyle; B: likely bugs; BLE001: blind
+# `except Exception`; ERA001: commented-out code; T201: print in library code.
+select = ["E", "F", "B", "BLE001", "ERA001", "T201"]
+# The formatter owns wrapping. What it leaves over 100 columns is long
+# strings and comments, which E501 would only ask to split by hand.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+# The CLI's output is its print calls; library modules log instead.
+"awh_analysis/__main__.py" = ["T201"]
 
 [tool.coverage.run]
 source = ["awh_analysis"]

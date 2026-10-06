@@ -228,9 +228,9 @@ def embed_audio_batch(paths: list[str], model_key: str = DEFAULT_MODEL) -> list[
                 "error": None,
                 "clap": _wrap(embedder.label, _finalize_vector(vec)),
             }
-            for path, vec in zip(paths, vectors)
+            for path, vec in zip(paths, vectors, strict=True)
         ]
-    except Exception:
+    except Exception:  # noqa: BLE001 - narrowed by quality plan item 20
         # A whole-batch failure (e.g. one corrupt file the model itself
         # chokes on) falls back to one-at-a-time so the rest of the batch
         # still embeds. This mirrors samplescan's per-file resilience at the

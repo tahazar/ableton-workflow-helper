@@ -149,7 +149,7 @@ def test_cli_samplepitch_args_emits_jsonl(tmp_path):
 
     proc = _run_samplepitch([good, missing])
     assert proc.returncode == 0, proc.stderr
-    lines = [json.loads(l) for l in proc.stdout.strip().splitlines()]
+    lines = [json.loads(ln) for ln in proc.stdout.strip().splitlines()]
     assert len(lines) == 2
     assert lines[0]["unreadable"] is False
     assert lines[0]["state"] == "voiced"
@@ -160,7 +160,7 @@ def test_cli_samplepitch_stdin_emits_jsonl(tmp_path):
     kick = _write(tmp_path, "kick.wav", _broadband_kick_oneshot())
     proc = _run_samplepitch([], stdin=kick + "\n")
     assert proc.returncode == 0, proc.stderr
-    lines = [json.loads(l) for l in proc.stdout.strip().splitlines()]
+    lines = [json.loads(ln) for ln in proc.stdout.strip().splitlines()]
     assert len(lines) == 1
     assert lines[0]["unreadable"] is False
 

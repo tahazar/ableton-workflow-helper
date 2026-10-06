@@ -83,7 +83,9 @@ def _windowed_loudness(
     for i, s in enumerate(starts):
         block = x_k[s : s + win_len, :]
         z = np.mean(block**2, axis=0)  # per-channel mean square
-        weighted = sum(g * zi for g, zi in zip(gains, z))
+        # BS.1770 defines gains for five channels; channels past the fifth
+        # are dropped here (see the quality plan's cleanup list).
+        weighted = sum(g * zi for g, zi in zip(gains, z, strict=False))
         with np.errstate(divide="ignore"):
             values[i] = -0.691 + 10.0 * np.log10(weighted) if weighted > 0 else -np.inf
     return times, values
@@ -156,7 +158,7 @@ def psr(x: np.ndarray, sr: int) -> dict:
     win_len = min(win_len, x.shape[0]) or x.shape[0]
 
     windows = []
-    for t, ls in zip(times, lufs_s):
+    for t, ls in zip(times, lufs_s, strict=True):
         s = int(round(t * sr))
         block = x[s : s + win_len, :]
         tp = true_peak_db(block, sr)
