@@ -96,7 +96,9 @@ def compare_to_target(measurements: dict, target: dict) -> list[dict]:
     target_bands = {b["freq"]: b for b in target.get("bands", [])}
 
     out = []
-    for f, v in zip(freqs, db, strict=True):
+    # Saved records may predate the current band set; compare the bands both
+    # lists have rather than fail on an older record.
+    for f, v in zip(freqs, db, strict=False):
         tb = target_bands.get(f)
         if tb is None or not np.isfinite(v) or not np.isfinite(tb["median_db"]):
             continue

@@ -131,7 +131,7 @@ def load_loop(path: str) -> tuple[np.ndarray, int, str]:
     try:
         x, sr = audio.load(path)
         return x, sr, "soundfile"
-    except Exception as primary_exc:  # noqa: F841 - quality plan item 20 chains it as the cause
+    except Exception:
         if not path.lower().endswith(".mp3"):
             raise
         x, sr = _decode_via_ffmpeg(path)

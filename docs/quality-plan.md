@@ -438,6 +438,9 @@ Each item is one commit: failing test first, then the fix.
     in `drumstats.load_loop` and `samplescan.load_for_scan`, and the
     onset `ValueError` to empty-list conversion in `pitch.py` and
     `drumstats.py`. Narrow each `except`, log at warning, test both sides.
+    The narrowed `clapembed` clause must still catch `ValueError`: since
+    L10, a batch that returns fewer vectors than paths raises it from
+    `zip(strict=True)` and should fall back to per-file embedding.
     Split into one commit per module if the diffs are large.
 21. `fix(analysis): Flag too-short input in duck band measurement`
     `duck._calibrated_band_dbfs` returns -120 dBFS when there is no PSD.
