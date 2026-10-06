@@ -20,7 +20,8 @@ commit that finishes an item.
   PR #13. One commit per item, pushed after each.
 - **Done:** Phase 0 items 1 to 4, L1 to L6.
 - **Next:** L7 to L9 (oxfmt). Then L10 to L11 (Ruff, Python typecheck),
-  L12 (CI lint job), and Phase 1.
+  L12 (CI lint job), L6b, G8, and Phase 1. L14, L15 and Phase 7 were
+  added on 2026-10-06 from a review of agent-guardrail suggestions.
 - **Not verified:** the repository-settings half of Phase 0 item 3 (branch
   protection on `main`) and S1 cannot be checked from a session; ask the
   owner.
@@ -202,6 +203,16 @@ L6. `build: Warn on long functions` (done)
     `pedantic` and `perf` stays off. Most `no-await-in-loop` hits are
     intentional sequential gateway calls into Live, which must stay
     ordered.
+L6b. `build: Ban any, ts-comments, TODOs, and unnecessary conditions`
+     Turn agent-prompt bans into lint rules, which bind where prose does
+     not. Measured on 2026-10-06: `typescript/no-explicit-any` 10 (all in
+     `cli/test/endless.test.ts`; type them), `typescript/ban-ts-comment` 0
+     (allow `@ts-expect-error` with a description), `no-warning-comments`
+     0 (TODO, FIXME), `no-empty` 0, and
+     `typescript/no-unnecessary-condition` 11 (8 in `src/`; fix each, since
+     a condition the types already decide is a defensive check that hides
+     intent). `no-magic-numbers` (3,741) stays off: velocities, PPQ and
+     beat counts are the domain, not magic.
 L7. `build: Add oxfmt pinned to 0.72.0`
     Config, `pnpm fmt` and `pnpm fmt:check`. Exact version pin, because a
     pre-1.0 minor release can change output and fail CI on untouched
@@ -239,6 +250,17 @@ L13. Optional: `build: Add pre-commit hook`
      `git config core.hooksPath`) that runs `oxlint`, `oxfmt --check`, and
      Ruff on staged files only, so it stays fast. CI remains the gate; the
      hook only shortens the loop.
+
+L14. `ci: Flag swallowed errors with semgrep`
+     One custom rule: a `catch` that neither rethrows, logs, nor returns a
+     flagged result. oxlint cannot express it. 23 bare `catch {` blocks in
+     `src/` today, the pattern behind Phase 2, so land it as a ratchet
+     (baseline file or per-site ignores with a reason) and shrink it as
+     Phase 2 items close. Ruff `BLE001` (L10) covers Python.
+L15. `ci: Cap code duplication with jscpd`
+     jscpd 4 over `packages/*/src` (assets excluded, min 70 tokens) found
+     16 clones, 1.36% of lines. Set the threshold at today's level and
+     lower it as the shared-helper cleanup items land.
 
 ## Track S: security and supply chain
 
@@ -289,6 +311,17 @@ G7. Optional: an LLM pull-request reviewer (Copilot code review or
     `anthropics/claude-code-action`). Advisory only, never a required
     check. The second needs an API key as a repository secret and is
     billed per run.
+
+G8. `docs: Add CLAUDE.md with agent rules`
+    There is no CLAUDE.md; the ground rules above load only when a
+    session is told to read this plan. Move the durable rules there and
+    keep it short: the ground rules; fakes, not mocks (`serve-fake` and
+    the fake gateway; mock only process boundaries and environment
+    variables, which is true today); comments explain why, not what; a
+    fix never weakens an existing assertion; the pre-commit check list.
+    Point this plan's ground-rules section at it. For G7, the reviewer
+    gets the diff and these rules but not the task description, so it
+    judges the change rather than the intent.
 
 ## Phase 1: make existing tests honest
 
@@ -437,6 +470,22 @@ Most uncovered spec-parser lines are validation errors; table-driven
 Final item: `test: Require 100% line coverage` with an explicit, commented
 exclusion list (type-only files such as `drums/types.ts`, code reachable
 only inside Live, real-model paths behind `AWH_CLAP_STUB`).
+
+## Phase 7: mutation testing
+
+Line coverage shows a line ran, not that a test would notice it change.
+After Phase 6 reaches 100%, mutation testing is what keeps that number
+honest.
+
+33. `test: Add Stryker mutation testing for core`
+    `@stryker-mutator/core` with the vitest runner over `packages/core`,
+    incremental mode. On pull requests, mutate changed files only; run
+    the full package weekly. Advisory first.
+34. `test: Enforce a mutation score floor`
+    After the first full run, record the score per module here and fail
+    below it. Raise it like the coverage floors. Extend to `cli` once
+    Phase 4 has split `index.ts`. Python (mutmut) is deferred: runs that
+    load librosa are slow; revisit if analysis tests stay fast enough.
 
 ## Cleanup found along the way
 
