@@ -49,3 +49,6 @@ Thumbs.db
 
 # Claude Code agent worktrees (transient)
 .claude/worktrees/
+
+# Orchestrator run reports (packages/orchestrator)
+.claude/orchestrator/

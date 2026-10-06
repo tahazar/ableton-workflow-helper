@@ -22,6 +22,9 @@ commit that finishes an item.
 - **Next:** L10 to L11 (Ruff, Python typecheck), then L12 (CI lint job),
   L6b, G8, and Phase 1. L14, L15 and Phase 7 were added on 2026-10-06
   from a review of agent-guardrail suggestions.
+- **Orchestrator:** `pnpm orchestrate run --dry-run` schedules the open
+  items listed in `packages/orchestrator/tasks/quality-plan.json`; see
+  `packages/orchestrator/README.md`. Add new items to that manifest.
 - **Not verified:** the repository-settings half of Phase 0 item 3 (branch
   protection on `main`) and S1 cannot be checked from a session; ask the
   owner.

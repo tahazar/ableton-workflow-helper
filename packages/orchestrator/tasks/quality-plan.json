@@ -1,0 +1,117 @@
+{
+  "setup": ["pnpm install --frozen-lockfile --prefer-offline"],
+  "checks": ["pnpm build", "pnpm lint", "pnpm fmt:check", "pnpm typecheck", "pnpm test"],
+  "tasks": [
+    {
+      "id": "L10a",
+      "item": "L10",
+      "subject": "build(analysis): Add ruff lint and format",
+      "writes": ["analysis/"],
+      "setup": ["python3 -m venv .venv", ".venv/bin/pip install --quiet -e 'analysis[dev]'"],
+      "extraChecks": ["cd analysis && ../.venv/bin/ruff check . && ../.venv/bin/pytest -q --cov"],
+      "note": "Part 1 of 3: Ruff in the dev extras, its config in pyproject.toml, and fixes for the enabled lint rules. No bulk formatting; part 2 does that."
+    },
+    {
+      "id": "L10b",
+      "item": "L10",
+      "subject": "style(analysis): Format with ruff",
+      "dependsOn": ["L10a"],
+      "writes": ["analysis/"],
+      "setup": ["python3 -m venv .venv", ".venv/bin/pip install --quiet -e 'analysis[dev]'"],
+      "extraChecks": [
+        "cd analysis && ../.venv/bin/ruff format --check . && ../.venv/bin/pytest -q --cov"
+      ],
+      "note": "Part 2 of 3: the output of ruff format and nothing else."
+    },
+    {
+      "id": "L10c",
+      "item": "L10",
+      "subject": "chore: Ignore ruff formatting commit in git blame",
+      "dependsOn": ["L10b"],
+      "writes": [".git-blame-ignore-revs"],
+      "note": "Part 3 of 3, the final part: add the hash of the 'style(analysis): Format with ruff' commit (find it with git log) to .git-blame-ignore-revs. The plan record covers all of L10."
+    },
+    {
+      "id": "L11",
+      "subject": "build(analysis): Typecheck with pyright",
+      "dependsOn": ["L10c"],
+      "writes": ["analysis/", ".github/workflows/ci.yml"],
+      "setup": ["python3 -m venv .venv", ".venv/bin/pip install --quiet -e 'analysis[dev]'"],
+      "extraChecks": ["cd analysis && ../.venv/bin/pyright && ../.venv/bin/pytest -q --cov"]
+    },
+    {
+      "id": "L12",
+      "subject": "ci: Add lint job",
+      "dependsOn": ["L11"],
+      "writes": [".github/workflows/ci.yml"]
+    },
+    {
+      "id": "L6b",
+      "subject": "build: Ban any, ts-comments, TODOs, and unnecessary conditions",
+      "writes": [
+        ".oxlintrc.json",
+        "packages/core/src/",
+        "packages/cli/src/",
+        "packages/cli/test/",
+        "packages/cli/assets/"
+      ]
+    },
+    {
+      "id": "G8",
+      "subject": "docs: Add CLAUDE.md with agent rules",
+      "writes": ["CLAUDE.md", "docs/quality-plan.md"],
+      "note": "Keep the '## Ground rules for every commit' heading in the plan with a pointer to CLAUDE.md: the orchestrator reads that section."
+    },
+    {
+      "id": "5",
+      "subject": "test: Resolve analysis venv relative to the repo",
+      "writes": [
+        "packages/cli/test/",
+        "analysis/tests/",
+        "analysis/pyproject.toml",
+        ".github/workflows/ci.yml"
+      ],
+      "setup": ["python3 -m venv .venv", ".venv/bin/pip install --quiet -e 'analysis[dev]'"],
+      "extraChecks": ["cd analysis && ../.venv/bin/pytest -q --cov"]
+    },
+    {
+      "id": "6",
+      "subject": "test: Extract shared CLI test helpers",
+      "dependsOn": ["5"],
+      "writes": ["packages/cli/test/"]
+    },
+    {
+      "id": "7",
+      "subject": "refactor(cli): Export program for in-process tests",
+      "dependsOn": ["6"],
+      "writes": ["packages/cli/src/", "packages/cli/test/", "packages/cli/package.json"]
+    },
+    {
+      "id": "8",
+      "subject": "test(analysis): Call main() in-process in CLI tests",
+      "dependsOn": ["L10b"],
+      "writes": ["analysis/tests/"],
+      "setup": ["python3 -m venv .venv", ".venv/bin/pip install --quiet -e 'analysis[dev]'"],
+      "extraChecks": ["cd analysis && ../.venv/bin/pytest -q --cov"]
+    },
+    {
+      "id": "9",
+      "subject": "test: Record true baseline and raise floors",
+      "dependsOn": ["7", "8"],
+      "writes": [
+        "packages/core/vitest.config.ts",
+        "packages/cli/vitest.config.ts",
+        "analysis/pyproject.toml"
+      ],
+      "setup": ["python3 -m venv .venv", ".venv/bin/pip install --quiet -e 'analysis[dev]'"],
+      "extraChecks": ["pnpm coverage", "cd analysis && ../.venv/bin/pytest -q --cov"],
+      "note": "The baseline table lives in docs/quality-plan.md; put the re-measured table in the plan record rather than editing the plan directly."
+    },
+    {
+      "id": "S1",
+      "subject": "Repository settings: Dependabot alerts, secret scanning, push protection",
+      "gate": "human",
+      "note": "Repository settings cannot be changed from the repository; the owner does this in GitHub settings."
+    }
+  ]
+}

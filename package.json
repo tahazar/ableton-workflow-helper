@@ -10,12 +10,13 @@
   "scripts": {
     "build": "pnpm --filter @awh/core --filter @awh/cli build",
     "build:extension": "pnpm --filter @awh/extension build",
-    "test": "pnpm --filter @awh/core --filter @awh/cli test",
-    "coverage": "pnpm --filter @awh/core --filter @awh/cli coverage",
+    "test": "pnpm --filter @awh/core --filter @awh/cli --filter @awh/orchestrator test",
+    "coverage": "pnpm --filter @awh/core --filter @awh/cli --filter @awh/orchestrator coverage",
     "typecheck": "pnpm -r typecheck",
     "lint": "oxlint --type-aware --deny-warnings packages scripts",
     "fmt": "oxfmt packages scripts",
     "fmt:check": "oxfmt --check packages scripts",
+    "orchestrate": "pnpm --filter @awh/orchestrator build && node packages/orchestrator/dist/cli.js",
     "setup:sdk": "node scripts/setup-sdk.mjs"
   },
   "devDependencies": {
