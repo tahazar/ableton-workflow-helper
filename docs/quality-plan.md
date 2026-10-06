@@ -18,8 +18,8 @@ commit that finishes an item.
 
 - **Branch and PR:** work lands on `ableton-integration-brainstorm`, draft
   PR #13. One commit per item, pushed after each.
-- **Done:** Phase 0 items 1 to 4, L1 to L9.
-- **Next:** L10 to L11 (Ruff, Python typecheck), then L12 (CI lint job),
+- **Done:** Phase 0 items 1 to 4, L1 to L10.
+- **Next:** L11 (Python typecheck), then L12 (CI lint job),
   L6b, G8, and Phase 1. L14, L15 and Phase 7 were added on 2026-10-06
   from a review of agent-guardrail suggestions.
 - **Loop:** one session per item: do the item, run the checks below,
@@ -41,7 +41,8 @@ pnpm lint          # oxlint --type-aware --deny-warnings
 pnpm fmt:check     # oxfmt; run pnpm fmt to fix
 pnpm typecheck     # src and test tsconfigs for core and cli; extension via the SDK shim
 pnpm test
-cd analysis && ../.venv/bin/pytest -q --cov   # when analysis/ changes
+cd analysis && ../.venv/bin/ruff check . && ../.venv/bin/ruff format --check . \
+  && ../.venv/bin/pytest -q --cov             # when analysis/ changes
 ```
 
 Review after every commit, in a fresh context so the reviewer is not
@@ -249,16 +250,25 @@ L8. `style: Format codebase with oxfmt` (done)
 L9. `chore: Ignore formatting commit in git blame` (done)
     `.git-blame-ignore-revs` lists L8. GitHub applies it automatically;
     locally, run `git config blame.ignoreRevsFile .git-blame-ignore-revs`.
-L10. `build(analysis): Add ruff lint and format`
-     Ruff in the `dev` extras, config in `pyproject.toml`. Enable `F`
-     (unused imports), `E`, `B`, and `BLE001` (blind `except Exception`,
-     the pattern behind several Phase 2 findings). Also enable `ERA001`
-     (commented-out code) and `T201` (`print`) with a per-file ignore for
-     `awh_analysis/__main__.py`, which is the CLI's output; library modules
-     log through `logging` instead (true today: all 28 `print` calls are in
-     `__main__.py`). Format commit and blame-ignore entry as in L8 and L9.
-     oxlint has no commented-out-code rule, so on the TypeScript side that
-     stays a review item.
+L10. `build(analysis): Add ruff lint and format` (done)
+     Three commits plus one review fix. Ruff 0.16.10 is pinned exactly in
+     the `dev` extras (pre-1.0, like oxfmt), with `line-length = 100` to
+     match oxfmt. Rules `E`, `F`, `B`, `BLE001`, `ERA001`, `T201`; `print`
+     allowed only in `__main__.py` (all 28 calls). `E501` is off: at 100
+     columns it found 109 lines before formatting and 14 after, all long
+     strings and comments the formatter leaves alone. The other 28
+     findings were fixed: 15 `zip()` calls (`strict=True` where both sides
+     are built to the same length, `itertools.pairwise` for two shifted
+     self-pairs, explicit `strict=False` where truncation is intended:
+     loudness channel gains, now a cleanup item, and `compare_to_target`,
+     whose spectra come from saved records), 5 ambiguous `l` names, 3
+     unused variables, 2 placeholder-free f-strings, 1 unused loop index,
+     1 false-positive `ERA001` (a tuple-layout comment, reworded). The one
+     `BLE001` (`clapembed` batch fallback) carries a noqa pointing to item
+     20. `ruff format` reformatted 26 of 47 files; that commit is in
+     `.git-blame-ignore-revs`. CI's Python job runs `ruff check` and
+     `ruff format --check` until L12 moves them to the lint job. 182 tests,
+     same count before and after.
 L11. `build(analysis): Typecheck with pyright`
      TypeScript is fully typechecked; `analysis/` is not, and 8 functions
      lack a return annotation. Add `pyright` to the `dev` extras with

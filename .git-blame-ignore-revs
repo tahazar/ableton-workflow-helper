@@ -3,3 +3,6 @@
 
 # style: Format codebase with oxfmt (quality plan L8)
 7a460eb8f32b60fb59f86c443d59ef2390a4c380
+
+# style(analysis): Format with ruff (quality plan L10)
+9f03c14a082d345fd3489b3c3197fb649aeb03b5
