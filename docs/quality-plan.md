@@ -22,9 +22,13 @@ commit that finishes an item.
 - **Next:** L10 to L11 (Ruff, Python typecheck), then L12 (CI lint job),
   L6b, G8, and Phase 1. L14, L15 and Phase 7 were added on 2026-10-06
   from a review of agent-guardrail suggestions.
-- **Orchestrator:** `pnpm orchestrate run --dry-run` schedules the open
-  items listed in `packages/orchestrator/tasks/quality-plan.json`; see
-  `packages/orchestrator/README.md`. Add new items to that manifest.
+- **Loop:** one session per item: do the item, run the checks below,
+  commit, review the commit in a fresh context (below), fix blocking
+  findings in a follow-up commit, update this section, push.
+- **Orchestrator (parked):** `packages/orchestrator` can run batches of
+  small, independent items (Phase 3 test files, Phase 6 coverage gaps)
+  unattended. Not used for judgment-heavy items; its manifest is not kept
+  in sync with this plan.
 - **Not verified:** the repository-settings half of Phase 0 item 3 (branch
   protection on `main`) and S1 cannot be checked from a session; ask the
   owner.
@@ -39,6 +43,12 @@ pnpm typecheck     # src and test tsconfigs for core and cli; extension via the 
 pnpm test
 cd analysis && ../.venv/bin/pytest -q --cov   # when analysis/ changes
 ```
+
+Review after every commit, in a fresh context so the reviewer is not
+anchored on the author's reasoning: `/code-review high` on the new commit
+(it runs as a subagent), or a new session given only the commit and
+`REVIEW.md`. `REVIEW.md` holds the severity rules and repository checks.
+Fix blocking findings before moving on; record nits that are not fixed.
 
 Working notes from earlier items:
 
@@ -324,10 +334,15 @@ G5. `ci: Check knowledge executable blocks still parse`
 G6. `test(core): Check knowledge INDEX.md matches generator`
     `library/clips/INDEX.md` already has this test; `knowledge/INDEX.md`
     does not.
-G7. Optional: an LLM pull-request reviewer (Copilot code review or
-    `anthropics/claude-code-action`). Advisory only, never a required
-    check. The second needs an API key as a repository secret and is
-    billed per run.
+G7. LLM review (local half done)
+    `REVIEW.md` at the repository root defines severity, what to skip
+    (anything CI enforces), and the repository checks; each item is now
+    reviewed with `/code-review` in a fresh context before the next one
+    starts (see "Status and handoff"). Remaining, optional, owner's call:
+    Claude Code Review on pull requests (enabled per repository in Claude
+    admin settings; it reads `REVIEW.md`), or
+    `anthropics/claude-code-action` (needs an API key as a repository
+    secret, billed per run). Advisory only, never a required check.
 
 G8. `docs: Add CLAUDE.md with agent rules`
     There is no CLAUDE.md; the ground rules above load only when a
