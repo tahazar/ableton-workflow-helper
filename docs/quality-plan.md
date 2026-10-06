@@ -102,14 +102,14 @@ L2. `build: Enable oxlint vitest plugin` (done)
     rewriting the calls. The 5 `require-to-throw-message` findings now pin
     the expected error, and the 2 `no-conditional-expect` findings assert
     unconditionally.
-L3. `build: Enable oxlint suspicious category`
-    `no-array-sort` (51) flags in-place `.sort()`, which mutates arrays
-    that seeded generators may share; prefer `toSorted()`.
-    `preserve-caught-error` (8) flags rethrows that drop the original
-    error as `cause`, which matters for the silent-failure fixes in
-    Phase 2. Keep `no-shadow`. Turn `consistent-function-scoping` off or
-    to warn unless the hits are real. One commit per rule if the diffs
-    are large.
+L3. `build: Enable oxlint suspicious category` (done)
+    Every flagged `.sort()` ran on a fresh copy, so the switch to
+    `toSorted()` (TypeScript target raised to ES2023) changed no behavior.
+    The 8 rethrows now pass the original error as `cause`, and the 15
+    `no-shadow` hits were renamed (top-level commander groups gained the
+    existing `Cmd` suffix). `consistent-function-scoping` (22 hits, all
+    local helpers) and `no-underscore-dangle` (the deliberate
+    `window.__endlessEngine` debug hook) are off.
 L4. `build: Enforce SDK import boundary with oxlint`
     ADR-001 says only `packages/extension` may import
     `@ableton-extensions/sdk`. Encode it as `no-restricted-imports` with

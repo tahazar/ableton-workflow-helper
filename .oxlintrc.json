@@ -1,8 +1,14 @@
 {
   "$schema": "./node_modules/oxlint/configuration_schema.json",
   "plugins": ["typescript", "unicorn", "oxc", "vitest"],
+  "categories": {
+    "correctness": "warn",
+    "suspicious": "warn"
+  },
   "rules": {
-    "vitest/valid-expect": ["warn", { "maxArgs": 2 }]
+    "vitest/valid-expect": ["warn", { "maxArgs": 2 }],
+    "unicorn/consistent-function-scoping": "off",
+    "no-underscore-dangle": "off"
   },
   "ignorePatterns": ["**/dist/**", "**/coverage/**", "vendor/**"]
 }
