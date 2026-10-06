@@ -187,6 +187,7 @@ export function boundedRandomWalkStep(value, min, max, rngState, dtSeconds, time
  * three decision functions, which only fire when a section is entered.
  */
 export function stepFluctuation(spec, state, dtSeconds) {
+  /** @type {Record<string, { gainOffsetDb: number, filterHz: number | null }>} */
   const fluctuation = {};
   let rngState = state.rngState;
   const bound = spec.fluctuation.gainWalkDb;

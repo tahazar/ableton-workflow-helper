@@ -267,13 +267,13 @@ describe("generate808 — degree/register semantics", () => {
 describe("generate808 — cell draw and turnaround", () => {
   it("--variant pins a named cell (by index) for every non-turnaround bar", () => {
     const { meta } = generate808(TRAP_LONG_SPEC, 0, { seed: 1, bars: 4, variant: 1 });
-    const draws = meta.cellDraws.split(",");
+    const draws = meta.cellDraws!.split(",");
     expect(draws).toEqual(["octave-answer", "octave-answer", "octave-answer", "octave-answer"]);
   });
 
   it("turnaround bars draw from turnaroundCells when present, every turnaroundBar-th bar (trap-syncopated)", () => {
     const { meta } = generate808(TRAP_SYNCOPATED_SPEC, 0, { seed: 1, bars: 8 });
-    const draws = meta.cellDraws.split(",");
+    const draws = meta.cellDraws!.split(",");
     expect(draws).toHaveLength(8);
     expect(draws[3]).toBe("turnaround-fall"); // bar 4
     expect(draws[7]).toBe("turnaround-fall"); // bar 8
@@ -282,7 +282,7 @@ describe("generate808 — cell draw and turnaround", () => {
 
   it("--variant is ignored on turnaround bars (they still draw from turnaroundCells)", () => {
     const { meta } = generate808(TRAP_SYNCOPATED_SPEC, 0, { seed: 1, bars: 4, variant: 0 });
-    const draws = meta.cellDraws.split(",");
+    const draws = meta.cellDraws!.split(",");
     expect(draws).toEqual(["and-of-3-push", "and-of-3-push", "and-of-3-push", "turnaround-fall"]);
   });
 
@@ -290,7 +290,7 @@ describe("generate808 — cell draw and turnaround", () => {
     for (const built of [TRAP_LONG_SPEC, TRIPLET_FLOW_SPEC]) {
       const { meta } = generate808(built, 0, { seed: 1, bars: 8 });
       const cellNames = new Set(built.cells.map((c) => c.name));
-      for (const d of meta.cellDraws.split(",")) expect(cellNames.has(d)).toBe(true);
+      for (const d of meta.cellDraws!.split(",")) expect(cellNames.has(d)).toBe(true);
     }
   });
 });

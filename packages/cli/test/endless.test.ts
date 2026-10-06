@@ -239,11 +239,11 @@ describe("player.js fluctuation walk — bounded", () => {
     for (let i = 0; i < 5000; i++) {
       const { fluctuation, state: rngState } = stepFluctuation(spec, state, 0.1);
       state = { ...state, fluctuation, rngState };
-      expect(fluctuation.drums.gainOffsetDb).toBeGreaterThanOrEqual(-2);
-      expect(fluctuation.drums.gainOffsetDb).toBeLessThanOrEqual(2);
-      expect(fluctuation.pads.filterHz).toBeGreaterThanOrEqual(800);
-      expect(fluctuation.pads.filterHz).toBeLessThanOrEqual(8000);
-      expect(fluctuation.bass.filterHz).toBeNull();
+      expect(fluctuation.drums!.gainOffsetDb).toBeGreaterThanOrEqual(-2);
+      expect(fluctuation.drums!.gainOffsetDb).toBeLessThanOrEqual(2);
+      expect(fluctuation.pads!.filterHz).toBeGreaterThanOrEqual(800);
+      expect(fluctuation.pads!.filterHz).toBeLessThanOrEqual(8000);
+      expect(fluctuation.bass!.filterHz).toBeNull();
     }
   });
 });

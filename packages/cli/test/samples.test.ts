@@ -38,6 +38,7 @@ import {
   summarizeIndex,
   walkSampleFiles,
   PITCH_ANALYSIS_VERSION,
+  type ClapEmbedFn,
   type ClapEmbedRecord,
   type PitchInfo,
   type PitchTagFn,

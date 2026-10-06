@@ -374,7 +374,7 @@ family: trap
 kickCells:
   - name: only
     offsets: [0]
-`);
+`) as TrapFamilyStyleSpec;
     expect(spec.name).toBe("minimal-trap");
     expect(spec.family).toBe("trap");
     expect(spec.kickCells).toEqual([{ name: "only", offsets: [0] }]);
@@ -481,7 +481,7 @@ kickCells:
   - name: solo
     offsets: [0, 2]
 hatBases: [straight-8ths]
-`);
+`) as TrapFamilyStyleSpec;
 
   it("generates snare only on the specified beat, with no claps", () => {
     const { notes } = generateDrumPatternDetailed("custom-trap", FULL_KIT, ctx({ bars: 3 }), {
