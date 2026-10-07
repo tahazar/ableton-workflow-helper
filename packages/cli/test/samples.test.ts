@@ -1,7 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, rm, utimes } from "node:fs/promises";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { analysisPythonPath, hasAnalysisPython } from "./analysis-venv.js";
@@ -47,7 +46,7 @@ import {
   type ScanRecord,
   type ScannerFn,
 } from "../src/samples.js";
-import { CLI_DIST, hasBuiltCli, writeWavMono16 } from "./helpers.js";
+import { runCli, writeWavMono16 } from "./helpers.js";
 
 /**
  * Sample-library tests (docs/design/sample-library.md's verification
@@ -876,7 +875,7 @@ describe.skipIf(!hasAnalysisPython)(
       expect(a.dim).toBe(a.v.length);
     }, 20_000);
 
-    it.skipIf(!hasBuiltCli)(
+    it(
       "NEGATIVE CONTROL: `awh samples search --semantic` with ZERO embeddings anywhere in " +
         "the index errors with the embed instruction and NEVER falls back to token search",
       async () => {
@@ -887,17 +886,12 @@ describe.skipIf(!hasAnalysisPython)(
         await runIndex([corpus], { rescan: false, indexPath, scanner });
         // deliberately never run `embed`: the index has entries, zero vectors
 
-        const result = spawnSync(
-          process.execPath,
-          [CLI_DIST, "samples", "search", "--semantic", "four on the floor techno drums"],
+        const result = await runCli(
+          ["samples", "search", "--semantic", "four on the floor techno drums"],
           {
-            encoding: "utf8",
-            env: {
-              ...process.env,
-              AWH_SAMPLES_INDEX: indexPath,
-              AWH_CLAP_STUB: "1",
-              AWH_PYTHON: analysisPythonPath(),
-            },
+            AWH_SAMPLES_INDEX: indexPath,
+            AWH_CLAP_STUB: "1",
+            AWH_PYTHON: analysisPythonPath(),
           },
         );
 
