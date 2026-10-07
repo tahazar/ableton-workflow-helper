@@ -20,8 +20,9 @@ commit that finishes an item.
   2026-10-06; PR #16 (dev-groundwork setup, G8), PR #15 (L11), PR #17
   (L16, G9 and G10 added to this plan), PR #18 (L12) and PR #19 (L16) on
   2026-10-07; PR #20 (L6b). Open: item 5 on branch
-  `overnight/p1-05-venv-path`, the first of an overnight stacked chain
-  whose later PRs build on it. Start new work on a branch from the latest
+  `overnight/p1-05-venv-path` (#22), the first of an overnight stacked
+  chain whose later PRs build on it; item 6 on
+  `overnight/p1-06-cli-test-helpers`, stacked on #22. Start new work on a branch from the latest
   `main` and open a new pull request; one commit per item, pushed after
   each. CI must be green before merging. Check for open PRs on a branch
   before pushing to it; another session may be using it.
@@ -38,8 +39,8 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, Phase 1 item 5, L1 to L12, L6b, L16, G8.
-- **Next:** Phase 1 item 6. L14, L15 and Phase 7 were added on 2026-10-06 from
+- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 and 6, L1 to L12, L6b, L16, G8.
+- **Next:** Phase 1 item 7. L14, L15 and Phase 7 were added on 2026-10-06 from
   a review of agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07
   from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
@@ -491,10 +492,29 @@ G10. `ci: Label pull requests by size`
    `src/analysis-python.ts`'s `??`, so the integ tests fail rather than
    skip; and an exported `AWH_PYTHON` now wins over the repo venv in
    these tests, as the plan asks.
-6. `test: Extract shared CLI test helpers`
+6. `test: Extract shared CLI test helpers` (done)
    `runCli`, `startFakeGateway`, `makeTestLibrary`, and `writeWavMono16`
    are copied across 4 to 7 test files. Move them to
    `packages/cli/test/helpers.ts`. No behavior change.
+   Done: eight files (advise, arp, bass, breaks, layers, op, remote,
+   samples) now import from `helpers.ts`; net -306 lines. The two
+   `startFakeGateway` shapes (an `OpCaller`, or `{ base }` plus a
+   module-level `port` and an `opCall` wrapper) became one returning
+   `{ port, caller }`, stopped through vitest's `onTestFinished` instead
+   of a per-file `afterEach`. `makeTestLibrary(name, { linkAnalysis })`
+   keeps each file's tmp prefix and the `analysis/` symlink where it was
+   used; advise keeps a `runAdviseCli` wrapper that pins `AWH_PYTHON`.
+   advise's `--set` test lost its inline gateway too. Measured: CLI 197
+   tests, 0 skipped with the venv, same as before; per-file `it`/`expect`
+   counts unchanged. Behavior differences, all deliberate: a failed op
+   call's message no longer ends in `": "` when the gateway sends no
+   message, the `--set` test's device insert now fails loudly instead of
+   ignoring the response, and the gateway stops after `afterEach` hooks
+   rather than inside one. Left: `sineSamples` stays in advise and
+   samples (defaults differ, 0.3 vs 0.6, and the plan did not list it);
+   the advise integ tests remove their tmp dir at the end of the test
+   body, so a failing test leaks it (pre-existing; `makeTestLibrary`
+   could register the cleanup with `onTestFinished`).
 7. `refactor(cli): Export program for in-process tests`
    `index.ts` ends in `program.parseAsync()` at module scope. Export a
    `run(argv, io)` that builds the program, takes injectable stdout/stderr,
