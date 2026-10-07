@@ -17,8 +17,9 @@ Read this section first when starting a session. Update it in the same
 commit that finishes an item.
 
 - **Branch and PR:** merged to `main`: PR #13 (Phase 0, L1 to L10) on
-  2026-10-06; PR #16 (dev-groundwork setup, G8) and PR #15 (L11) on
-  2026-10-07. Nothing is open. Start new work on a branch from the latest
+  2026-10-06; PR #16 (dev-groundwork setup, G8), PR #15 (L11), PR #17
+  (L16, G9 and G10 added to this plan), PR #18 (L12) and PR #19 (L16) on
+  2026-10-07. Open: PR #20 (L6b), on branch `quality-l6b`. Start new work on a branch from the latest
   `main` and open a new pull request; one commit per item, pushed after
   each. CI must be green before merging. Check for open PRs on a branch
   before pushing to it; another session may be using it.
