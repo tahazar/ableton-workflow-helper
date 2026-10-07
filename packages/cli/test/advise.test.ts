@@ -11,13 +11,7 @@ import {
   resolveMeasurementRecordPath,
   type MasterDevice,
 } from "../src/advise.js";
-import {
-  hasBuiltCli,
-  makeTestLibrary,
-  runCli,
-  startFakeGateway,
-  writeWavMono16,
-} from "./helpers.js";
+import { makeTestLibrary, runCli, startFakeGateway, writeWavMono16 } from "./helpers.js";
 
 /**
  * Mix advisor (docs/design/mix-advisor.md) CLI-side tests. The rule engine
@@ -135,11 +129,10 @@ describe("readMasterChainDevices", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Full CLI integration (spawns the built dist/index.js, real Python engine):
-// arg mapping, --record/--target/--layers resolution, missing-target
-// placeholder in real output, --set enrichment end to end, --compare.
-// Skipped when the CLI hasn't been built or no analysis Python is found
-// (analysis-venv.ts).
+// Full CLI integration (the CLI in-process via `runCli`, real Python
+// engine): arg mapping, --record/--target/--layers resolution,
+// missing-target placeholder in real output, --set enrichment end to end,
+// --compare. Skipped when no analysis Python is found (analysis-venv.ts).
 // ---------------------------------------------------------------------------
 
 function sineSamples(freq: number, sr: number, durS: number, amp = 0.3): number[] {
@@ -154,225 +147,220 @@ function runAdviseCli(args: string[], env: Record<string, string>) {
   return runCli(args, { AWH_PYTHON: analysisPythonPath(), ...env });
 }
 
-describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
-  "integ: awh mix advise — full CLI integration",
-  () => {
-    it("requires exactly one of <captureFile> or --record", async () => {
-      const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
-      const result = await runAdviseCli(["mix", "advise"], { AWH_LIBRARY: libraryRoot });
-      expect(result.status).not.toBe(0);
-      expect(result.stderr).toMatch(/exactly one of <captureFile> or --record/);
-      await rm(dir, { recursive: true, force: true });
+describe.skipIf(!hasAnalysisPython)("integ: awh mix advise — full CLI integration", () => {
+  it("requires exactly one of <captureFile> or --record", async () => {
+    const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
+    const result = await runAdviseCli(["mix", "advise"], { AWH_LIBRARY: libraryRoot });
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toMatch(/exactly one of <captureFile> or --record/);
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("no --target/--layers -> the missing-input placeholders reach real output (JSON and pretty)", async () => {
+    const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
+    const wav = join(dir, "capture.wav");
+    writeWavMono16(wav, sineSamples(300, 44100, 2.0), 44100);
+
+    const jsonResult = await runAdviseCli(["--json", "mix", "advise", wav], {
+      AWH_LIBRARY: libraryRoot,
     });
+    expect(jsonResult.status).toBe(0);
+    const parsed = JSON.parse(jsonResult.stdout) as {
+      has_target: boolean;
+      has_layers: boolean;
+      items: { id: string; kind: string; stage: string }[];
+    };
+    expect(parsed.has_target).toBe(false);
+    expect(parsed.has_layers).toBe(false);
+    const byId = Object.fromEntries(parsed.items.map((item) => [item.id, item]));
+    expect(byId["missing-target"]).toMatchObject({ kind: "placeholder", stage: "tonal" });
+    expect(byId["missing-layers"]).toMatchObject({ kind: "placeholder", stage: "masking" });
 
-    it("no --target/--layers -> the missing-input placeholders reach real output (JSON and pretty)", async () => {
-      const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
-      const wav = join(dir, "capture.wav");
-      writeWavMono16(wav, sineSamples(300, 44100, 2.0), 44100);
+    const prettyResult = await runAdviseCli(["mix", "advise", wav], { AWH_LIBRARY: libraryRoot });
+    expect(prettyResult.status).toBe(0);
+    expect(prettyResult.stdout).toMatch(/missing-target/);
+    expect(prettyResult.stdout).toMatch(/no measured target/);
+    expect(prettyResult.stdout).toMatch(/missing-layers/);
 
-      const jsonResult = await runAdviseCli(["--json", "mix", "advise", wav], {
-        AWH_LIBRARY: libraryRoot,
-      });
-      expect(jsonResult.status).toBe(0);
-      const parsed = JSON.parse(jsonResult.stdout) as {
-        has_target: boolean;
-        has_layers: boolean;
-        items: { id: string; kind: string; stage: string }[];
-      };
-      expect(parsed.has_target).toBe(false);
-      expect(parsed.has_layers).toBe(false);
-      const byId = Object.fromEntries(parsed.items.map((item) => [item.id, item]));
-      expect(byId["missing-target"]).toMatchObject({ kind: "placeholder", stage: "tonal" });
-      expect(byId["missing-layers"]).toMatchObject({ kind: "placeholder", stage: "masking" });
+    await rm(dir, { recursive: true, force: true });
+  });
 
-      const prettyResult = await runAdviseCli(["mix", "advise", wav], { AWH_LIBRARY: libraryRoot });
-      expect(prettyResult.status).toBe(0);
-      expect(prettyResult.stdout).toMatch(/missing-target/);
-      expect(prettyResult.stdout).toMatch(/no measured target/);
-      expect(prettyResult.stdout).toMatch(/missing-layers/);
+  it("--record/--target/--layers all resolve saved records BY NAME from library/measurements|targets", async () => {
+    const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
+    await mkdir(join(libraryRoot, "measurements"), { recursive: true });
+    await mkdir(join(libraryRoot, "targets"), { recursive: true });
 
-      await rm(dir, { recursive: true, force: true });
-    });
-
-    it("--record/--target/--layers all resolve saved records BY NAME from library/measurements|targets", async () => {
-      const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
-      await mkdir(join(libraryRoot, "measurements"), { recursive: true });
-      await mkdir(join(libraryRoot, "targets"), { recursive: true });
-
-      // A minimal, valid mix-report-shaped measurement record (kind absent,
-      // per report.save_record's convention).
-      const measurements = {
+    // A minimal, valid mix-report-shaped measurement record (kind absent,
+    // per report.save_record's convention).
+    const measurements = {
+      file: "x.wav",
+      samplerate: 44100,
+      channels: 2,
+      duration_s: 2.0,
+      bpm: null,
+      loudness: {
+        lufs_integrated: -14.0,
+        lufs_short_term: { times: [], values: [] },
+        true_peak_db: -6.0,
+        psr: { min_psr_loud: 10.0, windows: [] },
+      },
+      spectrum: { freqs: [1000.0], db: [-30.0], tilt_db_per_oct: -5.0 },
+      stereo: { width_db: null, banded_width_db: {}, correlation: { full: 1.0, low: 1.0 } },
+      dynamics: {
+        asymmetry: [{ ratio_db: 0.0, skewness: 0.0 }],
+        phase_rotation_headroom: { best_db: 0.0, f0: 100.0, poles: 2 },
+        pump: null,
+      },
+      target_comparison: null,
+      target_sources: null,
+    };
+    await writeFile(
+      join(libraryRoot, "measurements", "myreport.json"),
+      JSON.stringify({
+        schema: 1,
+        saved: "2026-08-24",
         file: "x.wav",
-        samplerate: 44100,
-        channels: 2,
-        duration_s: 2.0,
-        bpm: null,
-        loudness: {
-          lufs_integrated: -14.0,
-          lufs_short_term: { times: [], values: [] },
-          true_peak_db: -6.0,
-          psr: { min_psr_loud: 10.0, windows: [] },
-        },
-        spectrum: { freqs: [1000.0], db: [-30.0], tilt_db_per_oct: -5.0 },
-        stereo: { width_db: null, banded_width_db: {}, correlation: { full: 1.0, low: 1.0 } },
-        dynamics: {
-          asymmetry: [{ ratio_db: 0.0, skewness: 0.0 }],
-          phase_rotation_headroom: { best_db: 0.0, f0: 100.0, poles: 2 },
-          pump: null,
-        },
-        target_comparison: null,
-        target_sources: null,
-      };
-      await writeFile(
-        join(libraryRoot, "measurements", "myreport.json"),
-        JSON.stringify({
-          schema: 1,
-          saved: "2026-08-24",
-          file: "x.wav",
-          sha256: "x",
-          measurements,
-          findings: [],
-        }),
-      );
-      await writeFile(
-        join(libraryRoot, "targets", "myclub.json"),
-        JSON.stringify({
-          bands: [{ freq: 1000.0, median_db: 0.0, iqr_db: 0.3 }],
-          tilt: { median: -5.0, iqr: 0.5 },
-          sources: ["ref.wav"],
-        }),
-      );
-      await writeFile(
-        join(libraryRoot, "measurements", "mylayers.json"),
-        JSON.stringify({
-          kind: "layers",
-          schema: 1,
-          saved: "2026-08-24",
-          tracks: [
-            { trackPath: "track:0", trackName: "Kick", file: "a.wav" },
-            { trackPath: "track:1", trackName: "Sub", file: "b.wav" },
-          ],
-          bands: { files: [], baseline_file: "a.wav" },
-        }),
-      );
-
-      const result = await runAdviseCli(
-        [
-          "--json",
-          "mix",
-          "advise",
-          "--record",
-          "myreport",
-          "--target",
-          "myclub",
-          "--layers",
-          "mylayers",
+        sha256: "x",
+        measurements,
+        findings: [],
+      }),
+    );
+    await writeFile(
+      join(libraryRoot, "targets", "myclub.json"),
+      JSON.stringify({
+        bands: [{ freq: 1000.0, median_db: 0.0, iqr_db: 0.3 }],
+        tilt: { median: -5.0, iqr: 0.5 },
+        sources: ["ref.wav"],
+      }),
+    );
+    await writeFile(
+      join(libraryRoot, "measurements", "mylayers.json"),
+      JSON.stringify({
+        kind: "layers",
+        schema: 1,
+        saved: "2026-08-24",
+        tracks: [
+          { trackPath: "track:0", trackName: "Kick", file: "a.wav" },
+          { trackPath: "track:1", trackName: "Sub", file: "b.wav" },
         ],
-        { AWH_LIBRARY: libraryRoot },
-      );
-      expect(result.status).toBe(0);
-      const parsed = JSON.parse(result.stdout) as { has_target: boolean; has_layers: boolean };
-      expect(parsed.has_target).toBe(true);
-      expect(parsed.has_layers).toBe(true);
+        bands: { files: [], baseline_file: "a.wav" },
+      }),
+    );
 
-      await rm(dir, { recursive: true, force: true });
+    const result = await runAdviseCli(
+      [
+        "--json",
+        "mix",
+        "advise",
+        "--record",
+        "myreport",
+        "--target",
+        "myclub",
+        "--layers",
+        "mylayers",
+      ],
+      { AWH_LIBRARY: libraryRoot },
+    );
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout) as { has_target: boolean; has_layers: boolean };
+    expect(parsed.has_target).toBe(true);
+    expect(parsed.has_layers).toBe(true);
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("--set names a real master-chain device in the action text, end to end against a fake gateway", async () => {
+    const { port, caller } = await startFakeGateway();
+    await caller("device.insert", { ownerPath: "main", name: "EQ Eight" });
+
+    const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
+    await mkdir(join(libraryRoot, "targets"), { recursive: true });
+    // A tight target far from a 300 Hz sine's spectrum -> guaranteed at
+    // least one flagged band -> an EQ Eight-mentioning action.
+    await writeFile(
+      join(libraryRoot, "targets", "tight.json"),
+      JSON.stringify({
+        bands: [{ freq: 1000.0, median_db: 0.0, iqr_db: 0.2 }],
+        tilt: { median: -5.0, iqr: 0.2 },
+        sources: ["ref.wav"],
+      }),
+    );
+    const wav = join(dir, "capture.wav");
+    writeWavMono16(wav, sineSamples(300, 44100, 2.0), 44100);
+
+    const result = await runAdviseCli(
+      ["--json", "-p", String(port), "mix", "advise", wav, "--target", "tight", "--set"],
+      { AWH_LIBRARY: libraryRoot },
+    );
+    expect(result.status).toBe(0);
+    const parsed = JSON.parse(result.stdout) as {
+      items: { id: string; kind: string; action: string }[];
+    };
+    const eqLikeItem = parsed.items.find(
+      (item) => item.kind === "finding" && item.action.includes("EQ Eight"),
+    );
+    expect(eqLikeItem).toBeDefined();
+    expect(eqLikeItem!.action).toContain('your existing "EQ Eight" (main/dev:0)');
+
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("--compare reports resolved/new against a saved advice record", async () => {
+    const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
+
+    // Before: clipped (true-peak-ceiling fires).
+    const before = join(dir, "before.wav");
+    const clipped = sineSamples(300, 44100, 2.0, 1.0).map((s) => Math.max(-1, Math.min(1, s * 2)));
+    writeWavMono16(before, clipped, 44100);
+    const saveResult = await runAdviseCli(["mix", "advise", before, "--save", "before"], {
+      AWH_LIBRARY: libraryRoot,
     });
+    expect(saveResult.status).toBe(0);
+    expect(existsSync(join(libraryRoot, "measurements", "before.json"))).toBe(true);
 
-    it("--set names a real master-chain device in the action text, end to end against a fake gateway", async () => {
-      const { port, caller } = await startFakeGateway();
-      await caller("device.insert", { ownerPath: "main", name: "EQ Eight" });
+    // After: safely gained (true-peak-ceiling resolved), decorrelated low
+    // band (a new item: low-band-correlation).
+    const after = join(dir, "after.wav");
+    const t = Array.from({ length: 44100 * 2 }, (_, i) => i / 44100);
+    const left = t.map((s) => 0.3 * Math.sin(2 * Math.PI * 60 * s));
+    const right = t.map((s) => -0.3 * Math.sin(2 * Math.PI * 60 * s));
+    // Interleave into a stereo 16-bit wav by hand (writeWavMono16 is mono
+    // only).
+    const n = left.length;
+    const buffer = Buffer.alloc(44 + n * 2 * 2);
+    buffer.write("RIFF", 0);
+    buffer.writeUInt32LE(36 + n * 4, 4);
+    buffer.write("WAVE", 8);
+    buffer.write("fmt ", 12);
+    buffer.writeUInt32LE(16, 16);
+    buffer.writeUInt16LE(1, 20);
+    buffer.writeUInt16LE(2, 22);
+    buffer.writeUInt32LE(44100, 24);
+    buffer.writeUInt32LE(44100 * 4, 28);
+    buffer.writeUInt16LE(4, 32);
+    buffer.writeUInt16LE(16, 34);
+    buffer.write("data", 36);
+    buffer.writeUInt32LE(n * 4, 40);
+    for (let i = 0; i < n; i++) {
+      buffer.writeInt16LE(Math.round(left[i]! * 32767), 44 + i * 4);
+      buffer.writeInt16LE(Math.round(right[i]! * 32767), 44 + i * 4 + 2);
+    }
+    writeFileSync(after, buffer);
 
-      const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
-      await mkdir(join(libraryRoot, "targets"), { recursive: true });
-      // A tight target far from a 300 Hz sine's spectrum -> guaranteed at
-      // least one flagged band -> an EQ Eight-mentioning action.
-      await writeFile(
-        join(libraryRoot, "targets", "tight.json"),
-        JSON.stringify({
-          bands: [{ freq: 1000.0, median_db: 0.0, iqr_db: 0.2 }],
-          tilt: { median: -5.0, iqr: 0.2 },
-          sources: ["ref.wav"],
-        }),
-      );
-      const wav = join(dir, "capture.wav");
-      writeWavMono16(wav, sineSamples(300, 44100, 2.0), 44100);
-
-      const result = await runAdviseCli(
-        ["--json", "-p", String(port), "mix", "advise", wav, "--target", "tight", "--set"],
-        { AWH_LIBRARY: libraryRoot },
-      );
-      expect(result.status).toBe(0);
-      const parsed = JSON.parse(result.stdout) as {
-        items: { id: string; kind: string; action: string }[];
-      };
-      const eqLikeItem = parsed.items.find(
-        (item) => item.kind === "finding" && item.action.includes("EQ Eight"),
-      );
-      expect(eqLikeItem).toBeDefined();
-      expect(eqLikeItem!.action).toContain('your existing "EQ Eight" (main/dev:0)');
-
-      await rm(dir, { recursive: true, force: true });
-    });
-
-    it("--compare reports resolved/new against a saved advice record", async () => {
-      const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
-
-      // Before: clipped (true-peak-ceiling fires).
-      const before = join(dir, "before.wav");
-      const clipped = sineSamples(300, 44100, 2.0, 1.0).map((s) =>
-        Math.max(-1, Math.min(1, s * 2)),
-      );
-      writeWavMono16(before, clipped, 44100);
-      const saveResult = await runAdviseCli(["mix", "advise", before, "--save", "before"], {
+    const compareResult = await runAdviseCli(
+      ["--json", "mix", "advise", after, "--compare", "before"],
+      {
         AWH_LIBRARY: libraryRoot,
-      });
-      expect(saveResult.status).toBe(0);
-      expect(existsSync(join(libraryRoot, "measurements", "before.json"))).toBe(true);
+      },
+    );
+    expect(compareResult.status).toBe(0);
+    const parsed = JSON.parse(compareResult.stdout) as {
+      compare: { id: string; status: string }[];
+    };
+    const byId = Object.fromEntries(parsed.compare.map((c) => [c.id, c.status]));
+    expect(byId["true-peak-ceiling"]).toBe("resolved");
+    expect(byId["low-band-correlation"]).toBe("new");
 
-      // After: safely gained (true-peak-ceiling resolved), decorrelated low
-      // band (a new item: low-band-correlation).
-      const after = join(dir, "after.wav");
-      const t = Array.from({ length: 44100 * 2 }, (_, i) => i / 44100);
-      const left = t.map((s) => 0.3 * Math.sin(2 * Math.PI * 60 * s));
-      const right = t.map((s) => -0.3 * Math.sin(2 * Math.PI * 60 * s));
-      // Interleave into a stereo 16-bit wav by hand (writeWavMono16 is mono
-      // only).
-      const n = left.length;
-      const buffer = Buffer.alloc(44 + n * 2 * 2);
-      buffer.write("RIFF", 0);
-      buffer.writeUInt32LE(36 + n * 4, 4);
-      buffer.write("WAVE", 8);
-      buffer.write("fmt ", 12);
-      buffer.writeUInt32LE(16, 16);
-      buffer.writeUInt16LE(1, 20);
-      buffer.writeUInt16LE(2, 22);
-      buffer.writeUInt32LE(44100, 24);
-      buffer.writeUInt32LE(44100 * 4, 28);
-      buffer.writeUInt16LE(4, 32);
-      buffer.writeUInt16LE(16, 34);
-      buffer.write("data", 36);
-      buffer.writeUInt32LE(n * 4, 40);
-      for (let i = 0; i < n; i++) {
-        buffer.writeInt16LE(Math.round(left[i]! * 32767), 44 + i * 4);
-        buffer.writeInt16LE(Math.round(right[i]! * 32767), 44 + i * 4 + 2);
-      }
-      writeFileSync(after, buffer);
-
-      const compareResult = await runAdviseCli(
-        ["--json", "mix", "advise", after, "--compare", "before"],
-        {
-          AWH_LIBRARY: libraryRoot,
-        },
-      );
-      expect(compareResult.status).toBe(0);
-      const parsed = JSON.parse(compareResult.stdout) as {
-        compare: { id: string; status: string }[];
-      };
-      const byId = Object.fromEntries(parsed.compare.map((c) => [c.id, c.status]));
-      expect(byId["true-peak-ceiling"]).toBe("resolved");
-      expect(byId["low-band-correlation"]).toBe("new");
-
-      await rm(dir, { recursive: true, force: true });
-    });
-  },
-);
+    await rm(dir, { recursive: true, force: true });
+  });
+});

@@ -8,8 +8,10 @@ export default defineConfig({
       provider: "v8",
       include: ["src/**"],
       reporter: ["text", "json-summary"],
-      // Floors only go up; see docs/quality-plan.md.
-      thresholds: { lines: 24, branches: 83, functions: 96, statements: 24 },
+      // Floors only go up; see docs/quality-plan.md. Re-based when tests
+      // started running index.ts in-process (quality plan item 7): its
+      // functions and branches had not been counted at all before.
+      thresholds: { lines: 51, branches: 78, functions: 80, statements: 51 }, // groundwork-allow: re-based on the true index.ts measurement
     },
   },
 });

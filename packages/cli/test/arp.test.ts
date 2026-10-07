@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { ClipDetail } from "@awh/core";
-import { hasBuiltCli, makeTestLibrary, runCli, startFakeGateway } from "./helpers.js";
+import { makeTestLibrary, runCli, startFakeGateway } from "./helpers.js";
 
 /**
  * Arp engine CLI-level tests (docs/design/arp-engine.md's verification
@@ -13,11 +13,11 @@ import { hasBuiltCli, makeTestLibrary, runCli, startFakeGateway } from "./helper
  * knowledge-entry style fallback (tier printed) via an isolated AWH_LIBRARY
  * (sibling knowledge/ dir, the same override `findLibraryRoot` honors; see
  * packages/core/src/library/store.ts), the melody-only negative control,
- * and the unknown-style error. Spawns the CLI against an in-process fake
- * gateway (helpers.ts's `runCli` says why the spawn is async).
+ * and the unknown-style error. Runs the CLI in-process (`runCli`) against
+ * an in-process fake gateway.
  */
 
-describe.skipIf(!hasBuiltCli)("awh arp — full CLI integration", () => {
+describe("awh arp — full CLI integration", () => {
   it("--prog end-to-end against a fake gateway: writes a clip, shows in status", async () => {
     const { port, caller } = await startFakeGateway();
     const { dir, libraryRoot } = await makeTestLibrary("arp");

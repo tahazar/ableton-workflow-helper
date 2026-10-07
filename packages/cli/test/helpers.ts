@@ -7,15 +7,16 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { createGatewayServer, FakeLiveBridge } from "@awh/core";
 import type { OpCaller } from "../src/op.js";
+import { run } from "../src/index.js";
 
 /**
- * Helpers shared by the CLI test files: spawning the built CLI, an
- * in-process fake gateway, an isolated test library, and a WAV writer for
- * synthetic audio fixtures.
+ * Helpers shared by the CLI test files: running the CLI in-process or as
+ * the built binary, an in-process fake gateway, an isolated test library,
+ * and a WAV writer for synthetic audio fixtures.
  */
 
-export const CLI_DIST = fileURLToPath(new URL("../dist/index.js", import.meta.url));
-export const hasBuiltCli = existsSync(CLI_DIST);
+export const CLI_BIN = fileURLToPath(new URL("../dist/bin.js", import.meta.url));
+export const hasBuiltCli = existsSync(CLI_BIN);
 
 export interface CliResult {
   status: number | null;
@@ -24,19 +25,44 @@ export interface CliResult {
 }
 
 /**
- * Runs the built CLI with `env` layered over this process's environment.
- *
- * Async on purpose (not spawnSync): many callers run an in-process fake
- * gateway (`startFakeGateway`) in this same event loop for the child to
- * talk to. `spawnSync` blocks the whole Node event loop while the child
- * runs, so the in-process HTTP server could never answer the child's
- * requests. That deadlock hangs for undici's ~5-minute default fetch
- * timeout and then fails. Spawning async keeps this process's event loop
- * free to service the gateway while the child CLI process runs.
+ * Runs `awh <args>` in this process through `run()`, so the command code
+ * counts toward coverage, with `env` set on `process.env` for the run and
+ * restored afterwards. Tests in a file run one at a time, so no other
+ * test sees the change. `status` is the exit code the binary would exit
+ * with.
  */
-export function runCli(args: string[], env: Record<string, string> = {}): Promise<CliResult> {
+export async function runCli(args: string[], env: Record<string, string> = {}): Promise<CliResult> {
+  const saved = Object.entries(env).map(([key]) => [key, process.env[key]] as const);
+  Object.assign(process.env, env);
+  let stdout = "";
+  let stderr = "";
+  try {
+    const status = await run(args, {
+      stdout: { write: (chunk: string) => (stdout += chunk) },
+      stderr: { write: (chunk: string) => (stderr += chunk) },
+    });
+    return { status, stdout, stderr };
+  } finally {
+    for (const [key, value] of saved) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}
+
+/**
+ * Spawns the built binary (`dist/bin.js`) with `env` layered over this
+ * process's environment. Only the smoke test needs this; everything else
+ * uses `runCli`.
+ *
+ * Async on purpose (not spawnSync): a caller running an in-process fake
+ * gateway (`startFakeGateway`) needs this event loop free to answer the
+ * child's requests, and `spawnSync` would block it until undici's
+ * ~5-minute fetch timeout.
+ */
+export function runBuiltCli(args: string[], env: Record<string, string> = {}): Promise<CliResult> {
   return new Promise((resolvePromise) => {
-    const child = spawn(process.execPath, [CLI_DIST, ...args], {
+    const child = spawn(process.execPath, [CLI_BIN, ...args], {
       env: { ...process.env, ...env },
     });
     let stdout = "";
