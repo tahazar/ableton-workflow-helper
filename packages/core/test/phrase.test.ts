@@ -365,7 +365,7 @@ describe("response recipes — determinism + property tests", () => {
 
   it("recipe registry rejects a name inherited from Object.prototype", () => {
     expect(() =>
-      // @ts-expect-error deliberately invalid recipe name
+      // @ts-expect-error deliberately invalid recipe name; groundwork-allow: an untyped caller can pass it
       applyResponseRecipe("constructor", callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1)),
     ).toThrowError(/unknown response recipe/);
   });
