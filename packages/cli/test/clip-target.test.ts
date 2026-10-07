@@ -321,9 +321,7 @@ describe("drop phrase: reading the target clip", () => {
     expect(result.status, result.stderr).toBe(0);
     expect((await clipAt(gateway)).notes!.length).toBeGreaterThan(0);
   });
-});
 
-describe("drop phrase: other targets", () => {
   it("an occupied slot is filled in place", async () => {
     const gateway = await startFakeGateway();
     await seedClip(gateway);

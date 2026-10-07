@@ -2284,9 +2284,11 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
   }
 
   /** Reads the clip at a slot or arrangement path, or `undefined` when the
-   *  gateway answers `not_found` (an empty slot, or no clip at that index).
-   *  Any other failure is rethrown: a caller that took it for an empty slot
-   *  would create a clip over the one it could not read. */
+   *  gateway answers `not_found`. That covers an empty slot or no clip at
+   *  that index, but also a track or slot that does not exist, so a caller
+   *  that goes on to create a clip gets its own error for those. Any other
+   *  failure is rethrown: a caller that took it for an empty slot would
+   *  create a clip over the one it could not read. */
   async function readClipIfPresent(
     opts: GlobalOpts,
     path: string,
