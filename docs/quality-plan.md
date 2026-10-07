@@ -16,21 +16,27 @@ phases.
 Read this section first when starting a session. Update it in the same
 commit that finishes an item.
 
-- **Branch and PR:** PR #13 (Phase 0, L1 to L10) merged to `main` on
-  2026-10-06 as merge commit `e9d8435`. L11 is on PR #15. Once a PR
-  merges, start new work on a branch from the latest `main` and open a
-  new pull request; one commit per item, pushed after each. CI must be
-  green before merging.
+- **Branch and PR:** merged to `main`: PR #13 (Phase 0, L1 to L10) on
+  2026-10-06; PR #16 (dev-groundwork setup, G8) and PR #15 (L11) on
+  2026-10-07. Nothing is open. Start new work on a branch from the latest
+  `main` and open a new pull request; one commit per item, pushed after
+  each. CI must be green before merging. Check for open PRs on a branch
+  before pushing to it; another session may be using it.
 - **Commits:** authored as the owner, with no AI attribution or
   co-author trailers. Set `git config user.name`/`user.email` in a fresh
   clone before the first commit.
 - **Pipeline:** new features go through the dev-groundwork plugin
   (`CLAUDE.md`, `.groundwork/`). Quality-plan items keep the loop below;
-  they are small enough that the plan item is the spec.
+  they are small enough that the plan item is the spec. Install it once
+  per machine with `claude plugin install dev-groundwork@dev-groundwork
+  --scope project`. Its hooks run the checks before each commit and lock
+  test files during implementation. Cloud sessions do not load it, so
+  there the CI jobs, including "Groundwork checks", are the only gate.
+  The workaround check flags new suppressions; an intended one carries
+  `groundwork-allow: <reason>` on the same line.
 - **Done:** Phase 0 items 1 to 4, L1 to L11, G8.
 - **Next:** L12 (CI lint job), then L6b and Phase 1. L14, L15 and Phase 7
-  were added on 2026-10-06
-  from a review of agent-guardrail suggestions.
+  were added on 2026-10-06 from a review of agent-guardrail suggestions.
 - **Loop:** one session per item: do the item, run the checks below,
   commit, review the commit in a fresh context (below), fix blocking
   findings in a follow-up commit, update this section, push.
