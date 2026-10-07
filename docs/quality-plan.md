@@ -36,7 +36,8 @@ commit that finishes an item.
   `groundwork-allow: <reason>` on the same line.
 - **Done:** Phase 0 items 1 to 4, L1 to L11, G8.
 - **Next:** L12 (CI lint job), then L6b and Phase 1. L14, L15 and Phase 7
-  were added on 2026-10-06 from a review of agent-guardrail suggestions.
+  were added on 2026-10-06 from a review of agent-guardrail suggestions;
+  L16, G9 and G10 on 2026-10-07 from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
   commit, review the commit in a fresh context (below), fix blocking
   findings in a follow-up commit, update this section, push.
@@ -335,6 +336,13 @@ L15. `ci: Cap code duplication with jscpd`
      jscpd 4 over `packages/*/src` (assets excluded, min 70 tokens) found
      16 clones, 1.36% of lines. Set the threshold at today's level and
      lower it as the shared-helper cleanup items land.
+L16. `ci: Lint workflow files with actionlint`
+     Three workflows (`ci.yml`, `groundwork.yml`, and L12's lint job when
+     it lands) gate every merge, and a mistake in one can skip its checks
+     without failing. Run `rhysd/actionlint`, pinned to a commit SHA, in
+     the lint job on changes under `.github/workflows/`. Fix its findings
+     in the same commit. Found on 2026-10-07 while reviewing
+     sdras/awesome-actions; actionlint is not on that list.
 
 ## Track S: security and supply chain
 
@@ -396,6 +404,19 @@ G8. `docs: Add CLAUDE.md with agent rules` (done)
     and the pre-commit checks, and points at the dev-groundwork pipeline.
     The ground rules above stay as the plan's record; when they change,
     change `CLAUDE.md` too.
+G9. `ci: Lint commit messages with commitlint`
+    `CLAUDE.md` requires conventional-commit subjects, and nothing checks
+    it. Run `wagoid/commitlint-github-action`, pinned to a commit SHA, on
+    pull requests with `@commitlint/config-conventional`. It skips merge
+    commits by default, which this repository's merge-commit policy needs.
+    The latest 40 subjects on `main` (checked 2026-10-07) conform, so it
+    starts green; older milestone-style subjects (`M16: ...`) predate the
+    rule and are outside any PR range.
+G10. `ci: Label pull requests by size`
+    Small, frequent pull requests are the goal, so make size visible.
+    `pascalgn/size-label-action`, pinned to a commit SHA, labels each pull
+    request from XS to XL by changed lines, ignoring `pnpm-lock.yaml` and
+    generated `INDEX.md` files. Advisory only: never a required check.
 
 ## Phase 1: make existing tests honest
 
