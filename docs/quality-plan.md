@@ -24,7 +24,8 @@ commit that finishes an item.
   chain whose later PRs build on it; item 6 on
   `overnight/p1-06-cli-test-helpers`, stacked on #22 (#23); item 7 on
   `overnight/p1-07-cli-run-export`, stacked on #23 (#25); item 8 on
-  `overnight/p1-08-analysis-main-inprocess`, stacked on #25. Start new work on a branch from the latest
+  `overnight/p1-08-analysis-main-inprocess`, stacked on #25 (#26); item 9
+  on `overnight/p1-09-baseline-floors`, stacked on #26. Start new work on a branch from the latest
   `main` and open a new pull request; one commit per item, pushed after
   each. CI must be green before merging. Check for open PRs on a branch
   before pushing to it; another session may be using it.
@@ -41,8 +42,8 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 to 8, L1 to L12, L6b, L16, G8.
-- **Next:** Phase 1 item 9. L14, L15 and Phase 7 were added on 2026-10-06 from
+- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 to 9, L1 to L12, L6b, L16, G8.
+- **Next:** Phase 2 item 10. L14, L15 and Phase 7 were added on 2026-10-06 from
   a review of agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07
   from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
@@ -118,6 +119,23 @@ Of the 79 `awh` commands, 69 have no test that invokes the command itself.
 The logic behind some of them (endless, op, duck, layers, remote, samples)
 is tested by importing modules directly, but argument parsing, output
 formatting, and error paths in `index.ts` are not.
+
+### Re-measured after Phase 1 item 8 (2026-10-07)
+
+Measured on commit `b2ab306` the way CI does: `pnpm build`, then
+`AWH_CLAP_STUB=1 AWH_REQUIRE_INTEG=1 pnpm coverage` with the analysis venv
+on Python 3.12, and `AWH_CLAP_STUB=1 pytest -q --cov -m "not integ"` in
+`analysis/` (coverage 7.16.2). CLI tests now run `index.ts` in-process
+(item 7) and the analysis CLI tests call `__main__.main` (item 8), so both
+entry points are counted. Floors are the integer floor of each value.
+
+| Package | Lines | Branches | Functions | Statements | Floors (L/B/F/S) | Notes |
+|---|---|---|---|---|---|---|
+| `packages/core` | 90.84% | 83.78% | 96.19% | 90.84% | 90/83/96/90 | 451 tests |
+| `packages/cli` | 51.58% | 78.35% | 80.26% | 51.58% | 51/78/80/51 | 205 tests, none skipped |
+| `packages/orchestrator` | 82.53% | 87.98% | 92.59% | 82.53% | 82/87/92/82 | 46 tests |
+| `analysis` | 80.48% | not measured | n/a | n/a | 80 (total) | 183 pass, 7 `integ` deselected |
+| `packages/extension` | none | none | none | none | none | no test suite |
 
 ## Ground rules for every commit
 
@@ -562,10 +580,19 @@ G10. `ci: Label pull requests by size`
    CLI; not in this item's scope. Review nit not taken: `_run_main` does
    not catch argparse's `SystemExit`, so a future bad-argument test needs
    `pytest.raises(SystemExit)`.
-9. `test: Record true baseline and raise floors`
+9. `test: Record true baseline and raise floors` (done)
    Re-measure after items 7 and 8 and update the baseline table above.
    Land L2 first so tests that assert nothing do not inflate the
    numbers.
+   Done on branch `overnight/p1-09-baseline-floors`. L2 had landed.
+   Measured (see "Re-measured after Phase 1 item 8"): core 90.84/83.78/
+   96.19/90.84 (lines/branches/functions/statements), cli 51.58/78.35/
+   80.26/51.58, orchestrator 82.53/87.98/92.59/82.53, analysis 80.48%
+   total. The Node floors already sat at the integer floor of these
+   values (cli re-based in item 7), so only the analysis floor moved,
+   from 74 to 80. Review nit not taken: the `groundwork-allow` marker on
+   the raised `fail_under` line looks redundant for a raise, but the
+   workaround check flags any threshold edit, so it stays.
 
 ## Phase 2: fix silent failures, with tests
 

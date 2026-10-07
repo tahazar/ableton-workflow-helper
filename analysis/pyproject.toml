@@ -106,4 +106,4 @@ source = ["awh_analysis"]
 [tool.coverage.report]
 show_missing = true
 # Floor only goes up; see docs/quality-plan.md.
-fail_under = 74
+fail_under = 80  # groundwork-allow: raised to the measured 80.48% (quality plan item 9)
