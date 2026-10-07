@@ -36,9 +36,9 @@ commit that finishes an item.
   `groundwork-allow: <reason>` on the same line.
 - **Done:** Phase 0 items 1 to 4, L1 to L12, G8.
 - **Next:** L16 (actionlint, now that the lint job exists), then L6b and
-  Phase 1. L14, L15 and Phase 7
-  were added on 2026-10-06 from a review of agent-guardrail suggestions;
-  L16, G9 and G10 on 2026-10-07 from a review of sdras/awesome-actions.
+  Phase 1. L14, L15 and Phase 7 were added on 2026-10-06 from a review of
+  agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07 from a review
+  of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
   commit, review the commit in a fresh context (below), fix blocking
   findings in a follow-up commit, update this section, push.

@@ -13,6 +13,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # A required status check matches this job by its name, so renaming it
+  # silently drops the requirement until branch protection is updated.
   lint:
     name: Lint (oxlint, oxfmt, ruff, pyright)
     runs-on: ubuntu-24.04
@@ -34,7 +36,8 @@ jobs:
         run: pnpm build
       # The Python setup runs even when the Node build failed, so the Python
       # checks below still report.
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+      - id: python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
         with:
           python-version: "3.12"
@@ -44,7 +47,7 @@ jobs:
       # packages, so the venv needs the full install, not just the tools.
       - name: Build analysis venv
         id: venv
-        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.python.outcome == 'success' }}
         run: |
           python -m venv .venv
           .venv/bin/pip install -e 'analysis[dev]'
