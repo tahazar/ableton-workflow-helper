@@ -69,6 +69,24 @@ jobs:
         if: ${{ !cancelled() && steps.venv.outcome == 'success' }}
         working-directory: analysis
         run: ../.venv/bin/pyright
+      # rhysd/actionlint ships as a binary, not an action, so the release is
+      # pinned by version and its checksum from the release's checksums file.
+      # actionlint skips its shellcheck rule when shellcheck is missing, so
+      # the step fails first if the runner image stops providing it.
+      - name: Lint workflows with actionlint
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          command -v shellcheck
+          tarball="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -fsSLO "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${tarball}"
+          echo "${ACTIONLINT_SHA256}  ${tarball}" | sha256sum -c -
+          tar -xzf "$tarball" actionlint
+          cd "$GITHUB_WORKSPACE"
+          "$RUNNER_TEMP/actionlint" -color
 
   node:
     name: Node (build, typecheck, coverage)

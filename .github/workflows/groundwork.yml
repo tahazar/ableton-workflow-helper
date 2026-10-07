@@ -21,4 +21,6 @@ jobs:
       - name: Check citations in changed research files
         run: |
           files=$(git diff --name-only --diff-filter=AM "origin/${{ github.base_ref }}"... -- '**/research.md')
-          [ -z "$files" ] || python3 .groundwork/bin/check_citations.py --require $files
+          [ -n "$files" ] || exit 0
+          mapfile -t paths <<<"$files"
+          python3 .groundwork/bin/check_citations.py --require "${paths[@]}"
