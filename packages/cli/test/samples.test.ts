@@ -1,10 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, mkdir, rm, utimes } from "node:fs/promises";
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { spawnSync } from "node:child_process";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { analysisPythonPath, hasAnalysisPython } from "./analysis-venv.js";
 import { analysisPython } from "../src/analysis-python.js";
 import {
@@ -48,6 +46,7 @@ import {
   type ScanRecord,
   type ScannerFn,
 } from "../src/samples.js";
+import { runCli, writeWavMono16 } from "./helpers.js";
 
 /**
  * Sample-library tests (docs/design/sample-library.md's verification
@@ -469,29 +468,6 @@ describe("summarizeIndex", () => {
 // rest of the suite still runs.
 // ---------------------------------------------------------------------------
 
-function writeWavMono16(path: string, samples: number[], sr: number): void {
-  const n = samples.length;
-  const buffer = Buffer.alloc(44 + n * 2);
-  buffer.write("RIFF", 0);
-  buffer.writeUInt32LE(36 + n * 2, 4);
-  buffer.write("WAVE", 8);
-  buffer.write("fmt ", 12);
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20);
-  buffer.writeUInt16LE(1, 22);
-  buffer.writeUInt32LE(sr, 24);
-  buffer.writeUInt32LE(sr * 2, 28);
-  buffer.writeUInt16LE(2, 32);
-  buffer.writeUInt16LE(16, 34);
-  buffer.write("data", 36);
-  buffer.writeUInt32LE(n * 2, 40);
-  for (let i = 0; i < n; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]!));
-    buffer.writeInt16LE(Math.round(s * 32767), 44 + i * 2);
-  }
-  writeFileSync(path, buffer);
-}
-
 function sineSamples(freq: number, sr: number, durS: number, amp = 0.6): number[] {
   const n = Math.round(durS * sr);
   const out = Array.from({ length: n }, () => 0);
@@ -899,10 +875,7 @@ describe.skipIf(!hasAnalysisPython)(
       expect(a.dim).toBe(a.v.length);
     }, 20_000);
 
-    const CLI_DIST = fileURLToPath(new URL("../dist/index.js", import.meta.url));
-    const hasBuiltCli = existsSync(CLI_DIST);
-
-    it.skipIf(!hasBuiltCli)(
+    it(
       "NEGATIVE CONTROL: `awh samples search --semantic` with ZERO embeddings anywhere in " +
         "the index errors with the embed instruction and NEVER falls back to token search",
       async () => {
@@ -913,17 +886,12 @@ describe.skipIf(!hasAnalysisPython)(
         await runIndex([corpus], { rescan: false, indexPath, scanner });
         // deliberately never run `embed`: the index has entries, zero vectors
 
-        const result = spawnSync(
-          process.execPath,
-          [CLI_DIST, "samples", "search", "--semantic", "four on the floor techno drums"],
+        const result = await runCli(
+          ["samples", "search", "--semantic", "four on the floor techno drums"],
           {
-            encoding: "utf8",
-            env: {
-              ...process.env,
-              AWH_SAMPLES_INDEX: indexPath,
-              AWH_CLAP_STUB: "1",
-              AWH_PYTHON: analysisPythonPath(),
-            },
+            AWH_SAMPLES_INDEX: indexPath,
+            AWH_CLAP_STUB: "1",
+            AWH_PYTHON: analysisPythonPath(),
           },
         );
 

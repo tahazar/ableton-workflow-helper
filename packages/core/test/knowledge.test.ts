@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  KnowledgeEntryNotFoundError,
   KnowledgeStore,
   extractFencedBlock,
   parseKnowledgeEntry,
@@ -101,6 +102,24 @@ describe("KnowledgeStore", () => {
       serializeKnowledgeEntry({ ...entry, slug: "rogue", topic: "rhythm/garage" }),
     );
     await expect(store.listEntries()).rejects.toThrowError(/does not match directory/);
+  });
+
+  it("loadEntry tells a missing slug apart from an ambiguous one", async () => {
+    await store.saveEntry(entry);
+    const missing = await store.loadEntry("no-such-slug").catch((err: unknown) => err);
+    expect(missing).toBeInstanceOf(KnowledgeEntryNotFoundError);
+    expect(missing).toMatchObject({ slug: "no-such-slug" });
+    expect((missing as Error).message).toBe('No knowledge entry with slug "no-such-slug"');
+
+    // a second file with the same slug, hand-planted past saveEntry's check
+    await mkdir(join(root, "workflow"), { recursive: true });
+    await writeFile(
+      join(root, "workflow", "garage-hat-shuffle.md"),
+      serializeKnowledgeEntry({ ...entry, topic: "workflow" }),
+    );
+    const ambiguous = await store.loadEntry("garage-hat-shuffle").catch((err: unknown) => err);
+    expect(ambiguous).not.toBeInstanceOf(KnowledgeEntryNotFoundError);
+    expect((ambiguous as Error).message).toMatch(/is ambiguous/);
   });
 
   it("indexes entries by topic plus measurement records", async () => {

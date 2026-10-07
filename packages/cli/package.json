@@ -4,7 +4,7 @@
   "private": true,
   "license": "MIT",
   "bin": {
-    "awh": "./dist/index.js"
+    "awh": "./dist/bin.js"
   },
   "type": "module",
   "scripts": {

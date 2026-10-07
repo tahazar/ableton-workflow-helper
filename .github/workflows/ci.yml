@@ -120,8 +120,8 @@ jobs:
       # not bundled: the Ableton SDK is not redistributable.
       - run: pnpm typecheck
       # The venv is built above, so a missing analysis Python fails the run
-      # instead of skipping the "integ:" CLI tests. (Their other skip
-      # condition, an unbuilt CLI, is covered by `pnpm build` above.)
+      # instead of skipping the "integ:" CLI tests. (The binary smoke test
+      # skips on an unbuilt CLI, which `pnpm build` above rules out.)
       - run: pnpm coverage
         env:
           AWH_REQUIRE_INTEG: "1"

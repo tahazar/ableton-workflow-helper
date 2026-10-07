@@ -20,8 +20,16 @@ commit that finishes an item.
   2026-10-06; PR #16 (dev-groundwork setup, G8), PR #15 (L11), PR #17
   (L16, G9 and G10 added to this plan), PR #18 (L12) and PR #19 (L16) on
   2026-10-07; PR #20 (L6b). Open: item 5 on branch
-  `overnight/p1-05-venv-path`, the first of an overnight stacked chain
-  whose later PRs build on it. Start new work on a branch from the latest
+  `overnight/p1-05-venv-path` (#22), the first of an overnight stacked
+  chain whose later PRs build on it; item 6 on
+  `overnight/p1-06-cli-test-helpers`, stacked on #22 (#23); item 7 on
+  `overnight/p1-07-cli-run-export`, stacked on #23 (#25); item 8 on
+  `overnight/p1-08-analysis-main-inprocess`, stacked on #25 (#26); item 9
+  on `overnight/p1-09-baseline-floors`, stacked on #26 (#27); item 10 on
+  `overnight/p2-10-clip-get-errors`, stacked on #27 (#28); item 11 on
+  `overnight/p2-11-style-lookup-errors`, stacked on #28 (#29); item 12 on
+  `overnight/p2-12-corrupt-state-warnings`, stacked on #29, the last PR of
+  the chain. Start new work on a branch from the latest
   `main` and open a new pull request; one commit per item, pushed after
   each. CI must be green before merging. Check for open PRs on a branch
   before pushing to it; another session may be using it.
@@ -38,8 +46,8 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, Phase 1 item 5, L1 to L12, L6b, L16, G8.
-- **Next:** Phase 1 item 6. L14, L15 and Phase 7 were added on 2026-10-06 from
+- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 to 9, Phase 2 items 10 to 12, L1 to L12, L6b, L16, G8.
+- **Next:** Phase 2 item 13. L14, L15 and Phase 7 were added on 2026-10-06 from
   a review of agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07
   from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
@@ -115,6 +123,23 @@ Of the 79 `awh` commands, 69 have no test that invokes the command itself.
 The logic behind some of them (endless, op, duck, layers, remote, samples)
 is tested by importing modules directly, but argument parsing, output
 formatting, and error paths in `index.ts` are not.
+
+### Re-measured after Phase 1 item 8 (2026-10-07)
+
+Measured on commit `b2ab306` the way CI does: `pnpm build`, then
+`AWH_CLAP_STUB=1 AWH_REQUIRE_INTEG=1 pnpm coverage` with the analysis venv
+on Python 3.12, and `AWH_CLAP_STUB=1 pytest -q --cov -m "not integ"` in
+`analysis/` (coverage 7.16.2). CLI tests now run `index.ts` in-process
+(item 7) and the analysis CLI tests call `__main__.main` (item 8), so both
+entry points are counted. Floors are the integer floor of each value.
+
+| Package | Lines | Branches | Functions | Statements | Floors (L/B/F/S) | Notes |
+|---|---|---|---|---|---|---|
+| `packages/core` | 90.84% | 83.78% | 96.19% | 90.84% | 90/83/96/90 | 451 tests |
+| `packages/cli` | 51.58% | 78.35% | 80.26% | 51.58% | 51/78/80/51 | 205 tests, none skipped |
+| `packages/orchestrator` | 82.53% | 87.98% | 92.59% | 82.53% | 82/87/92/82 | 46 tests |
+| `analysis` | 80.48% | not measured | n/a | n/a | 80 (total) | 183 pass, 7 `integ` deselected |
+| `packages/extension` | none | none | none | none | none | no test suite |
 
 ## Ground rules for every commit
 
@@ -491,42 +516,171 @@ G10. `ci: Label pull requests by size`
    `src/analysis-python.ts`'s `??`, so the integ tests fail rather than
    skip; and an exported `AWH_PYTHON` now wins over the repo venv in
    these tests, as the plan asks.
-6. `test: Extract shared CLI test helpers`
+6. `test: Extract shared CLI test helpers` (done)
    `runCli`, `startFakeGateway`, `makeTestLibrary`, and `writeWavMono16`
    are copied across 4 to 7 test files. Move them to
    `packages/cli/test/helpers.ts`. No behavior change.
-7. `refactor(cli): Export program for in-process tests`
+   Done: eight files (advise, arp, bass, breaks, layers, op, remote,
+   samples) now import from `helpers.ts`; net -306 lines. The two
+   `startFakeGateway` shapes (an `OpCaller`, or `{ base }` plus a
+   module-level `port` and an `opCall` wrapper) became one returning
+   `{ port, caller }`, stopped through vitest's `onTestFinished` instead
+   of a per-file `afterEach`. `makeTestLibrary(name, { linkAnalysis })`
+   keeps each file's tmp prefix and the `analysis/` symlink where it was
+   used; advise keeps a `runAdviseCli` wrapper that pins `AWH_PYTHON`.
+   advise's `--set` test lost its inline gateway too. Measured: CLI 197
+   tests, 0 skipped with the venv, same as before; per-file `it`/`expect`
+   counts unchanged. Behavior differences, all deliberate: a failed op
+   call's message no longer ends in `": "` when the gateway sends no
+   message, the `--set` test's device insert now fails loudly instead of
+   ignoring the response, and the gateway stops after `afterEach` hooks
+   rather than inside one. Left: `sineSamples` stays in advise and
+   samples (defaults differ, 0.3 vs 0.6, and the plan did not list it);
+   the advise integ tests remove their tmp dir at the end of the test
+   body, so a failing test leaks it (pre-existing; `makeTestLibrary`
+   could register the cleanup with `onTestFinished`).
+7. `refactor(cli): Export program for in-process tests` (done)
    `index.ts` ends in `program.parseAsync()` at module scope. Export a
    `run(argv, io)` that builds the program, takes injectable stdout/stderr,
    and returns an exit code; keep a thin bin entry that calls it. Point the
    shared `runCli` helper at `run()` so command tests count toward
    coverage. Keep one spawn-based smoke test for the real binary.
-8. `test(analysis): Call main() in-process in CLI tests`
+   Done on branch `overnight/p1-07-cli-run-export`. `run()` builds a fresh program per call, because commander keeps
+   parsed option values on the command objects. Command registration is
+   therefore one `buildProgram(io)` function, with a `max-lines-per-function`
+   disable until Phase 4. `exitOverride` and `configureOutput` route
+   commander's own output and exits through `io`. `runAnalysis` pipes
+   Python's stdio instead of inheriting it. The bin is `src/bin.ts`
+   (`dist/bin.js`). The command tests no longer skip on an unbuilt CLI.
+   Measured: CLI 205 tests; lines 24.2% -> 51.6%, `index.ts` 0% -> 37%.
+   Functions (97.0% -> 80.3%) and branches (83.5% -> 78.3%) fell below
+   their floors. Before this change, v8 counted none of `index.ts`'s
+   functions or branches, and no file's own numbers dropped, so the old
+   floors measured a smaller set of code. The owner chose to re-base the
+   floors to 51/78/80/51 with a `groundwork-allow` reason, as a one-time
+   exception to "floors only go up"; item 9 raises them. The vendored
+   workaround check (dev-groundwork 0.3.1) lets that reason cover the
+   removed threshold line. Review nits not taken: the
+   reindent shares a commit with the I/O change, so blame on `index.ts`
+   points at it; `dist/index.js` still exists after a rebuild and runs
+   silently, so re-link anything that called it; `CliIo` has no stdin
+   (`clip write` without a file still reads `process.stdin`); Python's
+   stdout is now block-buffered, so on a terminal its stderr can print
+   before its stdout.
+8. `test(analysis): Call main() in-process in CLI tests` (done)
    `awh_analysis.__main__.main(argv)` already exists. Switch
    `tests/test_cli.py` from `subprocess.run` to calling it with captured
    stdout, keeping one subprocess smoke test.
-9. `test: Record true baseline and raise floors`
+   Done on branch `overnight/p1-08-analysis-main-inprocess`. The report,
+   ab, target and bad-input tests call `main(argv)` and read output through
+   `capsys`. The one spawned test runs the missing-file case and asserts
+   exit code 1, because only a spawn shows that `main()`'s return value
+   becomes the exit code the TypeScript CLI sees; a successful spawn would
+   pass with `sys.exit` dropped from the module guard. Measured with
+   `AWH_CLAP_STUB=1 pytest -m "not integ" --cov`: 182 -> 183 passed;
+   total 74.5% -> 80.5%, `__main__.py` 0% -> 35%. The floor stays at 74
+   for item 9. Other test files (`test_a2m.py`, `test_bands.py`,
+   `test_breakchop.py`, `test_clapembed.py` and more) still spawn the
+   CLI; not in this item's scope. Review nit not taken: `_run_main` does
+   not catch argparse's `SystemExit`, so a future bad-argument test needs
+   `pytest.raises(SystemExit)`.
+9. `test: Record true baseline and raise floors` (done)
    Re-measure after items 7 and 8 and update the baseline table above.
    Land L2 first so tests that assert nothing do not inflate the
    numbers.
+   Done on branch `overnight/p1-09-baseline-floors`. L2 had landed.
+   Measured (see "Re-measured after Phase 1 item 8"): core 90.84/83.78/
+   96.19/90.84 (lines/branches/functions/statements), cli 51.58/78.35/
+   80.26/51.58, orchestrator 82.53/87.98/92.59/82.53, analysis 80.48%
+   total. The Node floors already sat at the integer floor of these
+   values (cli re-based in item 7), so only the analysis floor moved,
+   from 74 to 80. Review nit not taken: the `groundwork-allow` marker on
+   the raised `fail_under` line looks redundant for a raise, but the
+   workaround check flags any threshold edit, so it stays.
 
 ## Phase 2: fix silent failures, with tests
 
 Each item is one commit: failing test first, then the fix.
 
-10. `fix(cli): Distinguish missing clip from clip.get failure`
-    Bare `catch` at `index.ts` (search `clip.get` near the "slot empty"
-    paths; four call sites) treats any gateway or path error as an empty
-    slot and creates a clip. Only the gateway's not-found error should mean
-    empty. Extract one helper used by all four sites.
-11. `fix(cli): Surface knowledge-entry parse errors in style lookup`
-    The five `resolve*Spec` functions and two similar sites wrap `loadEntry`
-    in a bare `catch` and report "unknown style", hiding malformed entries.
-    Extract one `resolveStyleSpec(kind, name)` helper; not-found stays
-    "unknown style", parse errors propagate with the file path.
-12. `fix(cli): Warn on corrupt audition and mirror state`
+10. `fix(cli): Distinguish missing clip from clip.get failure` (done)
+    The four sites were `clip from-audio`, `drop phrase`
+    (`resolvePhraseTarget`), `lib place` and `breaks place`; no other
+    `clip.get` call sits in a `try`. `callGateway` now throws a
+    `GatewayError` (`gateway-error.ts`) with the HTTP status and the
+    body's `error` code, same message text as before. `readClipIfPresent`
+    returns `undefined` only for `code === "not_found"` and rethrows
+    anything else as "reading the clip at <path> failed: ..." with
+    `cause`. Both bridges answer an empty slot, a missing arrangement
+    clip, and a missing track or slot with `BridgeError("not_found")`
+    (404), so a nonexistent track still counts as empty here and fails at
+    the create step instead. `test/clip-target.test.ts` (13 tests) runs
+    `breaks place`, `lib place` and `drop phrase` against a
+    `FakeLiveBridge` subclass whose `getClip` throws `internal`: before
+    the fix all three exit 0 and replace the clip; after, they exit 1
+    and leave it. `clip from-audio` has no test (needs the transcription
+    model). `startFakeGateway` takes an optional bridge. Coverage after
+    (CI way): cli 54.86% lines and statements, 78.69% branches, 83.76%
+    functions (floors unchanged at 51/78/80/51). Running the command
+    bodies first dropped branches to 77.49%, under the floor, so the
+    tests also pin the fill, arr-path refusal and `--at-bar` directions.
+    Review nits not taken: a from-audio test or a direct helper test;
+    the `clip from-audio` dry-run comment claims it catches "no such
+    track", which a slot path on a missing track never did; `lib place`
+    and `breaks place` still repeat the slot/arr resolution that
+    `resolvePhraseTarget` holds.
+11. `fix(cli): Surface knowledge-entry parse errors in style lookup` (done)
+    The seven sites were `drums gen` (inline), `resolvePhraseSpec`,
+    `resolveArpSpec`, `resolveBreakSpec`, `resolveBass808Spec`, `breaks
+    place` (break patterns) and `loadOperatorRecipeEntry`. `loadEntry`
+    parses every entry, so before the fix a malformed entry anywhere in
+    `knowledge/`, or a slug two entries share, read as "unknown style".
+    `loadEntry` now throws `KnowledgeEntryNotFoundError` (core) for a
+    missing slug, same message as before. `style-lookup.ts` holds
+    `resolveStyleSpec(store, kind, name)` (a table of slug prefix, fenced
+    block, label and built-ins per kind) and `loadNamedEntry`, which the
+    operator-recipe site uses directly; the store is a parameter so the
+    module stands outside `buildProgram`. Only the not-found error becomes
+    the old "unknown ..." text, unchanged; anything else is rethrown as
+    'looking up <kind> "<name>" failed: ...' with `cause`, and the store's
+    message carries the file path. `test/style-lookup.test.ts` (14 tests)
+    and one `breaks.test.ts` test: 9 fail before the fix (malformed entry
+    per command, a malformed unrelated entry, an ambiguous slug), the rest
+    pin not-found, the missing-block message and a found data style in
+    `drums gen`; `knowledge.test.ts` tells not-found from ambiguous.
+    Coverage after (CI way): cli 56.6% lines and statements, 78.87%
+    branches, 84.71% functions; core 90.88/83.89/96.2 (floors unchanged).
+    The first tests entered `drums gen`'s body and dropped cli branches to
+    78.31%, so the found-style test also runs its `--at-bar`, auto-slot
+    and `--slot` targets. Review nits not taken: `(err as Error).message`
+    in `loadNamedEntry` (the store only throws Errors; same idiom as the
+    store); renaming `specText` to `blockText` (one caller renames it, five
+    would); `loadNamedEntry` takes both `what` and the unknown message, so
+    the recipe caller names the recipe twice. Pre-existing: `kb show`
+    prints the raw store error on a missing slug, and `drumContext`'s `??`
+    defaults never fire because every option has a commander default.
+12. `fix(cli): Warn on corrupt audition and mirror state` (done)
     `readAuditionState` and `loadMirrorConfig` reset silently on unreadable
     JSON. Missing file stays a normal default; unreadable file warns.
+    Both now call `readStateFile` (`state-file.ts`): a missing file
+    (`ENOENT`) is `undefined` with no message; a file that cannot be read
+    (a directory, no permission) throws 'reading the <what> at <file>
+    failed: ...' with `cause`, before `export-alc` writes the pack; a file
+    that reads but is not valid state (bad JSON, or valid JSON that fails
+    the shape check `hasFields`) writes a `warning:` line to stderr naming
+    the file and reason, and the caller keeps its old default. The shape
+    check is new: a string `revision` in `mirror.json` used to produce
+    revision "71", and a pending audition with a non-string `trackPath`
+    reached the sweep. `test/state-files.test.ts` (14 tests): 6 failed
+    before the fix (bad JSON, wrong shape and unreadable, per file); the
+    rest pin the missing and valid directions, one field-check case per
+    file, and `hasFields`. Coverage after (CI way): cli 58.09% lines and
+    statements, 79.07% branches, 88.34% functions; core 90.88/83.89/96.2
+    (floors unchanged). Review nits not taken: the warning reason does not
+    name the bad field; `isMirrorConfig` accepts a negative or fractional
+    `revision`. Pre-existing: a corrupt `mirror.json` falls back to
+    revision 0, so the next export writes revision 1, possibly below the
+    pack's last revision, which Live may not re-index (the warning now
+    says the file was ignored).
 13. `fix(extension): Stop overwriting an unreadable capture outbox`
     `sdkLiveBridge.ts` `appendOutboxEntry` overwrites an outbox it cannot
     parse, losing earlier captures, and the drain path returns `[]`. Fail
