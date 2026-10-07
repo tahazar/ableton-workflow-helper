@@ -25,7 +25,8 @@ commit that finishes an item.
   `overnight/p1-06-cli-test-helpers`, stacked on #22 (#23); item 7 on
   `overnight/p1-07-cli-run-export`, stacked on #23 (#25); item 8 on
   `overnight/p1-08-analysis-main-inprocess`, stacked on #25 (#26); item 9
-  on `overnight/p1-09-baseline-floors`, stacked on #26. Start new work on a branch from the latest
+  on `overnight/p1-09-baseline-floors`, stacked on #26 (#27); item 10 on
+  `overnight/p2-10-clip-get-errors`, stacked on #27. Start new work on a branch from the latest
   `main` and open a new pull request; one commit per item, pushed after
   each. CI must be green before merging. Check for open PRs on a branch
   before pushing to it; another session may be using it.
@@ -42,8 +43,8 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 to 9, L1 to L12, L6b, L16, G8.
-- **Next:** Phase 2 item 10. L14, L15 and Phase 7 were added on 2026-10-06 from
+- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 to 9, Phase 2 item 10, L1 to L12, L6b, L16, G8.
+- **Next:** Phase 2 item 11. L14, L15 and Phase 7 were added on 2026-10-06 from
   a review of agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07
   from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
@@ -598,11 +599,32 @@ G10. `ci: Label pull requests by size`
 
 Each item is one commit: failing test first, then the fix.
 
-10. `fix(cli): Distinguish missing clip from clip.get failure`
-    Bare `catch` at `index.ts` (search `clip.get` near the "slot empty"
-    paths; four call sites) treats any gateway or path error as an empty
-    slot and creates a clip. Only the gateway's not-found error should mean
-    empty. Extract one helper used by all four sites.
+10. `fix(cli): Distinguish missing clip from clip.get failure` (done)
+    The four sites were `clip from-audio`, `drop phrase`
+    (`resolvePhraseTarget`), `lib place` and `breaks place`; no other
+    `clip.get` call sits in a `try`. `callGateway` now throws a
+    `GatewayError` (`gateway-error.ts`) with the HTTP status and the
+    body's `error` code, same message text as before. `readClipIfPresent`
+    returns `undefined` only for `code === "not_found"` and rethrows
+    anything else as "reading the clip at <path> failed: ..." with
+    `cause`. Both bridges answer an empty slot, a missing arrangement
+    clip, and a missing track or slot with `BridgeError("not_found")`
+    (404), so a nonexistent track still counts as empty here and fails at
+    the create step instead. `test/clip-target.test.ts` (13 tests) runs
+    `breaks place`, `lib place` and `drop phrase` against a
+    `FakeLiveBridge` subclass whose `getClip` throws `internal`: before
+    the fix all three exit 0 and replace the clip; after, they exit 1
+    and leave it. `clip from-audio` has no test (needs the transcription
+    model). `startFakeGateway` takes an optional bridge. Coverage after
+    (CI way): cli 54.86% lines and statements, 78.69% branches, 83.76%
+    functions (floors unchanged at 51/78/80/51). Running the command
+    bodies first dropped branches to 77.49%, under the floor, so the
+    tests also pin the fill, arr-path refusal and `--at-bar` directions.
+    Review nits not taken: a from-audio test or a direct helper test;
+    the `clip from-audio` dry-run comment claims it catches "no such
+    track", which a slot path on a missing track never did; `lib place`
+    and `breaks place` still repeat the slot/arr resolution that
+    `resolvePhraseTarget` holds.
 11. `fix(cli): Surface knowledge-entry parse errors in style lookup`
     The five `resolve*Spec` functions and two similar sites wrap `loadEntry`
     in a bare `catch` and report "unknown style", hiding malformed entries.
