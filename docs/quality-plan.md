@@ -23,7 +23,8 @@ commit that finishes an item.
   `overnight/p1-05-venv-path` (#22), the first of an overnight stacked
   chain whose later PRs build on it; item 6 on
   `overnight/p1-06-cli-test-helpers`, stacked on #22 (#23); item 7 on
-  `overnight/p1-07-cli-run-export`, stacked on #23. Start new work on a branch from the latest
+  `overnight/p1-07-cli-run-export`, stacked on #23 (#25); item 8 on
+  `overnight/p1-08-analysis-main-inprocess`, stacked on #25. Start new work on a branch from the latest
   `main` and open a new pull request; one commit per item, pushed after
   each. CI must be green before merging. Check for open PRs on a branch
   before pushing to it; another session may be using it.
@@ -40,8 +41,8 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 to 7, L1 to L12, L6b, L16, G8.
-- **Next:** Phase 1 item 8. L14, L15 and Phase 7 were added on 2026-10-06 from
+- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 to 8, L1 to L12, L6b, L16, G8.
+- **Next:** Phase 1 item 9. L14, L15 and Phase 7 were added on 2026-10-06 from
   a review of agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07
   from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
@@ -544,10 +545,23 @@ G10. `ci: Label pull requests by size`
    (`clip write` without a file still reads `process.stdin`); Python's
    stdout is now block-buffered, so on a terminal its stderr can print
    before its stdout.
-8. `test(analysis): Call main() in-process in CLI tests`
+8. `test(analysis): Call main() in-process in CLI tests` (done)
    `awh_analysis.__main__.main(argv)` already exists. Switch
    `tests/test_cli.py` from `subprocess.run` to calling it with captured
    stdout, keeping one subprocess smoke test.
+   Done on branch `overnight/p1-08-analysis-main-inprocess`. The report,
+   ab, target and bad-input tests call `main(argv)` and read output through
+   `capsys`. The one spawned test runs the missing-file case and asserts
+   exit code 1, because only a spawn shows that `main()`'s return value
+   becomes the exit code the TypeScript CLI sees; a successful spawn would
+   pass with `sys.exit` dropped from the module guard. Measured with
+   `AWH_CLAP_STUB=1 pytest -m "not integ" --cov`: 182 -> 183 passed;
+   total 74.5% -> 80.5%, `__main__.py` 0% -> 35%. The floor stays at 74
+   for item 9. Other test files (`test_a2m.py`, `test_bands.py`,
+   `test_breakchop.py`, `test_clapembed.py` and more) still spawn the
+   CLI; not in this item's scope. Review nit not taken: `_run_main` does
+   not catch argparse's `SystemExit`, so a future bad-argument test needs
+   `pytest.raises(SystemExit)`.
 9. `test: Record true baseline and raise floors`
    Re-measure after items 7 and 8 and update the baseline table above.
    Land L2 first so tests that assert nothing do not inflate the
