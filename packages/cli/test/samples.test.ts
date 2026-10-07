@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir, homedir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { analysisPythonPath, hasAnalysisPython } from "./analysis-venv.js";
 import { analysisPython } from "../src/analysis-python.js";
 import {
   computeNormalizationStats,
@@ -464,12 +465,9 @@ describe("summarizeIndex", () => {
 
 // ---------------------------------------------------------------------------
 // Real python scanner: negative-control similarity ranking + real index
-// build. Uses the repo's .venv; skipped if it isn't present so the
+// build. Uses analysis-venv.ts's Python; skipped if there is none so the
 // rest of the suite still runs.
 // ---------------------------------------------------------------------------
-
-const MAIN_VENV_PYTHON = fileURLToPath(new URL("../../../.venv/bin/python", import.meta.url));
-const hasRealPython = existsSync(MAIN_VENV_PYTHON);
 
 function writeWavMono16(path: string, samples: number[], sr: number): void {
   const n = samples.length;
@@ -520,15 +518,15 @@ function noiseSamples(durS: number, sr: number, amp = 0.5, seed = 1): number[] {
   return out;
 }
 
-describe.skipIf(!hasRealPython)(
-  "real analysis engine — index build + similarity negative control",
+describe.skipIf(!hasAnalysisPython)(
+  "integ: real analysis engine — index build + similarity negative control",
   () => {
     const SR = 44100;
     let originalAwhPython: string | undefined;
 
     beforeEach(() => {
       originalAwhPython = process.env.AWH_PYTHON;
-      process.env.AWH_PYTHON = MAIN_VENV_PYTHON;
+      process.env.AWH_PYTHON = analysisPythonPath();
     });
     afterEach(() => {
       if (originalAwhPython === undefined) delete process.env.AWH_PYTHON;
@@ -819,8 +817,8 @@ describe("M11b semantic search — embed/search/similar logic (fake embedder, AW
   });
 });
 
-describe.skipIf(!hasRealPython)(
-  "M11b real clapembed.py stub-mode integration (AWH_CLAP_STUB=1, real subprocess)",
+describe.skipIf(!hasAnalysisPython)(
+  "integ: M11b real clapembed.py stub-mode integration (AWH_CLAP_STUB=1, real subprocess)",
   () => {
     let originalAwhPython: string | undefined;
     let originalStub: string | undefined;
@@ -828,7 +826,7 @@ describe.skipIf(!hasRealPython)(
     beforeEach(() => {
       originalAwhPython = process.env.AWH_PYTHON;
       originalStub = process.env.AWH_CLAP_STUB;
-      process.env.AWH_PYTHON = MAIN_VENV_PYTHON;
+      process.env.AWH_PYTHON = analysisPythonPath();
       process.env.AWH_CLAP_STUB = "1";
     });
     afterEach(() => {
@@ -924,7 +922,7 @@ describe.skipIf(!hasRealPython)(
               ...process.env,
               AWH_SAMPLES_INDEX: indexPath,
               AWH_CLAP_STUB: "1",
-              AWH_PYTHON: MAIN_VENV_PYTHON,
+              AWH_PYTHON: analysisPythonPath(),
             },
           },
         );
@@ -1215,48 +1213,51 @@ describe("M11c pitch tagging — index/search logic (fake tagger)", () => {
   });
 });
 
-describe.skipIf(!hasRealPython)("M11c real samplepitch.py subprocess integration", () => {
-  const SR = 44100;
-  let originalAwhPython: string | undefined;
+describe.skipIf(!hasAnalysisPython)(
+  "integ: M11c real samplepitch.py subprocess integration",
+  () => {
+    const SR = 44100;
+    let originalAwhPython: string | undefined;
 
-  beforeEach(() => {
-    originalAwhPython = process.env.AWH_PYTHON;
-    process.env.AWH_PYTHON = MAIN_VENV_PYTHON;
-  });
-  afterEach(() => {
-    if (originalAwhPython === undefined) delete process.env.AWH_PYTHON;
-    else process.env.AWH_PYTHON = originalAwhPython;
-  });
+    beforeEach(() => {
+      originalAwhPython = process.env.AWH_PYTHON;
+      process.env.AWH_PYTHON = analysisPythonPath();
+    });
+    afterEach(() => {
+      if (originalAwhPython === undefined) delete process.env.AWH_PYTHON;
+      else process.env.AWH_PYTHON = originalAwhPython;
+    });
 
-  it("pitch-tags a real tuned low sine as voiced, and real broadband noise as unvoiced", async () => {
-    const corpus = join(tmpDir, "corpus");
-    mkdirSync(corpus, { recursive: true });
-    const tunedPath = join(corpus, "808.wav");
-    const noisePath = join(corpus, "kick.wav");
-    writeWavMono16(tunedPath, sineSamples(55.0, SR, 0.6), SR);
-    writeWavMono16(noisePath, noiseSamples(0.25, SR, 0.6, 3), SR);
-    const indexPath = join(tmpDir, "index.json");
-    // Force both files pitch-tag-eligible regardless of the real scan
-    // heuristics (isPitchTagCandidate: readable + oneshot + low band).
-    const scanner: ScannerFn = async (files) =>
-      files.map((f) =>
-        fakeScanRecord(f, { type_guess: "oneshot", dominant_band: "low", onset_count: 1 }),
-      );
+    it("pitch-tags a real tuned low sine as voiced, and real broadband noise as unvoiced", async () => {
+      const corpus = join(tmpDir, "corpus");
+      mkdirSync(corpus, { recursive: true });
+      const tunedPath = join(corpus, "808.wav");
+      const noisePath = join(corpus, "kick.wav");
+      writeWavMono16(tunedPath, sineSamples(55.0, SR, 0.6), SR);
+      writeWavMono16(noisePath, noiseSamples(0.25, SR, 0.6, 3), SR);
+      const indexPath = join(tmpDir, "index.json");
+      // Force both files pitch-tag-eligible regardless of the real scan
+      // heuristics (isPitchTagCandidate: readable + oneshot + low band).
+      const scanner: ScannerFn = async (files) =>
+        files.map((f) =>
+          fakeScanRecord(f, { type_guess: "oneshot", dominant_band: "low", onset_count: 1 }),
+        );
 
-    await runIndex([corpus], { rescan: false, indexPath, scanner });
+      await runIndex([corpus], { rescan: false, indexPath, scanner });
 
-    const { python, cwd } = analysisPython();
-    const tagger = makePythonPitchTagger(python, cwd);
-    const result = await runPitchTag({ indexPath, tagger });
-    expect(result.tagged).toBe(2);
+      const { python, cwd } = analysisPython();
+      const tagger = makePythonPitchTagger(python, cwd);
+      const result = await runPitchTag({ indexPath, tagger });
+      expect(result.tagged).toBe(2);
 
-    const reloaded = await loadSamplesIndex(indexPath);
-    expect(reloaded.files[tunedPath]!.pitch!.state).toBe("voiced");
-    expect(reloaded.files[tunedPath]!.pitch!.f0Hz).not.toBeNull();
-    expect(reloaded.files[noisePath]!.pitch!.state).toBe("unvoiced");
-    expect(reloaded.files[noisePath]!.pitch!.f0Hz).toBeNull();
-  }, 20_000);
-});
+      const reloaded = await loadSamplesIndex(indexPath);
+      expect(reloaded.files[tunedPath]!.pitch!.state).toBe("voiced");
+      expect(reloaded.files[tunedPath]!.pitch!.f0Hz).not.toBeNull();
+      expect(reloaded.files[noisePath]!.pitch!.state).toBe("unvoiced");
+      expect(reloaded.files[noisePath]!.pitch!.f0Hz).toBeNull();
+    }, 20_000);
+  },
+);
 
 // keep scanFilesChunked + saveSamplesIndex imports exercised even where the
 // higher-level runIndex tests above don't directly assert on them

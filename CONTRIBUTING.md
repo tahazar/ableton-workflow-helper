@@ -35,6 +35,14 @@ coverage tables. Changes that touch real-Live behavior get an entry in
 the relevant validation checklist in `docs/dev-loop.md`, to be checked off
 in Live.
 
+Integration tests are named as such. CLI tests whose `describe` starts
+with `integ:` run the analysis engine through `AWH_PYTHON` or the `.venv`
+above, and skip with a printed reason when neither exists; CI sets
+`AWH_REQUIRE_INTEG=1`, which turns a missing Python into a failure. They
+also skip until `pnpm build` has produced the CLI. Python tests marked
+`integ` need basic-pitch and skip with a reason without it; CI deselects
+them with `-m "not integ"`.
+
 ## House rules
 
 Summary of `docs/lessons-learned.md`, which is binding:

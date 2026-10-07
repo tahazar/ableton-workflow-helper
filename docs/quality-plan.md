@@ -19,7 +19,9 @@ commit that finishes an item.
 - **Branch and PR:** merged to `main`: PR #13 (Phase 0, L1 to L10) on
   2026-10-06; PR #16 (dev-groundwork setup, G8), PR #15 (L11), PR #17
   (L16, G9 and G10 added to this plan), PR #18 (L12) and PR #19 (L16) on
-  2026-10-07. Open: PR #20 (L6b), on branch `quality-l6b`. Start new work on a branch from the latest
+  2026-10-07; PR #20 (L6b). Open: item 5 on branch
+  `overnight/p1-05-venv-path`, the first of an overnight stacked chain
+  whose later PRs build on it. Start new work on a branch from the latest
   `main` and open a new pull request; one commit per item, pushed after
   each. CI must be green before merging. Check for open PRs on a branch
   before pushing to it; another session may be using it.
@@ -36,8 +38,8 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, L1 to L12, L6b, L16, G8.
-- **Next:** Phase 1. L14, L15 and Phase 7 were added on 2026-10-06 from
+- **Done:** Phase 0 items 1 to 4, Phase 1 item 5, L1 to L12, L6b, L16, G8.
+- **Next:** Phase 1 item 6. L14, L15 and Phase 7 were added on 2026-10-06 from
   a review of agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07
   from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
@@ -457,7 +459,7 @@ G10. `ci: Label pull requests by size`
 
 ## Phase 1: make existing tests honest
 
-5. `test: Resolve analysis venv relative to the repo`
+5. `test: Resolve analysis venv relative to the repo` (done)
    `MAIN_VENV_PYTHON` is hardcoded to `/home/user/ableton-workflow-helper/
    .venv/bin/python` in `packages/cli/test/{advise,breaks,samples}.test.ts`.
    On any other machine these integration tests skip without saying so.
@@ -471,6 +473,24 @@ G10. `ci: Label pull requests by size`
    `integ` marker with `--strict-markers` in pytest). CI runs the
    integration set as its own step, or deselects it by name, so a skipped
    test is a visible choice instead of a side effect of the machine.
+   Done: the absolute path had already become repo-relative in 526a93c,
+   but each file still derived it and skipped silently.
+   `packages/cli/test/analysis-venv.ts` resolves `AWH_PYTHON` (taken as
+   given, as `src/analysis-python.ts` does) then `<repo>/.venv`; the five
+   venv-backed `describe` blocks carry an `integ:` prefix; a vitest global
+   setup warns with the reason once per run, and throws instead when
+   `AWH_REQUIRE_INTEG=1`, which CI's Node job sets. pytest registers
+   `integ` under `--strict-markers` with `-rs`; `test_a2m.py` (needs
+   basic-pitch) is marked, its importorskip moved into an autouse fixture
+   so `-m "not integ"` deselects rather than skips, and CI deselects by
+   name. Measured: CLI 197 tests, 0 skipped with the venv, 14 skipped with
+   the printed reason without it; analysis 182 passed, 7 deselected in CI
+   (coverage 74.5%), 7 skipped with reason locally. The `hasBuiltCli`
+   skips (no `pnpm build`) are a separate condition, left as they are.
+   Review nits not taken: `AWH_PYTHON=""` counts as set, mirroring
+   `src/analysis-python.ts`'s `??`, so the integ tests fail rather than
+   skip; and an exported `AWH_PYTHON` now wins over the repo venv in
+   these tests, as the plan asks.
 6. `test: Extract shared CLI test helpers`
    `runCli`, `startFakeGateway`, `makeTestLibrary`, and `writeWavMono16`
    are copied across 4 to 7 test files. Move them to
