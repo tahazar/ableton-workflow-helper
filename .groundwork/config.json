@@ -1,0 +1,35 @@
+{
+  "specDir": "docs/specs",
+  "testGlobs": ["packages/*/test/**", "analysis/tests/**"],
+  "onCommit": "sh scripts/groundwork-checks.sh",
+  "sources": {
+    "tier1": [
+      "code.claude.com",
+      "docs.anthropic.com",
+      "github.com",
+      "nodejs.org",
+      "www.typescriptlang.org",
+      "vitest.dev",
+      "oxc.rs",
+      "pnpm.io",
+      "docs.python.org",
+      "docs.astral.sh",
+      "numpy.org",
+      "docs.scipy.org",
+      "librosa.org",
+      "python-soundfile.readthedocs.io",
+      "ffmpeg.org",
+      "www.itu.int",
+      "www.ableton.com",
+      "help.ableton.com",
+      "docs.cycling74.com",
+      "arxiv.org",
+      "www.ietf.org",
+      "www.rfc-editor.org"
+    ],
+    "tier2": ["cycling74.com", "blog.python.org", "devblogs.microsoft.com"]
+  },
+  "workarounds": {
+    "ignorePaths": [".groundwork/bin/**"]
+  }
+}

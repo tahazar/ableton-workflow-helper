@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "dev-groundwork": {
+      "source": { "source": "github", "repo": "tahazar/dev-groundwork" }
+    }
+  },
+  "enabledPlugins": {
+    "dev-groundwork@dev-groundwork": true
+  }
+}
