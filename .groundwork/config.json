@@ -1,13 +1,7 @@
 {
   "specDir": "docs/specs",
   "testGlobs": ["packages/*/test/**", "analysis/tests/**"],
-  "onEdit": [
-    { "glob": "packages/*.ts", "run": "pnpm exec oxfmt {file} && pnpm exec oxlint --type-aware --deny-warnings {file}" },
-    { "glob": "packages/*.mjs", "run": "pnpm exec oxfmt {file} && pnpm exec oxlint --deny-warnings {file}" },
-    { "glob": "scripts/*.mjs", "run": "pnpm exec oxfmt {file} && pnpm exec oxlint --deny-warnings {file}" },
-    { "glob": "analysis/*.py", "run": ".venv/bin/ruff format {file} && .venv/bin/ruff check {file}" }
-  ],
-  "onStop": "sh scripts/groundwork-checks.sh",
+  "onCommit": "sh scripts/groundwork-checks.sh",
   "sources": {
     "tier1": [
       "code.claude.com",

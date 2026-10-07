@@ -1,8 +1,8 @@
 #!/bin/sh
-# Project checks run by the dev-groundwork Stop hook before Claude ends a turn
-# that changed code (.groundwork/config.json, "onStop"). The TypeScript checks
-# take under a minute; the Python suite takes about three, so it runs only when
-# analysis/ changed.
+# Project checks the dev-groundwork hook runs before Claude commits
+# (.groundwork/config.json, "onCommit"); a failure blocks the commit. The
+# TypeScript checks take under a minute; the Python suite takes about three, so
+# it runs only when analysis/ changed.
 set -e
 changed=$(git status --porcelain --untracked-files=all | cut -c4- | grep -v '\.md$' || true)
 
