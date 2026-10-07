@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { analysisPythonPath, hasAnalysisPython } from "./analysis-venv.js";
 import {
   createGatewayServer,
   FakeLiveBridge,
@@ -17,8 +18,6 @@ import {
 // symlink the real analysis/ dir alongside a scratch `library/` so `awh
 // breaks chop` can find the real awh_analysis package without touching the
 // repo's actual library/.
-const MAIN_VENV_PYTHON = fileURLToPath(new URL("../../../.venv/bin/python", import.meta.url));
-const hasRealPython = existsSync(MAIN_VENV_PYTHON);
 const REPO_ANALYSIS_DIR = fileURLToPath(new URL("../../../analysis", import.meta.url));
 
 /**
@@ -228,62 +227,65 @@ function synthBreakWav(path: string): void {
 
 // ---------------------------------------------------------------------------
 
-describe.skipIf(!hasBuiltCli || !hasRealPython)("awh breaks chop — real Python subprocess", () => {
-  it("chops a synthetic break wav, saves a chopmap record, and `mix records` renders it", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
-    try {
-      const wav = join(dir, "break.wav");
-      synthBreakWav(wav);
+describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
+  "integ: awh breaks chop — real Python subprocess",
+  () => {
+    it("chops a synthetic break wav, saves a chopmap record, and `mix records` renders it", async () => {
+      const { dir, libraryRoot } = await makeTestLibrary();
+      try {
+        const wav = join(dir, "break.wav");
+        synthBreakWav(wav);
 
-      const chopResult = await runCli(
-        ["breaks", "chop", wav, "--bpm", "90", "--save", "amen-test", "--json"],
-        {
+        const chopResult = await runCli(
+          ["breaks", "chop", wav, "--bpm", "90", "--save", "amen-test", "--json"],
+          {
+            AWH_LIBRARY: libraryRoot,
+            AWH_PYTHON: analysisPythonPath(),
+          },
+        );
+        expect(chopResult.status, chopResult.stderr).toBe(0);
+        const obj = JSON.parse(chopResult.stdout) as { n_slices: number };
+        expect(obj.n_slices).toBe(4);
+
+        const recordsResult = await runCli(["mix", "records", "--json"], {
           AWH_LIBRARY: libraryRoot,
-          AWH_PYTHON: MAIN_VENV_PYTHON,
-        },
-      );
-      expect(chopResult.status, chopResult.stderr).toBe(0);
-      const obj = JSON.parse(chopResult.stdout) as { n_slices: number };
-      expect(obj.n_slices).toBe(4);
+          AWH_PYTHON: analysisPythonPath(),
+        });
+        expect(recordsResult.status, recordsResult.stderr).toBe(0);
+        const rows = JSON.parse(recordsResult.stdout) as { name: string; summary: string }[];
+        const row = rows.find((r) => r.name === "amen-test");
+        expect(row?.summary).toMatch(/chopmap: 4 slice/);
 
-      const recordsResult = await runCli(["mix", "records", "--json"], {
-        AWH_LIBRARY: libraryRoot,
-        AWH_PYTHON: MAIN_VENV_PYTHON,
-      });
-      expect(recordsResult.status, recordsResult.stderr).toBe(0);
-      const rows = JSON.parse(recordsResult.stdout) as { name: string; summary: string }[];
-      const row = rows.find((r) => r.name === "amen-test");
-      expect(row?.summary).toMatch(/chopmap: 4 slice/);
+        const showResult = await runCli(["mix", "records", "amen-test"], {
+          AWH_LIBRARY: libraryRoot,
+          AWH_PYTHON: analysisPythonPath(),
+        });
+        expect(showResult.status, showResult.stderr).toBe(0);
+        expect(showResult.stdout).toMatch(/awh breaks pattern/);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }, 30000);
 
-      const showResult = await runCli(["mix", "records", "amen-test"], {
-        AWH_LIBRARY: libraryRoot,
-        AWH_PYTHON: MAIN_VENV_PYTHON,
-      });
-      expect(showResult.status, showResult.stderr).toBe(0);
-      expect(showResult.stdout).toMatch(/awh breaks pattern/);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 30000);
-
-  it("--export cuts slice WAVs with a README mapping table", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
-    try {
-      const wav = join(dir, "break.wav");
-      synthBreakWav(wav);
-      const exportDir = join(dir, "export");
-      const result = await runCli(["breaks", "chop", wav, "--bpm", "90", "--export", exportDir], {
-        AWH_LIBRARY: libraryRoot,
-        AWH_PYTHON: MAIN_VENV_PYTHON,
-      });
-      expect(result.status, result.stderr).toBe(0);
-      expect(existsSync(join(exportDir, "README.md"))).toBe(true);
-      expect(existsSync(join(exportDir, "00-kick.wav"))).toBe(true);
-    } finally {
-      await rm(dir, { recursive: true, force: true });
-    }
-  }, 30000);
-});
+    it("--export cuts slice WAVs with a README mapping table", async () => {
+      const { dir, libraryRoot } = await makeTestLibrary();
+      try {
+        const wav = join(dir, "break.wav");
+        synthBreakWav(wav);
+        const exportDir = join(dir, "export");
+        const result = await runCli(["breaks", "chop", wav, "--bpm", "90", "--export", exportDir], {
+          AWH_LIBRARY: libraryRoot,
+          AWH_PYTHON: analysisPythonPath(),
+        });
+        expect(result.status, result.stderr).toBe(0);
+        expect(existsSync(join(exportDir, "README.md"))).toBe(true);
+        expect(existsSync(join(exportDir, "00-kick.wav"))).toBe(true);
+      } finally {
+        await rm(dir, { recursive: true, force: true });
+      }
+    }, 30000);
+  },
+);
 
 describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () => {
   it("--map resolution + --dry-run: notes reference the chop map's own slices", async () => {

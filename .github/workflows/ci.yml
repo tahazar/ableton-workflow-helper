@@ -102,7 +102,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-      # CLI tests that call the analysis engine skip without the venv.
+      # The CLI's "integ:" tests call the analysis engine through the venv.
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.12"
@@ -119,7 +119,11 @@ jobs:
       # The extension is typechecked against types/ableton-sdk-shim.d.ts but
       # not bundled: the Ableton SDK is not redistributable.
       - run: pnpm typecheck
+      # The venv is built above, so the "integ:" CLI tests must run here,
+      # not skip.
       - run: pnpm coverage
+        env:
+          AWH_REQUIRE_INTEG: "1"
 
   python:
     name: Python (analysis tests)
