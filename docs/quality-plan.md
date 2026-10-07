@@ -34,10 +34,11 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, L1 to L11, G8.
-- **Next:** L12 (CI lint job), then L6b and Phase 1. L14, L15 and Phase 7
-  were added on 2026-10-06 from a review of agent-guardrail suggestions;
-  L16, G9 and G10 on 2026-10-07 from a review of sdras/awesome-actions.
+- **Done:** Phase 0 items 1 to 4, L1 to L12, G8.
+- **Next:** L16 (actionlint, now that the lint job exists), then L6b and
+  Phase 1. L14, L15 and Phase 7 were added on 2026-10-06 from a review of
+  agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07 from a review
+  of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
   commit, review the commit in a fresh context (below), fix blocking
   findings in a follow-up commit, update this section, push.
@@ -50,8 +51,9 @@ commit that finishes an item.
   commit a new hash and blame stops skipping it. The hashes listed today
   are the ones on `main`.
 - **Not verified:** the repository-settings half of Phase 0 item 3 (branch
-  protection on `main`) and S1 cannot be checked from a session; ask the
-  owner.
+  protection on `main`), making L12's "Lint (oxlint, oxfmt, ruff,
+  pyright)" job a required check, and S1 cannot be checked from a
+  session; ask the owner.
 
 Checks to run before every commit (all must pass):
 
@@ -315,11 +317,18 @@ L11. `build(analysis): Typecheck with pyright` (done)
      Pyright runs in the Python CI job until L12; the test step now runs
      even when a lint or type step fails. Review nit not taken: the config
      assumes the repo-root `.venv` that `analysis/README.md` documents.
-L12. `ci: Add lint job`
+L12. `ci: Add lint job` (done)
      `pnpm lint` already runs in the Node CI job (added with L1). Move it
      into its own job with `pnpm fmt:check`, `ruff check`,
      `ruff format --check`, and pyright, so lint failures report
      separately from test failures. Make it required.
+     The "Lint (oxlint, oxfmt, ruff, pyright)" job in `ci.yml` builds the
+     Node packages (type-aware lint needs the `.d.ts` files) and the full
+     analysis venv (pyright resolves numpy, scipy and librosa from it).
+     Each check runs when its own setup step succeeded, so a failed Node
+     build still lets the Python checks report. `pnpm fmt:check` was not
+     in CI before this. The Node and Python jobs no longer lint. Making the
+     job required is a repository setting; see "Not verified".
 L13. Optional: `build: Add pre-commit hook`
      A checked-in hook (for example `lefthook` or a plain script wired by
      `git config core.hooksPath`) that runs `oxlint`, `oxfmt --check`, and
@@ -337,8 +346,8 @@ L15. `ci: Cap code duplication with jscpd`
      16 clones, 1.36% of lines. Set the threshold at today's level and
      lower it as the shared-helper cleanup items land.
 L16. `ci: Lint workflow files with actionlint`
-     Three workflows (`ci.yml`, `groundwork.yml`, and L12's lint job when
-     it lands) gate every merge, and a mistake in one can skip its checks
+     Four jobs (lint, Node and Python in `ci.yml`, and `groundwork.yml`)
+     gate every merge, and a mistake in one can skip its checks
      without failing. Run `rhysd/actionlint`, pinned to a commit SHA, in
      the lint job on changes under `.github/workflows/`. Fix its findings
      in the same commit. Found on 2026-10-07 while reviewing
