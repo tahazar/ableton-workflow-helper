@@ -31,7 +31,12 @@ python3 -m venv .venv && .venv/bin/pip install -e 'analysis[dev]'
 
 Both suites must pass. CI (`.github/workflows/ci.yml`) runs both on every
 pull request. `pnpm coverage` and `pytest --cov` (from `analysis/`) print
-coverage tables. Changes that touch real-Live behavior get an entry in
+coverage tables. Integration tests are named for it: CLI tests whose
+`describe` starts with `integ:` run the analysis engine through
+`AWH_PYTHON` or the `.venv` above, and skip with a printed reason when
+neither exists (CI sets `AWH_REQUIRE_INTEG=1`, which turns that into a
+failure); Python tests marked `integ` need basic-pitch and skip with a
+reason without it (CI deselects them with `-m "not integ"`). Changes that touch real-Live behavior get an entry in
 the relevant validation checklist in `docs/dev-loop.md`, to be checked off
 in Live.
 
