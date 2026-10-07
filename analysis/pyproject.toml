@@ -51,6 +51,8 @@ dev = [
     "pytest-cov",
     # Pre-1.0: a minor release can change lint or format output, so pin.
     "ruff==0.16.10",
+    # Type rules change between releases, like ruff's lint rules, so pin.
+    "pyright==1.1.414",
 ]
 
 [project.scripts]
@@ -78,6 +80,15 @@ ignore = ["E501"]
 [tool.ruff.lint.per-file-ignores]
 # The CLI's output is its print calls; library modules log instead.
 "awh_analysis/__main__.py" = ["T201"]
+
+[tool.pyright]
+include = ["awh_analysis", "tests"]
+# `standard` reports the same 18 findings as `basic` did on 2026-10-07;
+# `strict` reports about 2,500, mostly untyped numpy/scipy/librosa values.
+typeCheckingMode = "standard"
+# The repo-root venv built per analysis/README.md, locally and in CI.
+venvPath = ".."
+venv = ".venv"
 
 [tool.coverage.run]
 source = ["awh_analysis"]

@@ -64,7 +64,8 @@ def transcribe(
     result: notes == [] and n_notes == 0.
     """
     try:
-        from basic_pitch.inference import predict
+        # basic-pitch is installed by hand (see README), not by any extra.
+        from basic_pitch.inference import predict  # pyright: ignore[reportMissingImports]
     except ImportError as exc:  # pragma: no cover - environment problem, not logic
         raise RuntimeError(
             "basic-pitch is not installed in this environment. See "

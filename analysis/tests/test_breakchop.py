@@ -55,7 +55,7 @@ def _burst(
     attack_s: float = 0.005,
     release_s: float = 0.005,
     seed: int | None = None,
-):
+) -> tuple[int, np.ndarray]:
     """A short decaying burst with a raised-cosine attack and release ramp.
     Real percussive hits never start/stop with a mathematical discontinuity;
     an instantaneous on/off step injects broadband "click" energy that a
@@ -66,7 +66,7 @@ def _burst(
     start = int(round(t0 * sr))
     length = min(n - start, int(8 * tau * sr))
     if length <= 0:
-        return None, None
+        raise ValueError(f"burst at {t0} s starts past the end of the signal")
     tt = np.arange(length) / sr
     env = np.exp(-tt / tau).copy()
     a_samp = max(1, int(round(attack_s * sr)))
@@ -96,7 +96,6 @@ def _synthetic_break(shift_s: float = 0.0, noise_seed: int = 3) -> np.ndarray:
             start, b = _burst(n, SR, t0, 220.0, 0.6, 0.03)
         else:
             start, b = _burst(n, SR, t0, 9000.0, 0.3, 0.012, seed=int(t0 * 1e7) % 99991)
-        assert start is not None
         sig[start : start + len(b)] += b
     return sig
 

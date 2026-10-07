@@ -79,7 +79,7 @@ def _fit_dip_model(
 
     ss_tot = float(np.sum((y_db - np.mean(y_db)) ** 2))
 
-    best_rss = None
+    best_rss: float | None = None
     best = (0.0, 0.0, float(taus[0]))
     for hold in holds:
         for tau in taus:
@@ -96,6 +96,7 @@ def _fit_dip_model(
                 best_rss = rss
                 best = (depth, float(hold), float(tau))
 
+    assert best_rss is not None, "the (hold, tau) grid is never empty"
     depth_db, hold_s, tau_s = best
     if ss_tot > 1e-12:
         r_squared = float(np.clip(1.0 - best_rss / ss_tot, -10.0, 1.0))

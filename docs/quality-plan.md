@@ -23,9 +23,8 @@ commit that finishes an item.
 - **Commits:** authored as the owner, with no AI attribution or
   co-author trailers. Set `git config user.name`/`user.email` in a fresh
   clone before the first commit.
-- **Done:** Phase 0 items 1 to 4, L1 to L10.
-- **Next:** L11 (Python typecheck), then L12 (CI lint job),
-  L6b, G8, and Phase 1. L14, L15 and Phase 7 were added on 2026-10-06
+- **Done:** Phase 0 items 1 to 4, L1 to L11.
+- **Next:** L12 (CI lint job), then L6b, G8, and Phase 1. L14, L15 and Phase 7 were added on 2026-10-06
   from a review of agent-guardrail suggestions.
 - **Loop:** one session per item: do the item, run the checks below,
   commit, review the commit in a fresh context (below), fix blocking
@@ -278,14 +277,28 @@ L10. `build(analysis): Add ruff lint and format` (done)
      `.git-blame-ignore-revs`. CI's Python job runs `ruff check` and
      `ruff format --check` until L12 moves them to the lint job. 182 tests,
      same count before and after.
-L11. `build(analysis): Typecheck with pyright`
-     TypeScript is fully typechecked; `analysis/` is not, and 8 functions
-     lack a return annotation. Add `pyright` to the `dev` extras with
-     `basic` mode in `pyproject.toml`, fix or annotate its findings, and
-     run it in the Python CI job. Measure `standard` mode in the same
-     commit and record the count here before deciding whether to raise it.
-     Ruff's `ANN` rules are the fallback if pyright cannot resolve the
-     numpy/librosa stubs.
+L11. `build(analysis): Typecheck with pyright` (done)
+     Pyright 1.1.414 is pinned exactly in the `dev` extras and configured
+     under `[tool.pyright]`, over `awh_analysis` and `tests`, against the
+     repo-root `.venv`. It resolves the numpy, scipy and librosa types, so
+     Ruff's `ANN` rules were not needed. Measured on 2026-10-07: `basic`
+     and `standard` both report the same 18 findings (6 in source, 12 in
+     tests), `strict` about 2,500 (mostly untyped numpy/scipy/librosa
+     values), so the mode is `standard`. Fixed:
+     - Two test `_burst` helpers returned `(None, None)` for a hit past the
+       end of the signal (12 findings). The breakchop one now raises, since
+       every caller asserted the hit landed; the drumstats one returns an
+       empty burst, which adds nothing, so its callers' `None` checks went.
+     - `pumpcheck._fit_dip_model` read `best_rss` as possibly `None`; an
+       assert now records that the search grid is never empty.
+     - Inline ignores with a reason: two optional imports
+       (`basic_pitch`, installed by hand; `laion_clap`, the `clap` extra)
+       and two scipy arguments its stubs type too narrowly (`stft`
+       `boundary=None`, `welch` `detrend=False`, both documented values).
+     - `audio.sanitize_json` was the one source function without
+       annotations; it now takes and returns `object`. Ruff's `ANN` rules
+       find 336 missing annotations in tests, which stay unannotated.
+     Pyright runs in the Python CI job until L12.
 L12. `ci: Add lint job`
      `pnpm lint` already runs in the Node CI job (added with L1). Move it
      into its own job with `pnpm fmt:check`, `ruff check`,

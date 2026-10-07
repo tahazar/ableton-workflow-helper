@@ -67,7 +67,7 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install -e 'analysis[dev]'
-      # Moves to the lint job in quality plan L12.
+      # Ruff and pyright move to the lint job in quality plan L12.
       - name: Lint with ruff
         working-directory: analysis
         run: ../.venv/bin/ruff check .
@@ -75,6 +75,10 @@ jobs:
         if: ${{ !cancelled() }}
         working-directory: analysis
         run: ../.venv/bin/ruff format --check .
+      - name: Typecheck with pyright
+        if: ${{ !cancelled() }}
+        working-directory: analysis
+        run: ../.venv/bin/pyright
       - name: Test with coverage
         working-directory: analysis
         run: ../.venv/bin/pytest -q --cov

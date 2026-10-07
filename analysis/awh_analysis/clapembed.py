@@ -170,7 +170,9 @@ class _RealEmbedder:
             raise RuntimeError(_not_installed_message(model_key))
 
         try:
-            import laion_clap  # noqa: PLC0415 - intentionally lazy, see module docstring
+            # Intentionally lazy (see module docstring). The `clap` extra is
+            # absent in CI, where AWH_CLAP_STUB=1 never reaches this import.
+            import laion_clap  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
         except ImportError as exc:
             raise RuntimeError(
                 "laion_clap is not installed in this environment. Install the "
