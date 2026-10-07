@@ -9,10 +9,11 @@ import { makeTestLibrary, runCli, startFakeGateway } from "./helpers.js";
  * Data styles, break patterns and operator recipes are knowledge entries
  * looked up by slug. Only a missing slug is an "unknown style"; an entry
  * that fails to parse, or a slug two entries share, must reach the user
- * with the file path instead of hiding behind "unknown". The "unknown"
- * direction for each kind is pinned in arp, bass and breaks tests; this
- * file adds the failure direction per command, plus the cases the shared
- * lookup handles once for all of them.
+ * with the file path instead of hiding behind "unknown". Arp, bass and
+ * breaks tests pin "unknown" for their kinds, and breaks.test.ts the
+ * failure direction for break styles (it has the chop-map fixture). This
+ * file covers the other kinds both ways, plus the cases the shared lookup
+ * handles once for all of them.
  */
 
 function entryText(slug: string, topic: string, tier: string, body: string[]): string {
@@ -64,6 +65,11 @@ const CASES: LookupCase[] = [
     name: "drums gen --style",
     slug: "drum-style-broken",
     argv: ["drums", "gen", "track:0", "--style", "broken", "--at-bar", "1"],
+  },
+  {
+    name: "drop phrase --style",
+    slug: "phrase-style-broken",
+    argv: ["drop", "phrase", "track:0", "--style", "broken", "--at-bar", "1", "--dry-run"],
   },
   {
     name: "breaks place",
@@ -223,6 +229,22 @@ describe("knowledge-entry lookup by name", () => {
       const slot = await gen(["--slot", "track:0/slot:3"]);
       expect(slot.status, slot.stderr).toBe(0);
       expect(slot.stdout).toMatch(/dusty-garage pattern -> track:0\/slot:3 /);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("drop phrase: a missing data style is still unknown", async () => {
+    const { port } = await startFakeGateway();
+    const { dir, libraryRoot } = await makeTestLibrary("style-lookup");
+    try {
+      const result = await runCli(
+        ["-p", String(port), "drop", "phrase", "track:0", "--style", "nope", "--dry-run"],
+        { AWH_LIBRARY: libraryRoot },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/unknown phrase style "nope" — built-ins: /);
+      expect(result.stderr).toMatch(/slug phrase-style-nope/);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

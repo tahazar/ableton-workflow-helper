@@ -424,6 +424,26 @@ describe("awh breaks pattern — full CLI integration", () => {
     }
   });
 
+  it("malformed style entry: reported with its path, not as an unknown style", async () => {
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
+    try {
+      await writeChopMapRecord(libraryRoot, "amen");
+      const knowledgeDir = join(dir, "knowledge", "rhythm");
+      await mkdir(knowledgeDir, { recursive: true });
+      const file = join(knowledgeDir, "break-style-broken.md");
+      await writeFile(file, "no frontmatter here\n");
+      const result = await runCli(
+        ["breaks", "pattern", "track:0", "--map", "amen", "--style", "broken", "--dry-run"],
+        { AWH_LIBRARY: libraryRoot },
+      );
+      expect(result.status).toBe(1);
+      expect(result.stderr).toMatch(/looking up break style "broken" failed: Bad knowledge entry/);
+      expect(result.stderr).toContain(file);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("style fallback from a temp knowledge entry — tier printed", async () => {
     const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
