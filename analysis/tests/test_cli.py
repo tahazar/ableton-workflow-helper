@@ -16,22 +16,19 @@ def _run_main(capsys, argv: list[str]) -> tuple[int, str, str]:
     return code, captured.out, captured.err
 
 
-def test_cli_module_entry_point_smoke(tmp_path):
+def test_cli_module_entry_point_exit_code(tmp_path):
     # The only test that spawns `python -m awh_analysis`, the way the
-    # TypeScript CLI runs it: it covers the `__main__` guard and the exit code.
-    # The other CLI tests call main() in-process so coverage counts it.
-    sig = to_stereo(pink_noise(SR, 3.0, amp=0.2))
-    path = tmp_path / "x.wav"
-    write_wav(path, sig, SR)
-
+    # TypeScript CLI runs it. A failure case, because only a spawn shows that
+    # main()'s return value becomes the process exit code; the other CLI
+    # tests call main() in-process so coverage counts it.
     proc = subprocess.run(
-        [sys.executable, "-m", "awh_analysis", "report", str(path), "--bpm", "120", "--json"],
+        [sys.executable, "-m", "awh_analysis", "report", str(tmp_path / "does-not-exist.wav")],
         capture_output=True,
         text=True,
         cwd=str(Path(__file__).resolve().parents[1]),
     )
-    assert proc.returncode == 0, proc.stderr
-    assert "measurements" in json.loads(proc.stdout)
+    assert proc.returncode == 1
+    assert proc.stderr.startswith("error: ")
 
 
 def test_cli_report_json(tmp_path, capsys):
