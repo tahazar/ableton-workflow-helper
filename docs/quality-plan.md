@@ -24,7 +24,8 @@ commit that finishes an item.
   before pushing to it; another session may be using it.
 - **Commits:** authored as the owner, with no AI attribution or
   co-author trailers. Set `git config user.name`/`user.email` in a fresh
-  clone before the first commit.
+  clone before the first commit. Pull request descriptions, comments and
+  reviews carry no AI attribution or session links either.
 - **Pipeline:** new features go through the dev-groundwork plugin
   (`CLAUDE.md`, `.groundwork/`). Quality-plan items keep the loop below;
   they are small enough that the plan item is the spec. Install it once
