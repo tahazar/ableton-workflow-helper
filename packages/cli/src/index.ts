@@ -22,6 +22,7 @@ import { basename, dirname, join, resolve } from "node:path";
 import { Command, CommanderError } from "commander";
 import { TAP_PORT, sendToTap } from "./osc.js";
 import { analysisPython } from "./analysis-python.js";
+import { GatewayError } from "./gateway-error.js";
 import {
   DEFAULT_BPM_TOL,
   DEFAULT_CENTS_TOL,
@@ -275,10 +276,11 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
     }
     const body = (await res.json()) as Record<string, unknown>;
     if (!res.ok) {
-      throw new Error(
-        `Gateway error ${res.status}: ${body.error ?? "unknown"}${
-          body.message ? ` — ${body.message}` : ""
-        }`,
+      const code = typeof body.error === "string" ? body.error : "unknown";
+      throw new GatewayError(
+        res.status,
+        code,
+        `Gateway error ${res.status}: ${code}${body.message ? ` — ${body.message}` : ""}`,
       );
     }
     return body;
@@ -608,12 +610,8 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
         let where: string;
         let existing: { path: string; lengthBeats: number } | undefined;
         if (isSlot) {
-          try {
-            const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
-            existing = { path: target, lengthBeats: detail.duration };
-          } catch {
-            // nothing there yet -> create fresh below
-          }
+          const detail = await readClipIfPresent(opts, target);
+          if (detail) existing = { path: target, lengthBeats: detail.duration };
           targetSpec = { type: "session", slotPath: target };
           where = target;
         } else {
@@ -1896,17 +1894,11 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
     const isSlotPath = /\/slot:\d+$/.test(target);
     const isArrPath = /\/arr:\d+$/.test(target);
     if (isSlotPath || isArrPath) {
-      let existing: { path: string; lengthBeats: number } | undefined;
-      try {
-        const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
-        existing = { path: target, lengthBeats: detail.duration };
-      } catch {
-        if (isArrPath) {
-          throw new Error(
-            `no clip at ${target} — arr paths must point at an existing clip to fill`,
-          );
-        }
+      const detail = await readClipIfPresent(opts, target);
+      if (!detail && isArrPath) {
+        throw new Error(`no clip at ${target} — arr paths must point at an existing clip to fill`);
       }
+      const existing = detail ? { path: target, lengthBeats: detail.duration } : undefined;
       return { targetSpec: { type: "session", slotPath: target }, where: target, existing };
     }
     const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
@@ -2291,6 +2283,27 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
     return body.result;
   }
 
+  /** Reads the clip at a slot or arrangement path, or `undefined` when the
+   *  gateway answers `not_found`. That covers an empty slot or no clip at
+   *  that index, but also a track or slot that does not exist, so a caller
+   *  that goes on to create a clip gets its own error for those. Any other
+   *  failure is rethrown: a caller that took it for an empty slot would
+   *  create a clip over the one it could not read. */
+  async function readClipIfPresent(
+    opts: GlobalOpts,
+    path: string,
+  ): Promise<ClipDetail | undefined> {
+    try {
+      return (await op(opts, "clip.get", { path })) as ClipDetail;
+    } catch (err) {
+      if (err instanceof GatewayError && err.code === "not_found") return undefined;
+      throw new Error(
+        `reading the clip at ${path} failed: ${err instanceof Error ? err.message : String(err)}`,
+        { cause: err },
+      );
+    }
+  }
+
   function libraryStore(cmdOpts: { library?: string }): LibraryStore {
     return new LibraryStore(cmdOpts.library ?? findLibraryRoot());
   }
@@ -2435,18 +2448,15 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
 
         let existing: { path: string; lengthBeats: number } | undefined;
         if (isSlotPath || isArrPath) {
-          try {
-            const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
-            existing = { path: target, lengthBeats: detail.duration };
-          } catch {
-            // No clip there yet: fall through to create (slot paths only; an
-            // arr path with nothing at it isn't a valid create target).
-            if (isArrPath) {
-              throw new Error(
-                `no clip at ${target} — arr paths must point at an existing clip to fill`,
-              );
-            }
+          const detail = await readClipIfPresent(opts, target);
+          // No clip there yet: fall through to create (slot paths only; an
+          // arr path with nothing at it isn't a valid create target).
+          if (!detail && isArrPath) {
+            throw new Error(
+              `no clip at ${target} — arr paths must point at an existing clip to fill`,
+            );
           }
+          if (detail) existing = { path: target, lengthBeats: detail.duration };
         } else if (cmdOpts.atBar !== undefined) {
           const summary = (await op(opts, "set.summary")) as SetSummary;
           const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
@@ -6046,16 +6056,13 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
 
         let existing: { path: string; lengthBeats: number } | undefined;
         if (isSlotPath || isArrPath) {
-          try {
-            const detail = (await op(opts, "clip.get", { path: target })) as ClipDetail;
-            existing = { path: target, lengthBeats: detail.duration };
-          } catch {
-            if (isArrPath) {
-              throw new Error(
-                `no clip at ${target} — arr paths must point at an existing clip to fill`,
-              );
-            }
+          const detail = await readClipIfPresent(opts, target);
+          if (!detail && isArrPath) {
+            throw new Error(
+              `no clip at ${target} — arr paths must point at an existing clip to fill`,
+            );
           }
+          if (detail) existing = { path: target, lengthBeats: detail.duration };
         } else if (cmdOpts.atBar !== undefined) {
           const track = [...summary.tracks, ...summary.returnTracks].find((t) => t.path === target);
           if (!track) throw new Error(`track not found: ${target}`);
