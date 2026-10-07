@@ -1,7 +1,15 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { analysisPythonPath, hasAnalysisPython } from "./analysis-venv.js";
-import { hasBuiltCli, runBuiltCli, runCli, startFakeGateway } from "./helpers.js";
+import {
+  hasBuiltCli,
+  makeTestLibrary,
+  runBuiltCli,
+  runCli,
+  startFakeGateway,
+  writeWavMono16,
+} from "./helpers.js";
 
 /**
  * `run()` (src/index.ts) is the whole CLI as a function: it writes to the
@@ -62,6 +70,20 @@ describe.skipIf(!hasAnalysisPython)("integ: run with the analysis engine", () =>
     });
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/^error: .*missing\.wav/m);
+  }, 20_000);
+
+  it("the engine's stdout comes back through run", async () => {
+    const { dir } = await makeTestLibrary("run");
+    onTestFinished(() => rm(dir, { recursive: true, force: true }));
+    const wav = join(dir, "sine.wav");
+    writeWavMono16(
+      wav,
+      Array.from({ length: 44100 }, (_, i) => 0.3 * Math.sin((2 * Math.PI * 300 * i) / 44100)),
+      44100,
+    );
+    const result = await runCli(["mix", "ab", wav, wav], { AWH_PYTHON: analysisPythonPath() });
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout).toMatch(/^A: sine\.wav {2}B: sine\.wav$/m);
   }, 20_000);
 });
 
