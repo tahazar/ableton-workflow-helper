@@ -27,7 +27,9 @@ commit that finishes an item.
   `overnight/p1-08-analysis-main-inprocess`, stacked on #25 (#26); item 9
   on `overnight/p1-09-baseline-floors`, stacked on #26 (#27); item 10 on
   `overnight/p2-10-clip-get-errors`, stacked on #27 (#28); item 11 on
-  `overnight/p2-11-style-lookup-errors`, stacked on #28. Start new work on a branch from the latest
+  `overnight/p2-11-style-lookup-errors`, stacked on #28 (#29); item 12 on
+  `overnight/p2-12-corrupt-state-warnings`, stacked on #29, the last PR of
+  the chain. Start new work on a branch from the latest
   `main` and open a new pull request; one commit per item, pushed after
   each. CI must be green before merging. Check for open PRs on a branch
   before pushing to it; another session may be using it.
@@ -44,8 +46,8 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 to 9, Phase 2 items 10 and 11, L1 to L12, L6b, L16, G8.
-- **Next:** Phase 2 item 12. L14, L15 and Phase 7 were added on 2026-10-06 from
+- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 to 9, Phase 2 items 10 to 12, L1 to L12, L6b, L16, G8.
+- **Next:** Phase 2 item 13. L14, L15 and Phase 7 were added on 2026-10-06 from
   a review of agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07
   from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
@@ -656,9 +658,29 @@ Each item is one commit: failing test first, then the fix.
     the recipe caller names the recipe twice. Pre-existing: `kb show`
     prints the raw store error on a missing slug, and `drumContext`'s `??`
     defaults never fire because every option has a commander default.
-12. `fix(cli): Warn on corrupt audition and mirror state`
+12. `fix(cli): Warn on corrupt audition and mirror state` (done)
     `readAuditionState` and `loadMirrorConfig` reset silently on unreadable
     JSON. Missing file stays a normal default; unreadable file warns.
+    Both now call `readStateFile` (`state-file.ts`): a missing file
+    (`ENOENT`) is `undefined` with no message; a file that cannot be read
+    (a directory, no permission) throws 'reading the <what> at <file>
+    failed: ...' with `cause`, before `export-alc` writes the pack; a file
+    that reads but is not valid state (bad JSON, or valid JSON that fails
+    the shape check `hasFields`) writes a `warning:` line to stderr naming
+    the file and reason, and the caller keeps its old default. The shape
+    check is new: a string `revision` in `mirror.json` used to produce
+    revision "71", and a pending audition with a non-string `trackPath`
+    reached the sweep. `test/state-files.test.ts` (14 tests): 6 failed
+    before the fix (bad JSON, wrong shape and unreadable, per file); the
+    rest pin the missing and valid directions, one field-check case per
+    file, and `hasFields`. Coverage after (CI way): cli 58.09% lines and
+    statements, 79.07% branches, 88.34% functions; core 90.88/83.89/96.2
+    (floors unchanged). Review nits not taken: the warning reason does not
+    name the bad field; `isMirrorConfig` accepts a negative or fractional
+    `revision`. Pre-existing: a corrupt `mirror.json` falls back to
+    revision 0, so the next export writes revision 1, possibly below the
+    pack's last revision, which Live may not re-index (the warning now
+    says the file was ignored).
 13. `fix(extension): Stop overwriting an unreadable capture outbox`
     `sdkLiveBridge.ts` `appendOutboxEntry` overwrites an outbox it cannot
     parse, losing earlier captures, and the drain path returns `[]`. Fail

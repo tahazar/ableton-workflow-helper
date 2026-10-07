@@ -24,6 +24,7 @@ import { TAP_PORT, sendToTap } from "./osc.js";
 import { analysisPython } from "./analysis-python.js";
 import { GatewayError } from "./gateway-error.js";
 import { loadNamedEntry, resolveStyleSpec } from "./style-lookup.js";
+import { hasFields, readStateFile } from "./state-file.js";
 import {
   DEFAULT_BPM_TOL,
   DEFAULT_CENTS_TOL,
@@ -1011,14 +1012,20 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
       : join(repoRoot(), ".dev", "audition-state.json");
   }
 
+  // The CLI's warning sink: a "warning:" line on stderr, apart from the
+  // command's output on stdout. readStateFile reports through it.
+  function warn(message: string): void {
+    io.stderr.write(`warning: ${message}\n`);
+  }
+
+  function isAuditionState(value: unknown): value is AuditionState {
+    return hasFields(value, { trackPath: "string", name: "string", slug: "string" });
+  }
+
+  // A corrupt file reads as nothing pending (readStateFile warns): the clip
+  // it named is left for `awh sweep` by hand, and this run's save replaces it.
   async function readAuditionState(): Promise<AuditionState | undefined> {
-    const file = auditionStateFile();
-    if (!existsSync(file)) return undefined;
-    try {
-      return JSON.parse(await readFile(file, "utf8")) as AuditionState;
-    } catch {
-      return undefined;
-    }
+    return readStateFile(auditionStateFile(), "audition state", isAuditionState, warn);
   }
 
   async function writeAuditionState(state: AuditionState | undefined): Promise<void> {
@@ -2649,13 +2656,32 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
     revision: number;
   }
 
+  function isMirrorConfig(value: unknown): value is MirrorConfig {
+    return hasFields(value, {
+      uniqueId: "string",
+      name: "string",
+      vendor: "string",
+      revision: "number",
+    });
+  }
+
+  // A corrupt file falls back to the default pack (readStateFile warns), so
+  // a pack exported under another uniqueId or name gets a fresh one.
   async function loadMirrorConfig(store: LibraryStore): Promise<MirrorConfig> {
-    const file = join(store.root, "mirror.json");
-    try {
-      return JSON.parse(await readFile(file, "utf8")) as MirrorConfig;
-    } catch {
-      return { uniqueId: "org.awh.user-library", name: "AWH Library", vendor: "awh", revision: 0 };
-    }
+    const config = await readStateFile(
+      join(store.root, "mirror.json"),
+      "mirror config",
+      isMirrorConfig,
+      warn,
+    );
+    return (
+      config ?? {
+        uniqueId: "org.awh.user-library",
+        name: "AWH Library",
+        vendor: "awh",
+        revision: 0,
+      }
+    );
   }
 
   async function saveMirrorConfig(store: LibraryStore, config: MirrorConfig): Promise<void> {
