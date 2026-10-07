@@ -82,7 +82,7 @@ def welch_psd(mono: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray] | None
         nfft=max(WELCH_NFFT, nperseg),
         scaling="density",
         # scipy documents False (no detrending); its stubs only allow str.
-        detrend=False,  # pyright: ignore[reportArgumentType]
+        detrend=False,  # pyright: ignore[reportArgumentType]  # groundwork-allow: documented value, stubs too narrow
     )
     return freqs, psd
 

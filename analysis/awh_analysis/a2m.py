@@ -65,7 +65,7 @@ def transcribe(
     """
     try:
         # basic-pitch is installed by hand (see README), not by any extra.
-        from basic_pitch.inference import predict  # pyright: ignore[reportMissingImports]
+        from basic_pitch.inference import predict  # pyright: ignore[reportMissingImports]  # groundwork-allow: basic-pitch is installed by hand (README)
     except ImportError as exc:  # pragma: no cover - environment problem, not logic
         raise RuntimeError(
             "basic-pitch is not installed in this environment. See "

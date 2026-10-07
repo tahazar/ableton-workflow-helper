@@ -171,7 +171,7 @@ def onset_and_subband(mono: np.ndarray, sr: int) -> tuple[np.ndarray, np.ndarray
         nperseg=nperseg,
         noverlap=nperseg - hop,
         # scipy documents None (no edge padding); its stubs only allow str.
-        boundary=None,  # pyright: ignore[reportArgumentType]
+        boundary=None,  # pyright: ignore[reportArgumentType]  # groundwork-allow: documented value, stubs too narrow
         padded=False,
     )
     mag = np.abs(zxx)

@@ -172,7 +172,7 @@ class _RealEmbedder:
         try:
             # Intentionally lazy (see module docstring). The `clap` extra is
             # absent in CI, where AWH_CLAP_STUB=1 never reaches this import.
-            import laion_clap  # noqa: PLC0415  # pyright: ignore[reportMissingImports]
+            import laion_clap  # noqa: PLC0415  # pyright: ignore[reportMissingImports]  # groundwork-allow: optional clap extra
         except ImportError as exc:
             raise RuntimeError(
                 "laion_clap is not installed in this environment. Install the "
