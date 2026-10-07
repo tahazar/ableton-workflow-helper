@@ -20,7 +20,8 @@ jobs:
         run: python3 .groundwork/bin/check_ac_coverage.py --changed-since "origin/${{ github.base_ref }}"
       - name: Check citations in changed research files
         run: |
-          files=$(git diff --name-only --diff-filter=AM "origin/${{ github.base_ref }}"... -- '**/research.md')
-          [ -n "$files" ] || exit 0
-          mapfile -t paths <<<"$files"
+          # -z keeps git from quoting paths with unusual characters.
+          git diff -z --name-only --diff-filter=AM "origin/${{ github.base_ref }}"... -- '**/research.md' >"$RUNNER_TEMP/research-files"
+          mapfile -d '' -t paths <"$RUNNER_TEMP/research-files"
+          [ "${#paths[@]}" -gt 0 ] || exit 0
           python3 .groundwork/bin/check_citations.py --require "${paths[@]}"

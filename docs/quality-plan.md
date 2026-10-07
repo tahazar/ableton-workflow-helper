@@ -35,9 +35,9 @@ commit that finishes an item.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
 - **Done:** Phase 0 items 1 to 4, L1 to L12, L16, G8.
-- **Next:** L6b, then Phase 1. L14, L15 and Phase 7 were added on 2026-10-06 from a review of
-  agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07 from a review
-  of sdras/awesome-actions.
+- **Next:** L6b, then Phase 1. L14, L15 and Phase 7 were added on
+  2026-10-06 from a review of agent-guardrail suggestions; L16, G9 and
+  G10 on 2026-10-07 from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
   commit, review the commit in a fresh context (below), fix blocking
   findings in a follow-up commit, update this section, push.
@@ -360,7 +360,8 @@ L16. `ci: Lint workflow files with actionlint`
      if the runner has no shellcheck, since actionlint would skip that
      rule without saying so. One finding, fixed: `groundwork.yml` passed
      the changed `research.md` paths unquoted, so a path with a space
-     split in two; they are now read into an array. The job keeps its
+     split in two; they are now read NUL-separated into an array, which
+     also keeps git from quoting non-ASCII paths. The job keeps its
      name, which the required check matches.
 
 ## Track S: security and supply chain
