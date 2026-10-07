@@ -362,6 +362,13 @@ describe("response recipes — determinism + property tests", () => {
       applyResponseRecipe("echo-loud", callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1)),
     ).toThrowError(/unknown response recipe/);
   });
+
+  it("recipe registry rejects a name inherited from Object.prototype", () => {
+    expect(() =>
+      // @ts-expect-error deliberately invalid recipe name
+      applyResponseRecipe("constructor", callNotes, C_MINOR, BASS_MUSIC_CR_SPEC, makeRng(1)),
+    ).toThrowError(/unknown response recipe/);
+  });
 });
 
 describe("generateResponses (drop respond)", () => {
