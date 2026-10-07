@@ -24,8 +24,8 @@ import { startFakeGateway } from "./helpers.js";
  * integration against a fake UDP device (records the message sequence,
  * replies pong v2 + status/error), a negative control (no listener -> clear
  * error, fast, no hang), and `lib audition` end-to-end against a real fake
- * gateway (serve-fake style) and a fake UDP device together, as in
- * duck.test.ts/op.test.ts. docs/design/live-remote.md is the spec.
+ * gateway (helpers.ts's `startFakeGateway`) and a fake UDP device
+ * together. docs/design/live-remote.md is the spec.
  */
 
 // ---------------------------------------------------------------------------

@@ -14,7 +14,7 @@ import {
 import {
   hasBuiltCli,
   makeTestLibrary,
-  runCli as spawnCli,
+  runCli,
   startFakeGateway,
   writeWavMono16,
 } from "./helpers.js";
@@ -150,8 +150,8 @@ function sineSamples(freq: number, sr: number, durS: number, amp = 0.3): number[
 }
 
 // Every advise run goes through the analysis engine, so pin its Python.
-function runCli(args: string[], env: Record<string, string>) {
-  return spawnCli(args, { AWH_PYTHON: analysisPythonPath(), ...env });
+function runAdviseCli(args: string[], env: Record<string, string>) {
+  return runCli(args, { AWH_PYTHON: analysisPythonPath(), ...env });
 }
 
 describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
@@ -159,7 +159,7 @@ describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
   () => {
     it("requires exactly one of <captureFile> or --record", async () => {
       const { dir, libraryRoot } = await makeTestLibrary("advise", { linkAnalysis: true });
-      const result = await runCli(["mix", "advise"], { AWH_LIBRARY: libraryRoot });
+      const result = await runAdviseCli(["mix", "advise"], { AWH_LIBRARY: libraryRoot });
       expect(result.status).not.toBe(0);
       expect(result.stderr).toMatch(/exactly one of <captureFile> or --record/);
       await rm(dir, { recursive: true, force: true });
@@ -170,7 +170,7 @@ describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
       const wav = join(dir, "capture.wav");
       writeWavMono16(wav, sineSamples(300, 44100, 2.0), 44100);
 
-      const jsonResult = await runCli(["--json", "mix", "advise", wav], {
+      const jsonResult = await runAdviseCli(["--json", "mix", "advise", wav], {
         AWH_LIBRARY: libraryRoot,
       });
       expect(jsonResult.status).toBe(0);
@@ -185,7 +185,7 @@ describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
       expect(byId["missing-target"]).toMatchObject({ kind: "placeholder", stage: "tonal" });
       expect(byId["missing-layers"]).toMatchObject({ kind: "placeholder", stage: "masking" });
 
-      const prettyResult = await runCli(["mix", "advise", wav], { AWH_LIBRARY: libraryRoot });
+      const prettyResult = await runAdviseCli(["mix", "advise", wav], { AWH_LIBRARY: libraryRoot });
       expect(prettyResult.status).toBe(0);
       expect(prettyResult.stdout).toMatch(/missing-target/);
       expect(prettyResult.stdout).toMatch(/no measured target/);
@@ -256,7 +256,7 @@ describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
         }),
       );
 
-      const result = await runCli(
+      const result = await runAdviseCli(
         [
           "--json",
           "mix",
@@ -297,7 +297,7 @@ describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
       const wav = join(dir, "capture.wav");
       writeWavMono16(wav, sineSamples(300, 44100, 2.0), 44100);
 
-      const result = await runCli(
+      const result = await runAdviseCli(
         ["--json", "-p", String(port), "mix", "advise", wav, "--target", "tight", "--set"],
         { AWH_LIBRARY: libraryRoot },
       );
@@ -323,7 +323,7 @@ describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
         Math.max(-1, Math.min(1, s * 2)),
       );
       writeWavMono16(before, clipped, 44100);
-      const saveResult = await runCli(["mix", "advise", before, "--save", "before"], {
+      const saveResult = await runAdviseCli(["mix", "advise", before, "--save", "before"], {
         AWH_LIBRARY: libraryRoot,
       });
       expect(saveResult.status).toBe(0);
@@ -358,7 +358,7 @@ describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
       }
       writeFileSync(after, buffer);
 
-      const compareResult = await runCli(
+      const compareResult = await runAdviseCli(
         ["--json", "mix", "advise", after, "--compare", "before"],
         {
           AWH_LIBRARY: libraryRoot,

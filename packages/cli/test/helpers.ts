@@ -62,7 +62,8 @@ interface GatewayBody {
 
 /**
  * Starts a real gateway server backed by FakeLiveBridge on a free port,
- * stopped when the current test finishes. Call it inside a test.
+ * stopped when the current test finishes (after its `afterEach` hooks).
+ * Call it inside a test.
  */
 export async function startFakeGateway(): Promise<FakeGateway> {
   const server = createGatewayServer(new FakeLiveBridge(), { port: 0 });
