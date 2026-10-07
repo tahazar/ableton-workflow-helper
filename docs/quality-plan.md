@@ -487,6 +487,10 @@ G10. `ci: Label pull requests by size`
    the printed reason without it; analysis 182 passed, 7 deselected in CI
    (coverage 74.5%), 7 skipped with reason locally. The `hasBuiltCli`
    skips (no `pnpm build`) are a separate condition, left as they are.
+   Review nits not taken: `AWH_PYTHON=""` counts as set, mirroring
+   `src/analysis-python.ts`'s `??`, so the integ tests fail rather than
+   skip; and an exported `AWH_PYTHON` now wins over the repo venv in
+   these tests, as the plan asks.
 6. `test: Extract shared CLI test helpers`
    `runCli`, `startFakeGateway`, `makeTestLibrary`, and `writeWavMono16`
    are copied across 4 to 7 test files. Move them to
