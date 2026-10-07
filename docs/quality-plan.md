@@ -35,11 +35,10 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, L1 to L12, L6b, G8.
-- **Next:** L16 (actionlint, in PR #19), then Phase 1. L14, L15 and
-  Phase 7 were added on 2026-10-06 from a review of agent-guardrail
-  suggestions; L16, G9 and G10 on 2026-10-07 from a review of
-  sdras/awesome-actions.
+- **Done:** Phase 0 items 1 to 4, L1 to L12, L6b, L16, G8.
+- **Next:** Phase 1. L14, L15 and Phase 7 were added on 2026-10-06 from
+  a review of agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07
+  from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
   commit, review the commit in a fresh context (below), fix blocking
   findings in a follow-up commit, update this section, push.
@@ -368,6 +367,18 @@ L16. `ci: Lint workflow files with actionlint`
      the lint job on changes under `.github/workflows/`. Fix its findings
      in the same commit. Found on 2026-10-07 while reviewing
      sdras/awesome-actions; actionlint is not on that list.
+     Done as the last step of the lint job. actionlint is a binary, not an
+     action, so the step downloads release 1.7.12 and checks its SHA-256
+     from the release's checksums file instead of pinning a commit. It
+     runs on every pull request, not only on workflow changes: it takes
+     about a second, and a path filter would be one more condition that
+     could skip it. It runs shellcheck over each `run:` script and fails
+     if the runner has no shellcheck, since actionlint would skip that
+     rule without saying so. One finding, fixed: `groundwork.yml` passed
+     the changed `research.md` paths unquoted, so a path with a space
+     split in two; they are now read NUL-separated into an array, which
+     also keeps git from quoting non-ASCII paths. The job keeps its
+     name, which the required check matches.
 
 ## Track S: security and supply chain
 
