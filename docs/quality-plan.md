@@ -16,8 +16,13 @@ phases.
 Read this section first when starting a session. Update it in the same
 commit that finishes an item.
 
-- **Branch and PR:** work lands on `ableton-integration-brainstorm`, draft
-  PR #13. One commit per item, pushed after each.
+- **Branch and PR:** PR #13 (Phase 0, L1 to L10) merged to `main` on
+  2026-10-06 as merge commit `e9d8435`. Start new work on a branch from
+  the latest `main` and open a new pull request; one commit per item,
+  pushed after each. CI must be green before merging.
+- **Commits:** authored as the owner, with no AI attribution or
+  co-author trailers. Set `git config user.name`/`user.email` in a fresh
+  clone before the first commit.
 - **Done:** Phase 0 items 1 to 4, L1 to L10.
 - **Next:** L11 (Python typecheck), then L12 (CI lint job),
   L6b, G8, and Phase 1. L14, L15 and Phase 7 were added on 2026-10-06
@@ -29,10 +34,10 @@ commit that finishes an item.
   small, independent items (Phase 3 test files, Phase 6 coverage gaps)
   unattended. Not used for judgment-heavy items; its manifest is not kept
   in sync with this plan.
-- **Merging PR #13:** use a merge commit, not squash or rebase.
-  `.git-blame-ignore-revs` lists the formatting commits by hash, and a
-  squash or rebase gives them new hashes, so blame would stop skipping
-  them.
+- **Merging:** use a merge commit, not squash or rebase, for any PR that
+  adds a hash to `.git-blame-ignore-revs`; squash or rebase gives the
+  commit a new hash and blame stops skipping it. The hashes listed today
+  are the ones on `main`.
 - **Not verified:** the repository-settings half of Phase 0 item 3 (branch
   protection on `main`) and S1 cannot be checked from a session; ask the
   owner.
