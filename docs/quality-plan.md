@@ -24,8 +24,12 @@ commit that finishes an item.
 - **Commits:** authored as the owner, with no AI attribution or
   co-author trailers. Set `git config user.name`/`user.email` in a fresh
   clone before the first commit.
-- **Done:** Phase 0 items 1 to 4, L1 to L11.
-- **Next:** L12 (CI lint job), then L6b, G8, and Phase 1. L14, L15 and Phase 7 were added on 2026-10-06
+- **Pipeline:** new features go through the dev-groundwork plugin
+  (`CLAUDE.md`, `.groundwork/`). Quality-plan items keep the loop below;
+  they are small enough that the plan item is the spec.
+- **Done:** Phase 0 items 1 to 4, L1 to L11, G8.
+- **Next:** L12 (CI lint job), then L6b and Phase 1. L14, L15 and Phase 7
+  were added on 2026-10-06
   from a review of agent-guardrail suggestions.
 - **Loop:** one session per item: do the item, run the checks below,
   commit, review the commit in a fresh context (below), fix blocking
@@ -381,16 +385,11 @@ G7. LLM review (local half done)
     `anthropics/claude-code-action` (needs an API key as a repository
     secret, billed per run). Advisory only, never a required check.
 
-G8. `docs: Add CLAUDE.md with agent rules`
-    There is no CLAUDE.md; the ground rules above load only when a
-    session is told to read this plan. Move the durable rules there and
-    keep it short: the ground rules; fakes, not mocks (`serve-fake` and
-    the fake gateway; mock only process boundaries and environment
-    variables, which is true today); comments explain why, not what; a
-    fix never weakens an existing assertion; the pre-commit check list.
-    Point this plan's ground-rules section at it. For G7, the reviewer
-    gets the diff and these rules but not the task description, so it
-    judges the change rather than the intent.
+G8. `docs: Add CLAUDE.md with agent rules` (done)
+    `CLAUDE.md` holds the ground rules, fakes-not-mocks, the commit rules
+    and the pre-commit checks, and points at the dev-groundwork pipeline.
+    The ground rules above stay as the plan's record; when they change,
+    change `CLAUDE.md` too.
 
 ## Phase 1: make existing tests honest
 

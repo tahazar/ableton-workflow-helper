@@ -52,3 +52,6 @@ Thumbs.db
 
 # Orchestrator run reports (packages/orchestrator)
 .claude/orchestrator/
+
+# dev-groundwork hook state (test lock, last passing check)
+.groundwork/state/
