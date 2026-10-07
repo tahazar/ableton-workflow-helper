@@ -40,6 +40,18 @@ import {
  * logic (see player.js's header comment).
  */
 
+/** What the emitted player page exposes for the browser smoke test. */
+type EndlessWindow = Window & {
+  __endlessEngine?: {
+    getDebugState(): {
+      playing: boolean;
+      elapsedSeconds: number;
+      currentSection: unknown;
+      sectionHistory: unknown[];
+    };
+  };
+};
+
 function makeSpec(overrides: Record<string, unknown> = {}) {
   return {
     name: "t",
@@ -204,7 +216,7 @@ describe("player.js pickNextSection — maxConsecutive", () => {
 describe("player.js pickVariant — noRepeatVariant", () => {
   it("never returns an excluded (recently-picked) index when the pool is large enough", () => {
     const spec = makeSpec();
-    (spec.sections[0] as any).pools.drums = ["d0", "d1", "d2", "d3"];
+    spec.sections[0]!.pools.drums = ["d0", "d1", "d2", "d3"];
     spec.rules.noRepeatVariant = 2;
     let rngState = seedToRngState(7);
     for (let i = 0; i < 500; i++) {
@@ -223,7 +235,7 @@ describe("player.js pickVariant — noRepeatVariant", () => {
 
   it("falls back to the full pool when noRepeatVariant would exclude every candidate", () => {
     const spec = makeSpec();
-    (spec.sections[0] as any).pools.bass = ["only-one.wav"];
+    spec.sections[0]!.pools.bass = ["only-one.wav"];
     spec.rules.noRepeatVariant = 2;
     const state = {
       rngState: seedToRngState(2),
@@ -240,7 +252,7 @@ describe("player.js pickVariant — noRepeatVariant", () => {
 describe("player.js rollMutes — protectedLayers", () => {
   it("never mutes a protected layer, even at layerMuteProbability=0.99", () => {
     const spec = makeSpec();
-    (spec.sections[1] as any).layerMuteProbability = 0.99;
+    spec.sections[1]!.layerMuteProbability = 0.99;
     spec.rules.protectedLayers = ["bass"];
     let rngState = seedToRngState(11);
     for (let i = 0; i < 3000; i++) {
@@ -259,7 +271,7 @@ describe("player.js rollMutes — protectedLayers", () => {
 
   it("NEGATIVE CONTROL: an unprotected layer at probability 1 IS muted (the roller isn't a no-op)", () => {
     const spec = makeSpec();
-    (spec.sections[1] as any).layerMuteProbability = 1;
+    spec.sections[1]!.layerMuteProbability = 1;
     spec.rules.protectedLayers = ["bass"];
     const state = {
       rngState: seedToRngState(4),
@@ -289,7 +301,7 @@ describe("player.js fluctuation walk — bounded", () => {
 
   it("stepFluctuation keeps every layer's gain within +-gainWalkDb and filterHz within its declared range", () => {
     const spec = makeSpec({ fluctuation: { gainWalkDb: 2 } });
-    let state = createInitialState(spec as any, 77);
+    let state = createInitialState(spec, 77);
     for (let i = 0; i < 5000; i++) {
       const { fluctuation, state: rngState } = stepFluctuation(spec, state, 0.1);
       state = { ...state, fluctuation, rngState };
@@ -306,7 +318,7 @@ describe("player.js determinism", () => {
   it("same seed -> byte-identical decision sequence", () => {
     const spec = makeSpec();
     function run() {
-      let state = createInitialState(spec as any, 12345);
+      let state = createInitialState(spec, 12345);
       const trace: unknown[] = [];
       for (let i = 0; i < 60; i++) {
         const { state: next, decision } = advanceToNextSection(spec, state);
@@ -324,7 +336,7 @@ describe("player.js determinism", () => {
   it("different seeds diverge (sanity: it's not silently constant)", () => {
     const spec = makeSpec();
     function run(seed: number) {
-      let state = createInitialState(spec as any, seed);
+      let state = createInitialState(spec, seed);
       const trace: string[] = [];
       for (let i = 0; i < 30; i++) {
         const { state: next, decision } = advanceToNextSection(spec, state);
@@ -707,20 +719,24 @@ describe("browser smoke (Playwright, stretch goal)", () => {
       await page.goto(`http://127.0.0.1:${port}/`);
       await page.click("#endless-play");
       await page.waitForFunction(
-        () => (window as any).__endlessEngine?.getDebugState().playing === true,
+        () => (window as EndlessWindow).__endlessEngine?.getDebugState().playing === true,
         {
           timeout: 10000,
         },
       );
-      const state1 = await page.evaluate(() => (window as any).__endlessEngine.getDebugState());
+      const state1 = await page.evaluate(() =>
+        (window as EndlessWindow).__endlessEngine!.getDebugState(),
+      );
       await page.waitForTimeout(3000);
-      const state2 = await page.evaluate(() => (window as any).__endlessEngine.getDebugState());
+      const state2 = await page.evaluate(() =>
+        (window as EndlessWindow).__endlessEngine!.getDebugState(),
+      );
       expect(state2.elapsedSeconds).toBeGreaterThan(state1.elapsedSeconds);
       expect(state2.currentSection).toBeTruthy();
       expect(Array.isArray(state2.sectionHistory)).toBe(true);
       expect(state2.sectionHistory.length).toBeGreaterThanOrEqual(state1.sectionHistory.length);
     } finally {
-      await browser?.close();
+      await browser.close();
       server.close();
     }
   }, 30000);

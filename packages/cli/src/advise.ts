@@ -40,9 +40,10 @@ export async function readMasterChainDevices(caller: OpCaller): Promise<MasterDe
   const out: MasterDevice[] = [];
   for (let i = 0; i < MASTER_CHAIN_PROBE_CAP; i++) {
     const path = `main/dev:${i}`;
-    let detail: { name?: string } | undefined;
+    // The reply is untyped JSON from the gateway, so null is possible.
+    let detail: { name?: string } | null;
     try {
-      detail = (await caller("device.get", { path })) as { name?: string };
+      detail = (await caller("device.get", { path })) as { name?: string } | null;
     } catch {
       break;
     }

@@ -19,6 +19,9 @@ only when the change fits in one sentence. Project rules for design review:
 
 - One logical change per commit, conventional-commit subject. Commits are
   authored as the owner, with no AI attribution or co-author trailers.
+- Pull request descriptions, comments and reviews carry no AI attribution,
+  session links or "Generated with" footers either. The repository is
+  public, and GitHub keeps every edit of a description visible.
 - A bug fix comes with a test that fails before the fix. A fix never
   loosens an existing assertion unless the commit says why it was wrong.
 - Tests use fakes, not mocks: `awh serve-fake` and `fakeLiveBridge` for

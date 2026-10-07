@@ -75,7 +75,7 @@ export function parseKnowledgeEntry(markdown: string): KnowledgeEntry {
   const entry: KnowledgeEntry = {
     slug: String(front.slug ?? ""),
     topic: String(front.topic ?? ""),
-    tier: (front.tier as EntryTier) ?? "draft",
+    tier: (front.tier as EntryTier | undefined) ?? "draft",
     tags: Array.isArray(front.tags) ? front.tags.map(String) : [],
     sources: Array.isArray(front.sources) ? front.sources.map(String) : [],
     related: Array.isArray(front.related) ? front.related.map(String) : [],

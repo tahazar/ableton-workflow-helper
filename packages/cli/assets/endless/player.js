@@ -291,7 +291,7 @@ function dbToLinear(db) {
  * never touches Math.random/crypto. */
 function resolveSeed(specSeed) {
   if (specSeed && specSeed !== 0) return specSeed;
-  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+  if (typeof crypto !== "undefined") {
     return crypto.getRandomValues(new Uint32Array(1))[0];
   }
   return Math.floor(Math.random() * 0xffffffff);
@@ -327,8 +327,7 @@ const HORIZON_S = 0.2; // schedule-ahead window
 // oxlint-disable-next-line max-lines-per-function
 export function createEngine(spec, options = {}) {
   const AudioContextCtor =
-    options.AudioContextCtor ??
-    (typeof window !== "undefined" ? window.AudioContext || window.webkitAudioContext : undefined);
+    options.AudioContextCtor ?? (typeof window !== "undefined" ? window.AudioContext : undefined);
   if (!AudioContextCtor)
     throw new Error("endless player: no AudioContext available in this environment");
 

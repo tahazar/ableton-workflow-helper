@@ -132,9 +132,11 @@ export async function loadSamplesIndex(path: string): Promise<SamplesIndexFile> 
   if (!existsSync(path)) return emptyIndex();
   const raw = await readFile(path, "utf8");
   try {
-    const parsed = JSON.parse(raw) as SamplesIndexFile;
-    if (!parsed || typeof parsed !== "object" || !parsed.files) return emptyIndex();
-    return { version: 1, roots: parsed.roots ?? [], files: parsed.files };
+    const parsed: unknown = JSON.parse(raw);
+    if (typeof parsed !== "object" || parsed === null) return emptyIndex();
+    const { roots, files } = parsed as Partial<SamplesIndexFile>;
+    if (!files) return emptyIndex();
+    return { version: 1, roots: roots ?? [], files };
   } catch {
     throw new Error(
       `samples index at ${path} is not valid JSON — delete it and re-run \`awh samples index\``,

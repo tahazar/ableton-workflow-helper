@@ -98,7 +98,7 @@ export function parseClipEntry(markdown: string): ClipEntry {
 
   const entry: ClipEntry = {
     slug: String(front.slug ?? ""),
-    kind: (front.kind as "midi" | "audio") ?? "midi",
+    kind: (front.kind as "midi" | "audio" | undefined) ?? "midi",
     category: String(front.category ?? ""),
     tags: Array.isArray(front.tags) ? front.tags.map(String) : [],
     bpm: front.bpm == null ? null : Number(front.bpm),
@@ -106,7 +106,7 @@ export function parseClipEntry(markdown: string): ClipEntry {
     lengthBeats: Number(front.lengthBeats),
     ...(front.beatsPerBar != null ? { beatsPerBar: Number(front.beatsPerBar) } : {}),
     ...(front.source && typeof front.source === "object" ? { source: front.source } : {}),
-    tier: (front.tier as EntryTier) ?? "draft",
+    tier: (front.tier as EntryTier | undefined) ?? "draft",
     title: titleMatch?.[1]?.trim() ?? String(front.slug ?? "untitled"),
     ...(notationMatch ? { notation: notationMatch[1]!.trimEnd() } : {}),
     ...(prose ? { prose } : {}),

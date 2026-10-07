@@ -199,13 +199,14 @@ export function applyResponseRecipe(
   spec: PhraseSpec,
   rng: () => number,
 ): RecipeResult {
-  const recipe = RECIPES[name];
-  if (!recipe) {
+  // Exported from @awh/core, so an untyped caller can pass any string; hasOwn
+  // also keeps names like "constructor" from resolving to Object.prototype.
+  if (!Object.hasOwn(RECIPES, name)) {
     throw new Error(
       `unknown response recipe "${name}" (known: ${Object.keys(RECIPES).join(", ")})`,
     );
   }
-  return recipe(callNotes, scale, spec, rng);
+  return RECIPES[name](callNotes, scale, spec, rng);
 }
 
 /**

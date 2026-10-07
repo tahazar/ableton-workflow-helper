@@ -17,14 +17,16 @@ Read this section first when starting a session. Update it in the same
 commit that finishes an item.
 
 - **Branch and PR:** merged to `main`: PR #13 (Phase 0, L1 to L10) on
-  2026-10-06; PR #16 (dev-groundwork setup, G8) and PR #15 (L11) on
-  2026-10-07. Nothing is open. Start new work on a branch from the latest
+  2026-10-06; PR #16 (dev-groundwork setup, G8), PR #15 (L11), PR #17
+  (L16, G9 and G10 added to this plan), PR #18 (L12) and PR #19 (L16) on
+  2026-10-07. Open: PR #20 (L6b), on branch `quality-l6b`. Start new work on a branch from the latest
   `main` and open a new pull request; one commit per item, pushed after
   each. CI must be green before merging. Check for open PRs on a branch
   before pushing to it; another session may be using it.
 - **Commits:** authored as the owner, with no AI attribution or
   co-author trailers. Set `git config user.name`/`user.email` in a fresh
-  clone before the first commit.
+  clone before the first commit. Pull request descriptions, comments and
+  reviews carry no AI attribution or session links either.
 - **Pipeline:** new features go through the dev-groundwork plugin
   (`CLAUDE.md`, `.groundwork/`). Quality-plan items keep the loop below;
   they are small enough that the plan item is the spec. Install it once
@@ -34,10 +36,10 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, L1 to L12, L16, G8.
-- **Next:** L6b, then Phase 1. L14, L15 and Phase 7 were added on
-  2026-10-06 from a review of agent-guardrail suggestions; L16, G9 and
-  G10 on 2026-10-07 from a review of sdras/awesome-actions.
+- **Done:** Phase 0 items 1 to 4, L1 to L12, L6b, L16, G8.
+- **Next:** Phase 1. L14, L15 and Phase 7 were added on 2026-10-06 from
+  a review of agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07
+  from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
   commit, review the commit in a fresh context (below), fix blocking
   findings in a follow-up commit, update this section, push.
@@ -239,7 +241,7 @@ L6. `build: Warn on long functions` (done)
     `pedantic` and `perf` stays off. Most `no-await-in-loop` hits are
     intentional sequential gateway calls into Live, which must stay
     ordered.
-L6b. `build: Ban any, ts-comments, TODOs, and unnecessary conditions`
+L6b. `build: Ban any, ts-comments, TODOs, and unnecessary conditions` (done)
      Turn agent-prompt bans into lint rules, which bind where prose does
      not. Measured on 2026-10-06: `typescript/no-explicit-any` 10 (all in
      `cli/test/endless.test.ts`; type them), `typescript/ban-ts-comment` 0
@@ -249,6 +251,21 @@ L6b. `build: Ban any, ts-comments, TODOs, and unnecessary conditions`
      a condition the types already decide is a defensive check that hides
      intent). `no-magic-numbers` (3,741) stays off: velocities, PPQ and
      beat counts are the domain, not magic.
+     Counts matched on 2026-10-07. Four commits. Most of the 11 flagged
+     conditions guarded values from outside the program (JSON, YAML
+     frontmatter, gateway replies) whose casts dropped `null` or
+     `undefined`, so the casts now say so and the checks stay; the samples
+     index is parsed as `unknown` and narrowed. `applyResponseRecipe` is
+     exported from `@awh/core`, so its unknown-name check stays, now as
+     `Object.hasOwn`: the old lookup let `"constructor"` resolve to
+     `Object.prototype.constructor` (a fix with a test). In `player.js` the
+     `webkitAudioContext` fallback (Safari before 14.1, 2021) and the
+     `crypto.getRandomValues` existence check went. The test file's `any`
+     casts were not needed (the spec literal already types them) except
+     the browser hook, now typed as `EndlessWindow`. Review nits not
+     taken, both Phase 2 material: `loadSamplesIndex` rethrows bad JSON
+     without `cause`, and `readMasterChainDevices` ends the walk on any
+     error, not only "not found".
 L7. `build: Add oxfmt pinned to 0.72.0` (done)
     `.oxfmtrc.json`, `pnpm fmt` and `pnpm fmt:check`, over `packages` and
     `scripts` (the same paths as lint). Exact version pin, because a
