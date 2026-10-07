@@ -13,6 +13,60 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  lint:
+    name: Lint (oxlint, oxfmt, ruff, pyright)
+    runs-on: ubuntu-24.04
+    steps:
+      - id: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          version: 10.28.0
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - id: install
+        run: pnpm install --frozen-lockfile
+      # Type-aware lint resolves @awh/core through its built .d.ts files, so
+      # it must run after the build.
+      - id: build
+        run: pnpm build
+      # The Python setup runs even when the Node build failed, so the Python
+      # checks below still report.
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: analysis/pyproject.toml
+      # Pyright resolves numpy, scipy and librosa types from the installed
+      # packages, so the venv needs the full install, not just the tools.
+      - name: Build analysis venv
+        id: venv
+        if: ${{ !cancelled() && steps.checkout.outcome == 'success' }}
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -e 'analysis[dev]'
+      # Each check runs when its own setup succeeded, so one run reports
+      # every lint failure instead of stopping at the first.
+      - run: pnpm lint
+        if: ${{ !cancelled() && steps.build.outcome == 'success' }}
+      - run: pnpm fmt:check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+      - name: Lint with ruff
+        if: ${{ !cancelled() && steps.venv.outcome == 'success' }}
+        working-directory: analysis
+        run: ../.venv/bin/ruff check .
+      - name: Check formatting with ruff
+        if: ${{ !cancelled() && steps.venv.outcome == 'success' }}
+        working-directory: analysis
+        run: ../.venv/bin/ruff format --check .
+      - name: Typecheck with pyright
+        if: ${{ !cancelled() && steps.venv.outcome == 'success' }}
+        working-directory: analysis
+        run: ../.venv/bin/pyright
+
   node:
     name: Node (build, typecheck, coverage)
     runs-on: ubuntu-24.04
@@ -41,9 +95,6 @@ jobs:
           .venv/bin/pip install -e 'analysis[dev]'
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      # Type-aware lint resolves @awh/core through its built .d.ts files, so
-      # it must run after the build.
-      - run: pnpm lint
       # The extension is typechecked against types/ableton-sdk-shim.d.ts but
       # not bundled: the Ableton SDK is not redistributable.
       - run: pnpm typecheck
@@ -67,19 +118,6 @@ jobs:
         run: |
           python -m venv .venv
           .venv/bin/pip install -e 'analysis[dev]'
-      # Ruff and pyright move to the lint job in quality plan L12.
-      - name: Lint with ruff
-        working-directory: analysis
-        run: ../.venv/bin/ruff check .
-      - name: Check formatting with ruff
-        if: ${{ !cancelled() }}
-        working-directory: analysis
-        run: ../.venv/bin/ruff format --check .
-      - name: Typecheck with pyright
-        if: ${{ !cancelled() }}
-        working-directory: analysis
-        run: ../.venv/bin/pyright
       - name: Test with coverage
-        if: ${{ !cancelled() }}
         working-directory: analysis
         run: ../.venv/bin/pytest -q --cov
