@@ -1,8 +1,8 @@
 """Melodic audio-to-MIDI transcription (Basic Pitch, ONNX backend).
 
-Requires the `a2m` extra (see analysis/README.md). Skipped entirely if
-basic-pitch isn't installed, so the rest of the suite stays green on a venv
-that only has the base measurement dependencies.
+Requires the `a2m` extra and basic-pitch (see analysis/README.md), so the
+module is marked `integ`: CI deselects it, and a local run without
+basic-pitch skips each test with the reason.
 """
 
 from __future__ import annotations
@@ -15,13 +15,22 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-pytest.importorskip("basic_pitch")
-
 from awh_analysis import a2m
 from conftest import white_noise, write_wav
 
+pytestmark = pytest.mark.integ
+
 SR = 22050
 ANALYSIS_ROOT = Path(__file__).resolve().parents[1]
+
+
+# A fixture, not a module-level importorskip: a module skipped at import is
+# reported as skipped before `-m "not integ"` can deselect it.
+@pytest.fixture(autouse=True)
+def _require_basic_pitch() -> None:
+    pytest.importorskip(
+        "basic_pitch", reason="basic-pitch is not installed; see analysis/README.md"
+    )
 
 
 def sine(freq: float, duration_s: float, sr: int = SR, amp: float = 0.5) -> np.ndarray:

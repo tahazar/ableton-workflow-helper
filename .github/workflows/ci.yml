@@ -145,4 +145,6 @@ jobs:
           .venv/bin/pip install -e 'analysis[dev]'
       - name: Test with coverage
         working-directory: analysis
-        run: ../.venv/bin/pytest -q --cov
+        # `integ` tests need basic-pitch, which the dev extra does not
+        # install; deselected here by name rather than skipped.
+        run: ../.venv/bin/pytest -q --cov -m "not integ"

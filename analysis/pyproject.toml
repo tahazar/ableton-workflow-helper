@@ -66,6 +66,12 @@ include = ["awh_analysis*"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# -rs prints each skip's reason. `integ` marks tests that need an optional
+# model package; CI deselects them with `-m "not integ"`.
+addopts = "--strict-markers -rs"
+markers = [
+    "integ: needs an optional model package not installed by the dev extra",
+]
 
 [tool.ruff]
 line-length = 100
