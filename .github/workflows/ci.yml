@@ -80,5 +80,6 @@ jobs:
         working-directory: analysis
         run: ../.venv/bin/pyright
       - name: Test with coverage
+        if: ${{ !cancelled() }}
         working-directory: analysis
         run: ../.venv/bin/pytest -q --cov

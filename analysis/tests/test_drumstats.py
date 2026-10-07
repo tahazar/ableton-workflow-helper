@@ -21,12 +21,11 @@ def _burst(
     n: int, sr: int, t0: float, freq: float, amp: float, tau: float, seed: int | None = None
 ) -> tuple[int, np.ndarray]:
     """A short exponentially-decaying burst: a sine (kick-like) if seed is
-    None, otherwise filtered noise (click-like, for the hat proxy). A burst
-    starting past the end of the signal is empty."""
+    None, otherwise filtered noise (click-like, for the hat proxy)."""
     start = int(round(t0 * sr))
     length = min(n - start, int(0.08 * sr))
-    if length <= 0:
-        return start, np.zeros(0)
+    if start < 0 or length <= 0:
+        raise ValueError(f"burst at {t0} s does not fit in {n} samples")
     tt = np.arange(length) / sr
     env = np.exp(-tt / tau)
     if seed is None:

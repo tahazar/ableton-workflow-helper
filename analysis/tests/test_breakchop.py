@@ -65,8 +65,8 @@ def _burst(
     frequency (a tone if seed is None, filtered noise for the hat proxy)."""
     start = int(round(t0 * sr))
     length = min(n - start, int(8 * tau * sr))
-    if length <= 0:
-        raise ValueError(f"burst at {t0} s starts past the end of the signal")
+    if start < 0 or length <= 0:
+        raise ValueError(f"burst at {t0} s with tau {tau} s does not fit in {n} samples")
     tt = np.arange(length) / sr
     env = np.exp(-tt / tau).copy()
     a_samp = max(1, int(round(attack_s * sr)))
