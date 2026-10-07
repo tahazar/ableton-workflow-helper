@@ -77,7 +77,7 @@ def to_mono(x: np.ndarray) -> np.ndarray:
     return x.mean(axis=1)
 
 
-def sanitize_json(obj):
+def sanitize_json(obj: object) -> object:
     """Replace non-finite floats (inf/-inf/nan) with None recursively.
 
     Python's json module writes Infinity/-Infinity/NaN with allow_nan=True,

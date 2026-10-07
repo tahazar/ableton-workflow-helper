@@ -19,13 +19,13 @@ def _step_dur_s(bpm: float = BPM, grid: int = GRID) -> float:
 
 def _burst(
     n: int, sr: int, t0: float, freq: float, amp: float, tau: float, seed: int | None = None
-):
+) -> tuple[int, np.ndarray]:
     """A short exponentially-decaying burst: a sine (kick-like) if seed is
     None, otherwise filtered noise (click-like, for the hat proxy)."""
     start = int(round(t0 * sr))
     length = min(n - start, int(0.08 * sr))
-    if length <= 0:
-        return None, None
+    if start < 0 or length <= 0:
+        raise ValueError(f"burst at {t0} s does not fit in {n} samples")
     tt = np.arange(length) / sr
     env = np.exp(-tt / tau)
     if seed is None:
@@ -64,13 +64,11 @@ def _synthetic_loop(
         for s in kick_steps:
             t0 = LEAD_IN_S + bar * bar_dur + s * step_dur
             start, burst = _burst(n, SR, t0, 55.0, 0.9, 0.04)
-            if start is not None:
-                sig[start : start + len(burst)] += burst
+            sig[start : start + len(burst)] += burst
         for s in hat_steps:
             t0 = LEAD_IN_S + bar * bar_dur + s * step_dur
             start, burst = _burst(n, SR, t0, 9000.0, 0.5, 0.01, seed=int(t0 * 1e6) % 99991)
-            if start is not None:
-                sig[start : start + len(burst)] += burst
+            sig[start : start + len(burst)] += burst
     return sig
 
 
