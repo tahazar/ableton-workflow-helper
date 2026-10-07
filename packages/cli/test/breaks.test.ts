@@ -1,24 +1,16 @@
-import { afterEach, describe, expect, it } from "vitest";
-import { mkdtemp, mkdir, rm, symlink, writeFile } from "node:fs/promises";
-import { existsSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { describe, expect, it } from "vitest";
+import { mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
-import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 import { analysisPythonPath, hasAnalysisPython } from "./analysis-venv.js";
+import type { ClipDetail } from "@awh/core";
 import {
-  createGatewayServer,
-  FakeLiveBridge,
-  type ClipDetail,
-  type GatewayServer,
-} from "@awh/core";
-
-// `analysisPython()` (src/analysis-python.ts) derives its python `cwd` as
-// `dirname(AWH_LIBRARY)/analysis`. Same isolation approach as advise.test.ts:
-// symlink the real analysis/ dir alongside a scratch `library/` so `awh
-// breaks chop` can find the real awh_analysis package without touching the
-// repo's actual library/.
-const REPO_ANALYSIS_DIR = fileURLToPath(new URL("../../../analysis", import.meta.url));
+  hasBuiltCli,
+  makeTestLibrary,
+  runCli,
+  startFakeGateway,
+  writeWavMono16,
+} from "./helpers.js";
 
 /**
  * Break engine CLI-level tests (docs/design/break-engine.md's verification
@@ -31,60 +23,6 @@ const REPO_ANALYSIS_DIR = fileURLToPath(new URL("../../../analysis", import.meta
  * rendering the "chopmap" kind, a real end-to-end `awh breaks chop` run
  * against a synthetic break WAV, and the skill-flows gate.
  */
-
-const CLI_DIST = fileURLToPath(new URL("../dist/index.js", import.meta.url));
-const hasBuiltCli = existsSync(CLI_DIST);
-
-interface CliResult {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-}
-
-function runCli(args: string[], env: Record<string, string> = {}): Promise<CliResult> {
-  return new Promise((resolvePromise) => {
-    const child = spawn(process.execPath, [CLI_DIST, ...args], {
-      env: { ...process.env, ...env },
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d: Buffer) => (stdout += d.toString()));
-    child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
-    child.on("close", (status) => resolvePromise({ status, stdout, stderr }));
-  });
-}
-
-async function makeTestLibrary(): Promise<{ dir: string; libraryRoot: string }> {
-  const dir = await mkdtemp(join(tmpdir(), "awh-breaks-cli-"));
-  await symlink(REPO_ANALYSIS_DIR, join(dir, "analysis"), "dir");
-  const libraryRoot = join(dir, "library");
-  await mkdir(libraryRoot, { recursive: true });
-  return { dir, libraryRoot };
-}
-
-let server: GatewayServer | undefined;
-let port: number;
-afterEach(async () => {
-  await server?.stop();
-  server = undefined;
-});
-
-async function startFakeGateway(): Promise<{ base: string }> {
-  server = createGatewayServer(new FakeLiveBridge(), { port: 0 });
-  port = await server.start();
-  return { base: `http://127.0.0.1:${port}` };
-}
-
-async function opCall(base: string, name: string, args?: unknown): Promise<unknown> {
-  const res = await fetch(`${base}/api/ops/${name}`, {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: args === undefined ? undefined : JSON.stringify(args),
-  });
-  const body = (await res.json()) as { result?: unknown; error?: string; message?: string };
-  if (!res.ok) throw new Error(`${body.error ?? "gateway error"}: ${body.message ?? ""}`);
-  return body.result;
-}
 
 // A hand-built chop-map record that bypasses the Python analyzer, since the
 // pattern/fill engine has its own core-level tests and this file covers CLI
@@ -160,29 +98,6 @@ async function writeChopMapRecord(
 // exercises the real awh_analysis.breakchop subprocess end to end.
 // ---------------------------------------------------------------------------
 
-function writeWavMono16(path: string, samples: number[], sr: number): void {
-  const n = samples.length;
-  const buffer = Buffer.alloc(44 + n * 2);
-  buffer.write("RIFF", 0);
-  buffer.writeUInt32LE(36 + n * 2, 4);
-  buffer.write("WAVE", 8);
-  buffer.write("fmt ", 12);
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20);
-  buffer.writeUInt16LE(1, 22);
-  buffer.writeUInt32LE(sr, 24);
-  buffer.writeUInt32LE(sr * 2, 28);
-  buffer.writeUInt16LE(2, 32);
-  buffer.writeUInt16LE(16, 34);
-  buffer.write("data", 36);
-  buffer.writeUInt32LE(n * 2, 40);
-  for (let i = 0; i < n; i++) {
-    const s = Math.max(-1, Math.min(1, samples[i]!));
-    buffer.writeInt16LE(Math.round(s * 32767), 44 + i * 2);
-  }
-  writeFileSync(path, buffer);
-}
-
 function burst(sr: number, freq: number, amp: number, tau: number, noise: boolean): number[] {
   const length = Math.round(8 * tau * sr);
   const out = Array.from({ length }, () => 0);
@@ -231,7 +146,7 @@ describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
   "integ: awh breaks chop — real Python subprocess",
   () => {
     it("chops a synthetic break wav, saves a chopmap record, and `mix records` renders it", async () => {
-      const { dir, libraryRoot } = await makeTestLibrary();
+      const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
       try {
         const wav = join(dir, "break.wav");
         synthBreakWav(wav);
@@ -268,7 +183,7 @@ describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
     }, 30000);
 
     it("--export cuts slice WAVs with a README mapping table", async () => {
-      const { dir, libraryRoot } = await makeTestLibrary();
+      const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
       try {
         const wav = join(dir, "break.wav");
         synthBreakWav(wav);
@@ -289,8 +204,8 @@ describe.skipIf(!hasBuiltCli || !hasAnalysisPython)(
 
 describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () => {
   it("--map resolution + --dry-run: notes reference the chop map's own slices", async () => {
-    const { base } = await startFakeGateway();
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { port, caller } = await startFakeGateway();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
@@ -316,7 +231,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
       expect(result.stdout).toMatch(/dry run: chop map amen/);
       expect(result.stdout).toMatch(/1\|1 /); // bar|beat notation preview
 
-      const summary = (await opCall(base, "set.summary")) as {
+      const summary = (await caller("set.summary")) as {
         tracks: { arrangementClips: unknown[] }[];
       };
       expect(summary.tracks[0]!.arrangementClips).toEqual([]);
@@ -326,8 +241,8 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
   });
 
   it("writes a real clip end to end against a fake gateway", async () => {
-    const { base } = await startFakeGateway();
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { port, caller } = await startFakeGateway();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
@@ -349,7 +264,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
-      const detail = (await opCall(base, "clip.get", { path: "track:0/arr:0" })) as ClipDetail;
+      const detail = (await caller("clip.get", { path: "track:0/arr:0" })) as ClipDetail;
       expect(detail.kind).toBe("midi");
       expect(detail.notes!.length).toBeGreaterThan(0);
       // drum-rack (default) mode: every pitch is C1-up (36..) in slice order.
@@ -363,7 +278,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
   });
 
   it("--mode live-slices prints the loud count-mismatch warning naming the slice count", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
@@ -392,7 +307,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
   });
 
   it("--mode drum-rack refuses to address a chop map with more than 16 slices", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       const many = chopMapRecordJson();
       many.chopmap.n_slices = 17;
@@ -429,7 +344,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
   });
 
   it("negative control: an all-low-confidence chop map warns and restricts substitution", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       await writeChopMapRecord(libraryRoot, "shaky", { confidence: 0.2 });
       const result = await runCli(
@@ -458,7 +373,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
   });
 
   it("zero-slices map is a state, not an error", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       const empty = chopMapRecordJson();
       empty.chopmap.n_slices = 0;
@@ -490,7 +405,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
   });
 
   it("unknown style: a clear, non-zero-exit error naming the break-style-<name> convention", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
@@ -519,7 +434,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
   });
 
   it("style fallback from a temp knowledge entry — tier printed", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const knowledgeDir = join(dir, "knowledge", "rhythm");
@@ -576,7 +491,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks pattern — full CLI integration", () 
 
 describe.skipIf(!hasBuiltCli)("awh breaks fill — full CLI integration", () => {
   it("--dry-run shows N seeded candidates with their device lists", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
@@ -592,8 +507,8 @@ describe.skipIf(!hasBuiltCli)("awh breaks fill — full CLI integration", () => 
   });
 
   it("writes N candidates into consecutive session slots, named 'fill <devices> s<seed>'", async () => {
-    const { base } = await startFakeGateway();
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { port, caller } = await startFakeGateway();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       await writeChopMapRecord(libraryRoot, "amen");
       const result = await runCli(
@@ -615,7 +530,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks fill — full CLI integration", () => 
         { AWH_LIBRARY: libraryRoot },
       );
       expect(result.status, result.stderr).toBe(0);
-      const summary = (await opCall(base, "set.summary")) as {
+      const summary = (await caller("set.summary")) as {
         tracks: { path: string; sessionClips: { path: string; name?: string }[] }[];
       };
       const clips = summary.tracks[0]!.sessionClips;
@@ -629,7 +544,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks fill — full CLI integration", () => 
   });
 
   it("zero-slices map is a state, not an error", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       const empty = chopMapRecordJson();
       empty.chopmap.n_slices = 0;
@@ -651,8 +566,8 @@ describe.skipIf(!hasBuiltCli)("awh breaks fill — full CLI integration", () => 
 
 describe.skipIf(!hasBuiltCli)("awh breaks place — full CLI integration", () => {
   it("resolves a break-pattern-<name> entry's awh-notation block, no rack -> GM fallback", async () => {
-    const { base } = await startFakeGateway();
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { port, caller } = await startFakeGateway();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       const knowledgeDir = join(dir, "knowledge", "rhythm");
       await mkdir(knowledgeDir, { recursive: true });
@@ -690,7 +605,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks place — full CLI integration", () =>
       expect(result.stdout).toMatch(/placed cli-test \[sourced\]/);
       expect(result.stdout).toMatch(/no drum rack on track:0/);
 
-      const detail = (await opCall(base, "clip.get", { path: "track:0/arr:0" })) as ClipDetail;
+      const detail = (await caller("clip.get", { path: "track:0/arr:0" })) as ClipDetail;
       expect(detail.kind).toBe("midi");
       expect(detail.notes!.length).toBe(2);
       // GM fallback: C1 (36, kick) and D1 (38, snare) pass through unchanged.
@@ -701,7 +616,7 @@ describe.skipIf(!hasBuiltCli)("awh breaks place — full CLI integration", () =>
   });
 
   it("missing entry: a helpful error naming the break-pattern-<name> slug convention", async () => {
-    const { dir, libraryRoot } = await makeTestLibrary();
+    const { dir, libraryRoot } = await makeTestLibrary("breaks", { linkAnalysis: true });
     try {
       const result = await runCli(
         ["breaks", "place", "does-not-exist", "track:0", "--at-bar", "1"],

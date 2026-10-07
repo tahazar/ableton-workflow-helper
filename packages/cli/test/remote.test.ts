@@ -3,15 +3,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  createGatewayServer,
-  FakeLiveBridge,
-  LibraryStore,
-  type ClipEntry,
-  type GatewayServer,
-} from "@awh/core";
+import { LibraryStore, type ClipEntry } from "@awh/core";
 import { decodeOscMessage, encodeOscMessage, oscFloat } from "../src/osc.js";
-import type { OpCaller } from "../src/op.js";
 import {
   auditionEnd,
   auditionSlug,
@@ -24,6 +17,7 @@ import {
   remoteStop,
   remoteStopClips,
 } from "../src/remote.js";
+import { startFakeGateway } from "./helpers.js";
 
 /**
  * AWH Remote (m4l/) verification: OSC byte checks for the replying messages,
@@ -298,36 +292,6 @@ describe("parseLaunchTarget", () => {
 // fake UDP AWH Remote device running together.
 // ---------------------------------------------------------------------------
 
-interface GatewayBody {
-  result?: unknown;
-  error?: string;
-  message?: string;
-}
-
-let server: GatewayServer | undefined;
-afterEach(async () => {
-  await server?.stop();
-  server = undefined;
-});
-
-async function startFakeGateway(): Promise<OpCaller> {
-  server = createGatewayServer(new FakeLiveBridge(), { port: 0 });
-  const port = await server.start();
-  const base = `http://127.0.0.1:${port}`;
-  return async (name, args) => {
-    const res = await fetch(`${base}/api/ops/${name}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: args === undefined ? undefined : JSON.stringify(args),
-    });
-    const body = (await res.json()) as GatewayBody;
-    if (!res.ok) {
-      throw new Error(`${body.error ?? "gateway error"}${body.message ? `: ${body.message}` : ""}`);
-    }
-    return body.result;
-  };
-}
-
 const KICK_SOURCE = {
   slug: "kick-verified",
   notation: "1|1 C1 1/4 v100",
@@ -337,7 +301,7 @@ const KICK_SOURCE = {
 
 describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP device)", () => {
   it("places into an empty slot on track:0 and fires it", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const port = 39850;
     const replyPort = 39851;
     const fake = fakeRemote(port, replyPort);
@@ -376,7 +340,7 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
   });
 
   it("--keep: nextPending is undefined (nothing to auto-sweep)", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const port = 39852;
     const replyPort = 39853;
     const fake = fakeRemote(port, replyPort);
@@ -393,7 +357,7 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
   });
 
   it("auditioning the next slug sweeps the previous one by its EXACT name", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const port = 39854;
     const replyPort = 39855;
     const fake = fakeRemote(port, replyPort);
@@ -436,7 +400,7 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
   });
 
   it("--end sweeps the pending audition and reports what was swept", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const port = 39856;
     const replyPort = 39857;
     const fake = fakeRemote(port, replyPort);
@@ -454,13 +418,13 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
   });
 
   it("--end with nothing pending is a STATE, not an error (undefined, no gateway calls)", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const swept = await auditionEnd({ caller, pending: undefined });
     expect(swept).toBeUndefined();
   });
 
   it("ZERO-EMPTY-SLOTS: throws a clear error instead of silently overwriting", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const port = 39858;
     const replyPort = 39859;
     const fake = fakeRemote(port, replyPort);
@@ -491,14 +455,14 @@ describe("auditionSlug/auditionEnd — end-to-end (fake gateway + fake UDP devic
   });
 
   it("rejects a non-track target (session-clip fire needs a plain track path)", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     await expect(
       auditionSlug({ caller, source: KICK_SOURCE, trackPath: "return:0" }),
     ).rejects.toThrow(/plain track path/i);
   });
 
   it("placed but not fired: no listener -> clear error, clip stays placed (not lost)", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const result = await auditionSlug({
       caller,
       source: KICK_SOURCE,

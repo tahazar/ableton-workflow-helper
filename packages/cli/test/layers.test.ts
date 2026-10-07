@@ -1,52 +1,18 @@
-import { afterEach, describe, expect, it } from "vitest";
-import {
-  createGatewayServer,
-  FakeLiveBridge,
-  type GatewayServer,
-  type SetSummary,
-} from "@awh/core";
+import { describe, expect, it } from "vitest";
+import type { SetSummary } from "@awh/core";
 import type { OpCaller } from "../src/op.js";
 import { layerFileName, runLayers, type LayerCaptureFn } from "../src/layers.js";
+import { startFakeGateway } from "./helpers.js";
 
 /**
  * `awh mix layers` state-restoration tests: against a real gateway server
- * backed by FakeLiveBridge (same pattern as op.test.ts/test/server.test.ts).
+ * backed by FakeLiveBridge (helpers.ts's `startFakeGateway`).
  * The property under test is that no track is left soloed by mistake
  * (docs/design/analysis-engine.md). It is checked twice: on the happy path,
  * and as a negative control where an injected capture failure aborts the
  * run mid-track. The solo state must come back exactly as it was found
  * either way (docs/lessons-learned.md rule 2).
  */
-
-let server: GatewayServer | undefined;
-afterEach(async () => {
-  await server?.stop();
-  server = undefined;
-});
-
-interface GatewayBody {
-  result?: unknown;
-  error?: string;
-  message?: string;
-}
-
-async function startFakeGateway(): Promise<OpCaller> {
-  server = createGatewayServer(new FakeLiveBridge(), { port: 0 });
-  const port = await server.start();
-  const base = `http://127.0.0.1:${port}`;
-  return async (name, args) => {
-    const res = await fetch(`${base}/api/ops/${name}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: args === undefined ? undefined : JSON.stringify(args),
-    });
-    const body = (await res.json()) as GatewayBody;
-    if (!res.ok) {
-      throw new Error(`${body.error ?? "gateway error"}${body.message ? `: ${body.message}` : ""}`);
-    }
-    return body.result;
-  };
-}
 
 async function soloMap(caller: OpCaller): Promise<Map<string, boolean>> {
   const summary = (await caller("set.summary")) as SetSummary;
@@ -66,7 +32,7 @@ describe("layerFileName", () => {
 
 describe("runLayers — happy path", () => {
   it("solos ONLY the target track during each capture, then restores every track's prior solo state", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     // Pre-existing state the run must come back to: track:1 already soloed
     // before `awh mix layers` runs, the case the "restore exact prior state"
     // requirement exists for.
@@ -109,7 +75,7 @@ describe("runLayers — happy path", () => {
   });
 
   it("zero tracks is valid input: no gateway calls, empty result", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     let calls = 0;
     const countingCaller: OpCaller = async (name, args) => {
       calls++;
@@ -124,7 +90,7 @@ describe("runLayers — happy path", () => {
   });
 
   it("throws a clear error for an unknown track path and touches no solo state", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const before = await soloMap(caller);
     const capture: LayerCaptureFn = async () => 1.0;
     await expect(runLayers(caller, ["track:99"], "/tmp/x", capture, FAST)).rejects.toThrow(
@@ -136,7 +102,7 @@ describe("runLayers — happy path", () => {
 
 describe("runLayers — negative control: a mid-run capture failure must still restore solo state", () => {
   it("restores ALL tracks' solo state (including the failing track's own) when capture() throws", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     await caller("track.update", { path: "track:3", soloed: true }); // unrelated pre-existing solo
     const before = await soloMap(caller);
 
@@ -177,7 +143,7 @@ describe("runLayers — negative control: a mid-run capture failure must still r
   });
 
   it("a track further down the list is never touched after an earlier failure", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const before = await soloMap(caller);
     const seen: string[] = [];
     const capture: LayerCaptureFn = async (trackPath) => {
@@ -195,7 +161,7 @@ describe("runLayers — negative control: a mid-run capture failure must still r
 
 describe("runLayers — retry on the known rapid-capture flake", () => {
   it("retries a failed capture once, marks the result, keeps solo state exact throughout", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     await caller("track.update", { path: "track:3", soloed: true });
     const before = await soloMap(caller);
 
@@ -225,7 +191,7 @@ describe("runLayers — retry on the known rapid-capture flake", () => {
   });
 
   it("exhausted retries still throw and still restore solo state", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const before = await soloMap(caller);
     let attempts = 0;
     const capture: LayerCaptureFn = async () => {

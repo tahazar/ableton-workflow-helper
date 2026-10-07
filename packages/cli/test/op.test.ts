@@ -2,14 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  createGatewayServer,
-  FakeLiveBridge,
-  KnowledgeStore,
-  type DeviceDetail,
-  type GatewayServer,
-  type OperatorRecipe,
-} from "@awh/core";
+import { KnowledgeStore, type DeviceDetail, type OperatorRecipe } from "@awh/core";
 import {
   applyRecipePlan,
   planRecipeApply,
@@ -17,6 +10,7 @@ import {
   summarizeRecipeEntries,
   type OpCaller,
 } from "../src/op.js";
+import { startFakeGateway } from "./helpers.js";
 
 /**
  * Fake-Operator apply engine tests (against a real gateway server backed by
@@ -25,36 +19,6 @@ import {
  * packages/core/test/knowledge.test.ts). See docs/design/
  * operator-assistant.md's verification bar.
  */
-
-let server: GatewayServer | undefined;
-afterEach(async () => {
-  await server?.stop();
-  server = undefined;
-});
-
-interface GatewayBody {
-  result?: unknown;
-  error?: string;
-  message?: string;
-}
-
-async function startFakeGateway(): Promise<OpCaller> {
-  server = createGatewayServer(new FakeLiveBridge(), { port: 0 });
-  const port = await server.start();
-  const base = `http://127.0.0.1:${port}`;
-  return async (name, args) => {
-    const res = await fetch(`${base}/api/ops/${name}`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: args === undefined ? undefined : JSON.stringify(args),
-    });
-    const body = (await res.json()) as GatewayBody;
-    if (!res.ok) {
-      throw new Error(`${body.error ?? "gateway error"}${body.message ? `: ${body.message}` : ""}`);
-    }
-    return body.result;
-  };
-}
 
 async function insertOperator(caller: OpCaller): Promise<string> {
   const inserted = (await caller("device.insert", { ownerPath: "track:0", name: "Operator" })) as {
@@ -65,7 +29,7 @@ async function insertOperator(caller: OpCaller): Promise<string> {
 
 describe("op apply engine (fake Operator device, real naming style)", () => {
   it("happy path: validates, writes every param, reads back — all matched", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const devicePath = await insertOperator(caller);
     const recipe: OperatorRecipe = {
       name: "test-growl",
@@ -93,7 +57,7 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
   });
 
   it("unknown param name: fails loudly and writes NOTHING (zero param changes)", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const devicePath = await insertOperator(caller);
     const before = (await caller("device.get", { path: devicePath })) as DeviceDetail;
     const beforeValues = new Map(before.params.map((p) => [p.name, p.value]));
@@ -118,7 +82,7 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
   });
 
   it("dry-run: planRecipeApply computes the moves without any I/O", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const devicePath = await insertOperator(caller);
     const before = (await caller("device.get", { path: devicePath })) as DeviceDetail;
     const beforeVolume = before.params.find((p) => p.name === "Volume")!.value;
@@ -138,7 +102,7 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
   });
 
   it("typed setDeviceParam wrapper sends the exact {path, param, value} shape", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const devicePath = await insertOperator(caller);
     await setDeviceParam(caller, devicePath, "Filter Freq", 0.33);
     const after = (await caller("device.get", { path: devicePath })) as DeviceDetail;
@@ -146,7 +110,7 @@ describe("op apply engine (fake Operator device, real naming style)", () => {
   });
 
   it("mismatch reporting: a value outside the device's raw range fails at the gateway, not silently", async () => {
-    const caller = await startFakeGateway();
+    const { caller } = await startFakeGateway();
     const devicePath = await insertOperator(caller);
     const before = (await caller("device.get", { path: devicePath })) as DeviceDetail;
     const recipe: OperatorRecipe = {
