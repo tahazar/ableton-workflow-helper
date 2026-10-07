@@ -17,9 +17,10 @@ Read this section first when starting a session. Update it in the same
 commit that finishes an item.
 
 - **Branch and PR:** PR #13 (Phase 0, L1 to L10) merged to `main` on
-  2026-10-06 as merge commit `e9d8435`. Start new work on a branch from
-  the latest `main` and open a new pull request; one commit per item,
-  pushed after each. CI must be green before merging.
+  2026-10-06 as merge commit `e9d8435`. L11 is on PR #15. Once a PR
+  merges, start new work on a branch from the latest `main` and open a
+  new pull request; one commit per item, pushed after each. CI must be
+  green before merging.
 - **Commits:** authored as the owner, with no AI attribution or
   co-author trailers. Set `git config user.name`/`user.email` in a fresh
   clone before the first commit.
