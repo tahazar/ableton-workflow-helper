@@ -1012,6 +1012,8 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
       : join(repoRoot(), ".dev", "audition-state.json");
   }
 
+  // The CLI's warning sink: a "warning:" line on stderr, apart from the
+  // command's output on stdout. readStateFile reports through it.
   function warn(message: string): void {
     io.stderr.write(`warning: ${message}\n`);
   }

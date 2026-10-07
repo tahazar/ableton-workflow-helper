@@ -66,8 +66,13 @@ describe("lib audition state file", () => {
     expect(existsSync(file)).toBe(false);
   });
 
-  it("valid JSON of the wrong shape warns instead of sweeping with it", async () => {
-    const { file, result } = await auditionEnd('{"trackPath": 3}');
+  // Each fixture is a complete state with one field wrong, so it pins that
+  // field's check rather than passing on some other missing field.
+  it.each([
+    ["a mistyped trackPath", { trackPath: 3, name: "audition: kick", slug: "kick" }],
+    ["a missing name", { trackPath: "track:0", slug: "kick" }],
+  ])("valid JSON with %s warns instead of sweeping with it", async (_case, state) => {
+    const { file, result } = await auditionEnd(JSON.stringify(state));
     expect(result.status).toBe(0);
     expect(result.stdout).toContain("nothing to end");
     expect(result.stderr).toContain(`audition state at ${file} is not valid`);
@@ -162,8 +167,14 @@ describe("lib export-alc mirror config", () => {
     expect(JSON.parse(result.stdout)).toMatchObject({ revision: 1 });
   });
 
-  it("valid JSON of the wrong shape warns instead of writing a NaN revision", async () => {
-    const { file, result } = await exportAlc('{"uniqueId": "com.me.pack", "revision": "7"}');
+  it.each([
+    [
+      "a string revision",
+      { uniqueId: "com.me.pack", name: "My Pack", vendor: "me", revision: "7" },
+    ],
+    ["a missing vendor", { uniqueId: "com.me.pack", name: "My Pack", revision: 7 }],
+  ])("valid JSON with %s warns and starts from the default pack", async (_case, config) => {
+    const { file, result } = await exportAlc(JSON.stringify(config));
     expect(result.status).toBe(0);
     expect(result.stderr).toContain(`mirror config at ${file} is not valid`);
     expect(JSON.parse(result.stdout)).toMatchObject({ revision: 1 });
