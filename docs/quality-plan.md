@@ -19,20 +19,15 @@ commit that finishes an item.
 - **Branch and PR:** merged to `main`: PR #13 (Phase 0, L1 to L10) on
   2026-10-06; PR #16 (dev-groundwork setup, G8), PR #15 (L11), PR #17
   (L16, G9 and G10 added to this plan), PR #18 (L12) and PR #19 (L16) on
-  2026-10-07; PR #20 (L6b). Open: item 5 on branch
-  `overnight/p1-05-venv-path` (#22), the first of an overnight stacked
-  chain whose later PRs build on it; item 6 on
-  `overnight/p1-06-cli-test-helpers`, stacked on #22 (#23); item 7 on
-  `overnight/p1-07-cli-run-export`, stacked on #23 (#25); item 8 on
-  `overnight/p1-08-analysis-main-inprocess`, stacked on #25 (#26); item 9
-  on `overnight/p1-09-baseline-floors`, stacked on #26 (#27); item 10 on
-  `overnight/p2-10-clip-get-errors`, stacked on #27 (#28); item 11 on
-  `overnight/p2-11-style-lookup-errors`, stacked on #28 (#29); item 12 on
-  `overnight/p2-12-corrupt-state-warnings`, stacked on #29, the last PR of
-  the chain. Start new work on a branch from the latest
-  `main` and open a new pull request; one commit per item, pushed after
-  each. CI must be green before merging. Check for open PRs on a branch
-  before pushing to it; another session may be using it.
+  2026-10-07; PR #20 (L6b); PR #22 (item 5) and PR #31 (items 6 to 12,
+  reviewed as stacked PRs #23 and #25 to #30) on 2026-10-07. No PR is
+  open. Stacked PRs reach `main` only if each is retargeted to `main`
+  before it merges; merging one into its base branch leaves its work
+  off `main` (that happened to #23 to #30, and #31 recovered it). Start
+  new work on a branch from the latest `main` and open a new pull
+  request; one commit per item, pushed after each. CI must be green
+  before merging. Check for open PRs on a branch before pushing to it;
+  another session may be using it.
 - **Commits:** authored as the owner, with no AI attribution or
   co-author trailers. Set `git config user.name`/`user.email` in a fresh
   clone before the first commit. Pull request descriptions, comments and
