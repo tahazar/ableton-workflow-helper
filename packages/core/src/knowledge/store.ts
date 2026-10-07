@@ -54,6 +54,18 @@ export interface ChopMapRecordSummary {
   bpm: number;
 }
 
+/**
+ * `loadEntry` found no entry with the slug, so callers can treat "no such
+ * entry" as normal (an unknown style name) without also hiding a store
+ * that failed to read, a malformed entry, or an ambiguous slug.
+ */
+export class KnowledgeEntryNotFoundError extends Error {
+  constructor(readonly slug: string) {
+    super(`No knowledge entry with slug "${slug}"`);
+    this.name = "KnowledgeEntryNotFoundError";
+  }
+}
+
 export class KnowledgeStore {
   /**
    * @param root the knowledge/ directory
@@ -104,7 +116,7 @@ export class KnowledgeStore {
 
   async loadEntry(slug: string): Promise<StoredKnowledgeEntry> {
     const matches = (await this.listEntries()).filter((e) => e.slug === slug);
-    if (matches.length === 0) throw new Error(`No knowledge entry with slug "${slug}"`);
+    if (matches.length === 0) throw new KnowledgeEntryNotFoundError(slug);
     if (matches.length > 1) {
       throw new Error(`Slug "${slug}" is ambiguous: ${matches.map((m) => m.relPath).join(", ")}`);
     }

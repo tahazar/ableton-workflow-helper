@@ -23,6 +23,7 @@ import { Command, CommanderError } from "commander";
 import { TAP_PORT, sendToTap } from "./osc.js";
 import { analysisPython } from "./analysis-python.js";
 import { GatewayError } from "./gateway-error.js";
+import { loadNamedEntry, resolveStyleSpec } from "./style-lookup.js";
 import {
   DEFAULT_BPM_TOL,
   DEFAULT_CENTS_TOL,
@@ -132,7 +133,6 @@ import {
   clampNotesToLength,
   clipLengthBeats,
   drumFill,
-  extractFencedBlock,
   generateDrumPatternDetailed,
   humanizeDrums,
   listDrumStyles,
@@ -1300,20 +1300,11 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
         let styleSpec: DrumStyleSpec | undefined;
         let styleTier: string | undefined;
         if (!listDrumStyles().includes(cmdOpts.style)) {
-          let entry;
-          try {
-            entry = await knowledgeStore().loadEntry(`drum-style-${cmdOpts.style}`);
-          } catch {
-            throw new Error(
-              `unknown drum style "${cmdOpts.style}" — built-ins: ${listDrumStyles().join(", ")}; ` +
-                `data styles need a knowledge entry with slug drum-style-${cmdOpts.style} ` +
-                "(see knowledge/README.md)",
-            );
-          }
-          const specText = extractFencedBlock(entry.body, "awh-style-spec");
-          if (!specText) {
-            throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-style-spec block`);
-          }
+          const { specText, entry } = await resolveStyleSpec(
+            knowledgeStore(),
+            "drum",
+            cmdOpts.style,
+          );
           styleSpec = parseDrumStyleSpec(specText);
           styleTier = entry.tier;
         }
@@ -1860,19 +1851,7 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
     if (listPhraseStyles().includes(style)) {
       return { spec: BASS_MUSIC_CR_SPEC };
     }
-    let entry;
-    try {
-      entry = await knowledgeStore().loadEntry(`phrase-style-${style}`);
-    } catch {
-      throw new Error(
-        `unknown phrase style "${style}" — built-ins: ${listPhraseStyles().join(", ")}; ` +
-          `data styles need a knowledge entry with slug phrase-style-${style} (see knowledge/README.md)`,
-      );
-    }
-    const specText = extractFencedBlock(entry.body, "awh-phrase-spec");
-    if (!specText) {
-      throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-phrase-spec block`);
-    }
+    const { specText, entry } = await resolveStyleSpec(knowledgeStore(), "phrase", style);
     return { spec: parsePhraseSpec(specText), styleTier: entry.tier };
   }
 
@@ -4798,13 +4777,12 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
    *  resolvePhraseSpec's `phrase-style-<name>`. */
   async function loadOperatorRecipeEntry(name: string) {
     const slug = name.startsWith(RECIPE_SLUG_PREFIX) ? name : `${RECIPE_SLUG_PREFIX}${name}`;
-    try {
-      return await knowledgeStore().loadEntry(slug);
-    } catch {
-      throw new Error(
-        `unknown operator recipe "${name}" — run \`awh op recipes\` to list them (slug "${slug}" not found)`,
-      );
-    }
+    return loadNamedEntry(
+      knowledgeStore(),
+      slug,
+      `operator recipe "${name}"`,
+      `unknown operator recipe "${name}" — run \`awh op recipes\` to list them (slug "${slug}" not found)`,
+    );
   }
 
   /** A device path's owning track path (its root segment). */
@@ -5479,19 +5457,7 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
   async function resolveArpSpec(style: string): Promise<{ spec: ArpSpec; styleTier?: string }> {
     const builtin = ARP_BUILTIN_SPECS[style];
     if (builtin) return { spec: builtin };
-    let entry;
-    try {
-      entry = await knowledgeStore().loadEntry(`arp-style-${style}`);
-    } catch {
-      throw new Error(
-        `unknown arp style "${style}" — built-ins: ${listArpStyles().join(", ")}; ` +
-          `data styles need a knowledge entry with slug arp-style-${style} (see knowledge/README.md)`,
-      );
-    }
-    const specText = extractFencedBlock(entry.body, "awh-arp-spec");
-    if (!specText) {
-      throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-arp-spec block`);
-    }
+    const { specText, entry } = await resolveStyleSpec(knowledgeStore(), "arp", style);
     return { spec: parseArpSpec(specText), styleTier: entry.tier };
   }
 
@@ -5699,19 +5665,7 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
   async function resolveBreakSpec(style: string): Promise<{ spec: BreakSpec; styleTier?: string }> {
     const builtin = BREAK_BUILTIN_SPECS[style];
     if (builtin) return { spec: builtin };
-    let entry;
-    try {
-      entry = await knowledgeStore().loadEntry(`break-style-${style}`);
-    } catch {
-      throw new Error(
-        `unknown break style "${style}" — built-ins: ${listBreakStyles().join(", ")}; ` +
-          `data styles need a knowledge entry with slug break-style-${style} (see knowledge/README.md)`,
-      );
-    }
-    const specText = extractFencedBlock(entry.body, "awh-break-spec");
-    if (!specText) {
-      throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-break-spec block`);
-    }
+    const { specText, entry } = await resolveStyleSpec(knowledgeStore(), "break", style);
     return { spec: parseBreakSpec(specText), styleTier: entry.tier };
   }
 
@@ -6027,19 +5981,11 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
     .action(
       async (patternName: string, target: string, cmdOpts: { atBar?: string; name?: string }) => {
         const opts = program.opts<GlobalOpts>();
-        let entry;
-        try {
-          entry = await knowledgeStore().loadEntry(`break-pattern-${patternName}`);
-        } catch {
-          throw new Error(
-            `unknown break pattern "${patternName}" — needs a knowledge entry with slug ` +
-              `break-pattern-${patternName} (see knowledge/README.md)`,
-          );
-        }
-        const notationText = extractFencedBlock(entry.body, "awh-notation");
-        if (!notationText) {
-          throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-notation block`);
-        }
+        const { specText: notationText, entry } = await resolveStyleSpec(
+          knowledgeStore(),
+          "break-pattern",
+          patternName,
+        );
         const { notes: gmNotes, suggestedLengthBeats } = parseNotation(notationText, {});
 
         const isSlotPath = /\/slot:\d+$/.test(target);
@@ -6130,19 +6076,7 @@ function buildProgram(io: CliIo): { program: Command; exitCode: () => number } {
   ): Promise<{ spec: Bass808Spec; styleTier?: string }> {
     const builtin = BASS808_BUILTIN_SPECS[style];
     if (builtin) return { spec: builtin };
-    let entry;
-    try {
-      entry = await knowledgeStore().loadEntry(`808-style-${style}`);
-    } catch {
-      throw new Error(
-        `unknown 808 bass style "${style}" — built-ins: ${listBass808Styles().join(", ")}; ` +
-          `data styles need a knowledge entry with slug 808-style-${style} (see knowledge/README.md)`,
-      );
-    }
-    const specText = extractFencedBlock(entry.body, "awh-808-spec");
-    if (!specText) {
-      throw new Error(`knowledge entry ${entry.relPath} has no \`\`\`awh-808-spec block`);
-    }
+    const { specText, entry } = await resolveStyleSpec(knowledgeStore(), "808", style);
     return { spec: parseBass808Spec(specText), styleTier: entry.tier };
   }
 

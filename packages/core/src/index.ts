@@ -149,6 +149,7 @@ export {
   type KnowledgeEntry,
 } from "./knowledge/entry.js";
 export {
+  KnowledgeEntryNotFoundError,
   KnowledgeStore,
   type KnowledgeFilter,
   type ChopMapRecordSummary,
