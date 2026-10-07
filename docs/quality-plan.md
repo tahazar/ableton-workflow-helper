@@ -22,9 +22,8 @@ commit that finishes an item.
   2026-10-07; PR #20 (L6b). Open: item 5 on branch
   `overnight/p1-05-venv-path` (#22), the first of an overnight stacked
   chain whose later PRs build on it; item 6 on
-  `overnight/p1-06-cli-test-helpers`, stacked on #22 (#23); item 7 is
-  pushed on `overnight/p1-07-cli-run-export`, stacked on #23, with no PR
-  until the owner decides on its coverage floors. Start new work on a branch from the latest
+  `overnight/p1-06-cli-test-helpers`, stacked on #22 (#23); item 7 on
+  `overnight/p1-07-cli-run-export`, stacked on #23. Start new work on a branch from the latest
   `main` and open a new pull request; one commit per item, pushed after
   each. CI must be green before merging. Check for open PRs on a branch
   before pushing to it; another session may be using it.
@@ -41,9 +40,8 @@ commit that finishes an item.
   there the CI jobs, including "Groundwork checks", are the only gate.
   The workaround check flags new suppressions; an intended one carries
   `groundwork-allow: <reason>` on the same line.
-- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 and 6, L1 to L12, L6b, L16, G8.
-- **Next:** the owner's decision on item 7's coverage floors (item
-  text), then its PR; item 8 does not depend on it. L14, L15 and Phase 7 were added on 2026-10-06 from
+- **Done:** Phase 0 items 1 to 4, Phase 1 items 5 to 7, L1 to L12, L6b, L16, G8.
+- **Next:** Phase 1 item 8. L14, L15 and Phase 7 were added on 2026-10-06 from
   a review of agent-guardrail suggestions; L16, G9 and G10 on 2026-10-07
   from a review of sdras/awesome-actions.
 - **Loop:** one session per item: do the item, run the checks below,
@@ -518,15 +516,13 @@ G10. `ci: Label pull requests by size`
    the advise integ tests remove their tmp dir at the end of the test
    body, so a failing test leaks it (pre-existing; `makeTestLibrary`
    could register the cleanup with `onTestFinished`).
-7. `refactor(cli): Export program for in-process tests` (implemented;
-   waiting on the owner, see below)
+7. `refactor(cli): Export program for in-process tests` (done)
    `index.ts` ends in `program.parseAsync()` at module scope. Export a
    `run(argv, io)` that builds the program, takes injectable stdout/stderr,
    and returns an exit code; keep a thin bin entry that calls it. Point the
    shared `runCli` helper at `run()` so command tests count toward
    coverage. Keep one spawn-based smoke test for the real binary.
-   Implemented on branch `overnight/p1-07-cli-run-export`, with no PR
-   yet. `run()` builds a fresh program per call, because commander keeps
+   Done on branch `overnight/p1-07-cli-run-export`. `run()` builds a fresh program per call, because commander keeps
    parsed option values on the command objects. Command registration is
    therefore one `buildProgram(io)` function, with a `max-lines-per-function`
    disable until Phase 4. `exitOverride` and `configureOutput` route
@@ -534,12 +530,14 @@ G10. `ci: Label pull requests by size`
    Python's stdio instead of inheriting it. The bin is `src/bin.ts`
    (`dist/bin.js`). The command tests no longer skip on an unbuilt CLI.
    Measured: CLI 205 tests; lines 24.2% -> 51.6%, `index.ts` 0% -> 37%.
-   Blocked: functions (97.0% -> 80.3%) and branches (83.5% -> 78.3%)
-   fall below their floors. Before this change, v8 counted none of
-   `index.ts`'s functions or branches, and no file's own numbers dropped.
-   Re-basing the floors to 51/78/80/51 breaks "floors only go up", and the
-   Groundwork workaround check flags the removed threshold line, so the
-   owner decides: re-base, or another option. Review nits not taken: the
+   Functions (97.0% -> 80.3%) and branches (83.5% -> 78.3%) fell below
+   their floors. Before this change, v8 counted none of `index.ts`'s
+   functions or branches, and no file's own numbers dropped, so the old
+   floors measured a smaller set of code. The owner chose to re-base the
+   floors to 51/78/80/51 with a `groundwork-allow` reason, as a one-time
+   exception to "floors only go up"; item 9 raises them. The vendored
+   workaround check (dev-groundwork 0.3.1) lets that reason cover the
+   removed threshold line. Review nits not taken: the
    reindent shares a commit with the I/O change, so blame on `index.ts`
    points at it; `dist/index.js` still exists after a rebuild and runs
    silently, so re-link anything that called it; `CliIo` has no stdin
