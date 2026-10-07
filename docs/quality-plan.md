@@ -115,6 +115,11 @@ Python CLI tests call `subprocess.run`, so coverage never sees the child
 process. Some of that code is exercised; none of it is measured. Phase 1
 fixes the measurement before any coverage number is trusted.
 
+Of the 79 `awh` commands, 69 have no test that invokes the command itself.
+The logic behind some of them (endless, op, duck, layers, remote, samples)
+is tested by importing modules directly, but argument parsing, output
+formatting, and error paths in `index.ts` are not.
+
 ### Re-measured after Phase 1 item 8 (2026-10-07)
 
 Measured on commit `b2ab306` the way CI does: `pnpm build`, then
@@ -131,11 +136,6 @@ entry points are counted. Floors are the integer floor of each value.
 | `packages/orchestrator` | 82.53% | 87.98% | 92.59% | 82.53% | 82/87/92/82 | 46 tests |
 | `analysis` | 80.48% | not measured | n/a | n/a | 80 (total) | 183 pass, 7 `integ` deselected |
 | `packages/extension` | none | none | none | none | none | no test suite |
-
-Of the 79 `awh` commands, 69 have no test that invokes the command itself.
-The logic behind some of them (endless, op, duck, layers, remote, samples)
-is tested by importing modules directly, but argument parsing, output
-formatting, and error paths in `index.ts` are not.
 
 ## Ground rules for every commit
 
@@ -584,12 +584,15 @@ G10. `ci: Label pull requests by size`
    Re-measure after items 7 and 8 and update the baseline table above.
    Land L2 first so tests that assert nothing do not inflate the
    numbers.
+   Done on branch `overnight/p1-09-baseline-floors`. L2 had landed.
    Measured (see "Re-measured after Phase 1 item 8"): core 90.84/83.78/
    96.19/90.84 (lines/branches/functions/statements), cli 51.58/78.35/
    80.26/51.58, orchestrator 82.53/87.98/92.59/82.53, analysis 80.48%
    total. The Node floors already sat at the integer floor of these
    values (cli re-based in item 7), so only the analysis floor moved,
-   from 74 to 80.
+   from 74 to 80. Review nit not taken: the `groundwork-allow` marker on
+   the raised `fail_under` line looks redundant for a raise, but the
+   workaround check flags any threshold edit, so it stays.
 
 ## Phase 2: fix silent failures, with tests
 
