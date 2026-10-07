@@ -119,8 +119,9 @@ jobs:
       # The extension is typechecked against types/ableton-sdk-shim.d.ts but
       # not bundled: the Ableton SDK is not redistributable.
       - run: pnpm typecheck
-      # The venv is built above, so the "integ:" CLI tests must run here,
-      # not skip.
+      # The venv is built above, so a missing analysis Python fails the run
+      # instead of skipping the "integ:" CLI tests. (Their other skip
+      # condition, an unbuilt CLI, is covered by `pnpm build` above.)
       - run: pnpm coverage
         env:
           AWH_REQUIRE_INTEG: "1"

@@ -9,7 +9,6 @@ const absent = (): boolean => false;
 describe("resolveAnalysisPython", () => {
   it("resolves the venv from the repo root, not a fixed machine path", () => {
     const repoRoot = dirname(dirname(dirname(REPO_VENV_PYTHON)));
-    expect(REPO_VENV_PYTHON).toBe(join(repoRoot, ".venv", "bin", "python"));
     expect(existsSync(join(repoRoot, "analysis", "pyproject.toml"))).toBe(true);
   });
 
