@@ -408,6 +408,22 @@ describe("plan.ts", () => {
     ]);
   });
 
+  it("sectionsFromReference keeps the base letter of accented section names", () => {
+    const sections = sectionsFromReference([
+      { name: "Refrán", start_bar: 1, end_bar: 8 },
+      { name: "Été", start_bar: 9, end_bar: 16 },
+    ]);
+    expect(sections.map((s) => s.id)).toEqual(["refran", "ete"]);
+  });
+
+  it("sectionsFromReference numbers a section whose name has no letters or digits", () => {
+    const sections = sectionsFromReference([
+      { name: "Intro", start_bar: 1, end_bar: 8 },
+      { name: "★ ★", start_bar: 9, end_bar: 16 },
+    ]);
+    expect(sections.map((s) => s.id)).toEqual(["intro", "section-2"]);
+  });
+
   it("buildEndlessPlanYaml emits a scaffold with empty pools and a reachable transition loop", () => {
     const text = buildEndlessPlanYaml({
       name: "my-song",

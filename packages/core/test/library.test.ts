@@ -45,6 +45,15 @@ describe("clip entry format", () => {
     expect(slugify("ISOxo Snare! (v2)")).toBe("isoxo-snare-v2");
     expect(() => slugify("!!!")).toThrowError(/slug/);
   });
+
+  // Live track and clip names reach slugify unchanged, and accented
+  // letters used to be dropped as if they were punctuation.
+  it("keeps the base letter of accented and compatibility characters", () => {
+    expect(slugify("Café Bass")).toBe("cafe-bass");
+    expect(slugify("Señal Ébauche")).toBe("senal-ebauche");
+    expect(slugify("ﬁlter Ⅸ")).toBe("filter-ix");
+    expect(slugify("Ü")).toBe("u");
+  });
 });
 
 describe("LibraryStore", () => {

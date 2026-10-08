@@ -34,11 +34,22 @@ export interface ClipEntry {
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;
 const TIERS: EntryTier[] = ["verified", "sourced", "draft"];
 
-export function slugify(text: string): string {
-  const slug = text
+/**
+ * Lowercase ASCII letters and digits of `text`, runs of anything else joined
+ * by one hyphen; empty when nothing is left. NFKD first, so "Café" keeps its
+ * "e" and "ﬁ" becomes "fi" instead of both being dropped as punctuation.
+ */
+export function asciiSlug(text: string): string {
+  return text
+    .normalize("NFKD")
+    .replace(/\p{M}/gu, "")
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
+}
+
+export function slugify(text: string): string {
+  const slug = asciiSlug(text);
   if (!SLUG_RE.test(slug)) throw new Error(`Cannot derive a slug from "${text}"`);
   return slug;
 }
