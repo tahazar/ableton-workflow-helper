@@ -74,6 +74,7 @@ export {
 export { renderSections, type RenderOptions, type SourceClip } from "./sections/render.js";
 export { listForms, planFromForm, planFromReferenceSections } from "./sections/presets.js";
 export {
+  asciiSlug,
   parseClipEntry,
   serializeClipEntry,
   slugify,

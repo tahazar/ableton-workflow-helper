@@ -19,6 +19,7 @@
  * `drums`/`bass` pair plus a commented-out `pads` example the owner edits
  * to match their actual stems.
  */
+import { asciiSlug } from "@awh/core";
 
 export interface PlanSection {
   id: string;
@@ -59,11 +60,7 @@ export function parseSectionsArg(arg: string): PlanSection[] {
  * like `ref sections read` ("don't fix a non-standard name the owner
  * chose"), only constrained to id-safe characters. */
 function slugifySectionName(name: string, index: number): string {
-  const slug = name
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+  const slug = asciiSlug(name);
   return slug || `section-${index + 1}`;
 }
 
