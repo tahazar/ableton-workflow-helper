@@ -1,10 +1,12 @@
 # Research: Song to Live Set recreation (inverse rendering) — Nov 2026
 
-- Status: draft for owner discussion, 2026-11-05. A research note, not a
-  spec. It frames the problem, separates what is science from what is
-  engineering, proposes the experiments ("proofs") that have to pass
-  before a product is designed, and lists the questions only the owner can
-  answer (section 10).
+- Status: draft, 2026-11-05; the owner's decisions on scope are recorded
+  in section 10 and the first milestone is planned in section 11. A
+  research note, not a spec. It frames the problem, separates what is
+  science from what is engineering, proposes the experiments ("proofs")
+  that have to pass before a product is designed, and sets out the
+  compute tiers (section 12) and where the research work lives
+  (section 13).
 - Objective as stated by the owner: an automated workflow whose input is a
   finished song and whose output is that song recreated, identically, as
   a Live project. Owner's decomposition: break the song apart, analyze the
@@ -583,52 +585,169 @@ before any distribution decision):
     because the paper hosts were unreachable from this session; a pass
     over the primary sources is owed before they are quoted elsewhere.
 
-## 10. Questions for the owner
+## 10. Decisions (owner, 2026-11-05)
 
-Answers change the scope, the stack and which proof runs first.
+The questions this note first asked, with the owner's answers and what
+each implies.
 
-1. **Which rung is the goal, and what is the acceptance test?** Perceptual
-   indistinguishability (a producer fails an ABX test) is the highest
-   defensible bar; "the same project the producer built" is not
-   recoverable (F1). Is L3 with ABX the target, or is L1 (notes plus
-   sounds) already the product?
-2. **Which songs?** In-the-box electronic music, or any song including
-   bands, acoustic recordings and vocal-led pop? The first is where every
-   stage has a chance; the second lowers the ceiling to L0 for most
-   parts.
-3. **Vocals and other recorded performances.** Place the separated stem as
-   audio (L0), omit it, or synthesize a replacement? Synthesis of a real
-   singer's voice is cloning; the recommendation is L0 and no cloning.
-4. **Device vocabulary.** Native devices only, or also third-party
-   plugins you own? Which packs and plugins are installed on the
-   production machine, and which plugins expose their state (parameter
-   surface or preset file format) so a patch can be written from
-   outside?
-5. **Sample vocabulary.** Factory library and Packs, your own library,
-   subscription libraries? The index is local and never redistributed,
-   but what it covers decides the retrieval hit rate (proof 5).
-6. **Purpose.** A personal study and remake tool, or something others
-   will use? Distribution triggers model-weight provenance, the Live
-   SDK's non-redistributability if that channel is used, and the
-   copyright questions in section 2.
-7. **Draft-with-correction or one shot?** Is a loop where each stage
-   writes a draft into the Set and reads your corrections back
-   acceptable, or must the pipeline run unattended end to end?
-8. **Machines and Live.** Mac model and memory for the Live host; whether
-   an NVIDIA GPU or a cloud budget exists for training; Live version and
-   edition; whether running long unattended render jobs on the
-   production machine is acceptable (the data factory needs hours of
-   Live time).
-9. **Real ground truth and the prior.** Do you have Live projects with
-   their finished renders (your own tracks, collaborators', purchased
-   project files, demo Sets)? They are the only real-song cases where
-   every stage can be scored exactly, and the only data for the prior
-   `p(P)`.
-10. **Time and order.** Is this a research track beside the current work
-    queue, and which proof do you want first? The recommendation is
-    proofs 1 to 3 in that order: no machine learning, and they settle the
-    output representation, the render path and whether proxies are
-    viable, which is the whole architecture.
+1. **Rungs are milestones; Milestone 1 is L1, notes plus sounds.**
+   Acceptance per milestone is audio-domain per part (section 1.2) with
+   a small ABX pilot; "the same project" is not the target (F1).
+2. **Electronic music first.** Constant-tempo 4/4 is the working
+   assumption; variable tempo and other meters are out of Milestone 1.
+3. **Vocals and other recorded performances are placed as audio.** No
+   voice cloning.
+4. **Native devices only.** The Milestone 1 instrument vocabulary is
+   Drum Rack, Simpler, Sampler, Operator, Analog, Wavetable, Drift and
+   Meld; third-party plugins are out until a later decision.
+5. **All sample sources:** the factory library and Packs, the owner's own
+   library, and subscription libraries, indexed locally.
+6. **Personal study and remake tool.** Nothing is distributed, so
+   non-commercial model weights and datasets are usable now; provenance
+   is recorded so a later decision can revisit it.
+7. **Unattended end to end.** No correction loop, so every stage needs
+   calibrated confidence and a guaranteed fallback (section 11.3): a run
+   always completes, and quality is reported per part rather than
+   gated by a person.
+8. **Mac as the eventual host; cloud allowed.** Cost is decided by tier
+   (section 12), not closed off in advance.
+9. **Real ground truth exists:** the owner's own projects with their
+   renders. They feed the prior over projects and the real-song
+   evaluation (section 11.4).
+10. **A research track with priority.** Its results steer this
+    repository; where the proof code lives is decided in section 13.
+
+## 11. Milestone 1: notes plus sounds
+
+### 11.1 Deliverable
+
+For an electronic song, an `.als` Set with its samples folder holding:
+
+- tempo and grid, with sections marked;
+- one track per recovered part, with MIDI clips carrying notes, timing
+  and velocity, quantized to the grid with the measured groove offset;
+- an instrument per track from the native vocabulary: a Drum Rack or
+  Simpler loaded with the identified sample or with a one-shot resampled
+  from the separated stem; a native synth loaded with a retrieved
+  factory preset or an estimated patch;
+- audio clips for parts outside the vocabulary (vocals, recorded
+  performances, textures no strategy resolved), warped to the grid;
+- coarse per-track gain and pan taken from the separated stems, so the
+  Set plays back at a sensible balance (no EQ, compression, effects or
+  automation; those are L3 and L4);
+- a per-part report: the strategy used, its confidence, and the
+  measurements behind the choice.
+
+### 11.2 Critical path and proof order
+
+The general proof plan (section 7) re-cut for L1. Proof 8 (chains and
+mix) and all automation work are deferred to later milestones.
+
+| Order | Proof | Milestone 1 scope |
+|---|---|---|
+| 1 | 1 Representation | Only the constructs above: MIDI clips, Drum Rack with sample chains, Simpler and Sampler with a sample, each native synth with a preset's device state, audio clips with warp settings, tempo, mixer gain and pan, section markers. Pass: round-trips through Live and renders the same. |
+| 2 | 2 Render path | Needed to evaluate every later proof and to build the rendered-preset index. Pass: a deterministic render path with a measured noise floor and throughput. |
+| 3 | 5 Retrieval | A rendered index of every factory preset of the vocabulary devices and of every sample source; identification under processing; open-set calibration. This is the stage that decides most "sounds" at L1. |
+| 4 | 6 Separation floor, then 7 Transcription | On renderer-generated electronic sets drawn from the owner's prior, then on the owner's real projects (exact stems and MIDI exist for both). |
+| 5 | 3 Device proxies, then 4 Inversion | For off-library synth parts only: one subtractive device (Drift or Analog) first, Operator as the hard case; Wavetable and Meld after. |
+| 6 | 9 End to end at L1 | Synthetic sets, then the owner's projects, then songs without projects. |
+| 7 | 10 ABX pilot | Small and early: three to five songs, enough to fix the per-part acceptance thresholds. |
+
+### 11.3 Unattended operation: the decision cascade per part
+
+Because nobody corrects the output, every part follows one cascade and
+every branch logs the measurement that chose it:
+
+1. Exact fingerprint hit in a sample index: identified sample.
+2. Near match above the calibrated open-set threshold: identified sample
+   (reported as near).
+3. Short and percussive (one-shot-like) with no match: one-shot resampled
+   from the separated stem into Simpler or a Drum Rack pad.
+4. Tonal and matched to a rendered factory preset above threshold: that
+   preset.
+5. Tonal and inside a device's gamut by the proxy's confidence: an
+   estimated patch, verified by a render against the stem.
+6. Otherwise: the separated stem as an audio clip.
+
+Steps 3 and 6 guarantee completion; steps 1, 2 and 4 are where L1
+quality comes from; step 5 is the research content of this milestone.
+
+### 11.4 Data
+
+- The owner's projects with renders: inventory first (count, Live
+  version, devices used, whether stems and MIDI can be bounced). They
+  give the prior over projects (track counts, device choices, layering,
+  typical chains) and the only real-song cases with exact ground truth.
+- Renderer-generated sets drawn from that prior: the training and
+  evaluation material for proofs 3 to 7.
+- Indexes: every sample source and every factory preset, rendered once.
+- Public sets for calibration only: mshoxxDB (electronic multitracks
+  with MIDI), MUSDB18-HQ, Slakh2100, StemGMD, Sample100.
+
+## 12. Compute and cost tiers
+
+Prices are marketplace and aggregator figures from November 2026
+(sources at the end); they move monthly and the on-demand and marketplace
+rates for the same GPU differ by two to three times, so the tiers are
+read as orders of magnitude.
+
+### 12.1 What Milestone 1 computes
+
+| Workload | What it needs | Scale for Milestone 1 |
+|---|---|---|
+| Live rendering: preset index, data factory, verification renders | A Mac running Live Suite; one Live instance per machine; real-time capture or the export dialog | Thousands of factory presets times a few notes times a few seconds: tens of hours of Live time; proxy training data per device: 10^4 to 10^5 short renders, hours to days per device |
+| Separation and transcription inference | Any GPU, or Apple silicon | Hybrid Transformer Demucs on an M4 Max: about 7 s per song with PyTorch on MPS, under 3 s with the MLX port (maintainers' figures); about 50 s per song on a base M4; RoFormer models slower and unmeasured on Apple silicon. A thousand-song library is hours, not days |
+| Proxy and predictor training | A 24 to 80 GB GPU | Device proxies: 1 to 10 GPU-hours each for eight devices; preset predictors and a synthetic-data drum transcriber: tens of GPU-hours; sweeps multiply this |
+| Separation fine-tuning (optional, after proof 6) | 40 to 80 GB GPUs for days | Hundreds of GPU-hours per run |
+| Test-time optimization per part | GPU preferred; Apple silicon workable | 10^4 to 10^5 proxy evaluations per part; minutes per song on a 4090-class GPU |
+| Storage | Local disk or object storage | Rendered datasets of 100 to 500 GB; audio stays out of git |
+
+### 12.2 Price points (November 2026)
+
+| Resource | Price | Note |
+|---|---|---|
+| RTX 4090 by the hour | about $0.34 to $0.89 | marketplace low to on-demand |
+| A100 80 GB by the hour | about $0.7 to $1.8 | marketplace to RunPod tiers; Lambda about $2 to $2.8 |
+| H100 by the hour | about $2 to $3 marketplace and RunPod; $3.3 to $4 Lambda; about $12 AWS | always-on: roughly $1,100 to $2,200 a month per GPU |
+| Cloud Mac (AWS EC2, dedicated host) | mac-m4 about $1.23 an hour, about $900 a month; mac2-m2pro about $1.56 an hour, about $1,140 a month | 24-hour minimum per allocation; a Live license per machine (verify the number of authorizations a Suite license allows) |
+| Mac mini M4 Pro, one-off | from about $1,600 after the 2026 price rise; 64 GB configurations withdrawn from new stock in May 2026 (48 GB maximum); refurbished 64 GB units listed around $2,200 | a second local render machine |
+| Mac Studio M4 Max, one-off | about $2,000 at 36 GB | successor pricing conflicting in sources |
+
+### 12.3 Tiers
+
+| Tier | Monthly spend | What it buys | What remains the bottleneck |
+|---|---|---|---|
+| A: what is owned | $0 beyond Live | The owner's Mac runs Live, inference on MPS or MLX, proxy and predictor training on MPS (slow: overnight runs), optimization loops on CPU or MPS; the data factory runs when the Mac is idle. Proofs 1, 2 and 5 need nothing else. | Iteration speed (days per experiment); no separation fine-tuning; the Mac is busy rendering when it is needed for work |
+| B: up to about $300 | marketplace GPU by the hour (4090 or A100 80 GB), roughly 150 to 400 GPU-hours; about 1 TB of object storage | Proxies for all eight devices, preset predictors, the synthetic drum transcriber, sweeps and ablations; proofs 3, 4, 6, 7 and 9 at full size | Live render throughput: one machine at real time |
+| C: up to about $1,500 | Tier B plus a dedicated render Mac (a one-off Mac mini amortized, or a cloud Mac at about $900 to $1,150 a month) and a few hundred H100-hours | Two render machines (double data-factory throughput; the owner's Mac stays free), separation fine-tuning on electronic ground truth, larger preset models | Research questions (symmetry, modulation, the separation floor), not compute |
+| Blank check | $10,000 and up | N render Macs (bounded by Live licenses), reserved H100 nodes (an eight-GPU node is roughly $15,000 to $25,000 a month on marketplace rates), paid listening panels | Diminishing returns: nothing in Milestone 1 needs more than Tier C; the limits are Live's render rate per machine and the open problems in section 6 |
+
+Recommendation: Tier A for proofs 1, 2 and 5; Tier B from the first
+proxy-training run (proof 3); decide on Tier C after proof 6 shows
+whether separation fine-tuning changes the floor.
+
+## 13. Where the research lives
+
+Proof code is disposable by design: experiments, sweeps, notebooks,
+large rendered datasets, results. This repository's rules (coverage
+floors that only rise, fakes not mocks, a pipeline per feature, a review
+per commit) are product rules, and applying them to proofs would slow
+the research without protecting anything.
+
+- Recommended: a separate research repository for proof code,
+  experiment configuration, data manifests and results. Audio and
+  datasets stay out of git (local disk or object storage, with manifests
+  and seeds in git so every result is reproducible). This repository
+  keeps the steering record: this note, decision records, milestone
+  status, and each proof's results as a short research note, so the
+  product work here is steered by measurements rather than by code
+  copied across.
+- Alternative: a `research/` directory here, excluded from the coverage
+  floors and the pipeline. Fewer repositories, but the rules need
+  carve-outs and the histories mix.
+- Either way, the first three items of work are the same: inventory the
+  owner's projects with renders; a `.als` round-trip harness (proof 1);
+  a render-path timing and determinism harness on the Mac (proof 2).
 
 ## Sources
 
@@ -762,6 +881,17 @@ Effects and mix
   https://github.com/spotify/pedalboard ; https://github.com/csteinmetz1/pyloudnorm ;
   https://github.com/sergree/matchering
 - Evaluation guidance: https://dl4am.github.io/tutorial (unread)
+
+Compute prices (section 12; aggregator and vendor pages, November 2026)
+- https://gpuperhour.com/ ; https://www.spheron.network/blog/gpu-cloud-pricing-comparison-2026/ ;
+  https://www.spheron.network/blog/gpu-cloud-pricing-comparison-runpod-vs-vastai-2026/
+- https://instances.vantage.sh/aws/ec2/mac2-m2pro.metal ;
+  https://macyou.co/blog/aws-ec2-mac-pricing-explained ;
+  https://computingforgeeks.com/ec2-mac-instance/
+- https://www.macrumors.com/2026/05/05/apple-mac-studio-mac-mini-ram-cuts/ ;
+  https://www.macrumors.com/2026/05/02/apple-just-raised-mac-mini-starting-price/
+- https://pypi.org/project/demucs-mlx/ ; https://pypi.org/project/mlx-audio-separator/ ;
+  https://stemsplitter.github.io/research/
 
 ## Appendix A. Inventory of existing artifacts (unvalidated)
 
